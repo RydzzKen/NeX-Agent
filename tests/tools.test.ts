@@ -13,7 +13,7 @@ import { readFileTool } from "../src/tools/read_file.js";
 import { writeFileTool } from "../src/tools/write_file.js";
 import { editFileTool } from "../src/tools/edit_file.js";
 import { listDirTool } from "../src/tools/list_dir.js";
-import { runShellTool } from "../src/tools/run_shell.js";
+import { resolveShell, runShellTool } from "../src/tools/run_shell.js";
 
 let root: string;
 
@@ -101,5 +101,32 @@ describe("tools", () => {
   it("run_shell menolak perintah yang menyentuh file sensitif tanpa izin", async () => {
     const ctx = makeContext();
     await expect(runShellTool.execute({ command: "cat .env" }, ctx)).rejects.toThrow(/sensitif/);
+  });
+
+  it("resolveShell mengembalikan shell POSIX yang benar-benar ada", async () => {
+    const shell = resolveShell();
+    expect(shell.length).toBeGreaterThan(0);
+    if (shell.includes("/")) {
+      await expect(fs.access(shell)).resolves.toBeUndefined();
+    }
+  });
+
+  it("resolveShell memakai $PREFIX/bin/sh bila tersedia (Termux)", async () => {
+    const prefix = await fs.mkdtemp(path.join(os.tmpdir(), "nex-prefix-"));
+    await fs.mkdir(path.join(prefix, "bin"), { recursive: true });
+    const sh = path.join(prefix, "bin", "sh");
+    await fs.writeFile(sh, "#!/bin/sh\n");
+    try {
+      expect(resolveShell({ PREFIX: prefix })).toBe(sh);
+    } finally {
+      await fs.rm(prefix, { recursive: true, force: true });
+    }
+  });
+
+  it("run_shell menjalankan perintah read-only dan mengembalikan stdout", async () => {
+    const ctx = makeContext();
+    const result = await runShellTool.execute({ command: "printf 'halo-nex'" }, ctx);
+    expect(result.ok).toBe(true);
+    expect(result.content).toContain("halo-nex");
   });
 });
