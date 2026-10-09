@@ -13,6 +13,7 @@ import { createPathResolver } from "../safety/policy.js";
 import { PermissionManager } from "../safety/permissions.js";
 import { createWorkspace, type Workspace } from "../safety/workspace.js";
 import { loadAgentsMd } from "../memory/agents_md.js";
+import { discoverSkills, formatSkillsForPrompt, type Skill } from "../memory/skills.js";
 import { CredentialStore } from "../config/credentials.js";
 import {
   configDir,
@@ -62,6 +63,8 @@ export interface CliOptions {
   thinking?: boolean;
   /** Render markdown pada jawaban model (default true). */
   markdown?: boolean;
+  /** Muat skill dari SKILL.md (default true). */
+  skills?: boolean;
   debug?: boolean;
   json?: boolean;
 }
@@ -88,10 +91,16 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/allow-all [on|off]", "izinkan semua izin untuk sesi ini"],
   ["/thinking [on|off]", "tampilkan/sembunyikan thinking"],
   ["/markdown [on|off]", "render markdown pada jawaban"],
+  ["/skills", "daftar skill yang tersedia"],
+  ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
   ["/todos", "tampilkan daftar tugas (checklist)"],
   ["/exit", "keluar dari sesi chat (atau Ctrl+D)"],
   ["/help", "bantuan"],
 ];
+
+function truncate(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
 
 function exitCodeFor(reason: StopReason): number {
   switch (reason) {
@@ -118,6 +127,9 @@ export class ChatApp {
   private readonly tracker = new UsageTracker();
   private readonly usageStore = new UsageStore(path.join(configDir(), "usage.jsonl"));
   private readonly registry = new ToolRegistry();
+  private skills: Skill[] = [];
+  private activeSkills: Skill[] = [];
+  private baseSystemPrompt = "";
 
   private constructor(
     private readonly workspace: Workspace,
@@ -193,6 +205,13 @@ export class ChatApp {
 
     const sessionDir = path.join(sessionsDir(), this.record.id);
     this.checkpoints = await CheckpointManager.load(sessionDir, this.logger);
+
+    if (this.opts.skills ?? this.config.skills ?? true) {
+      this.skills = await discoverSkills({
+        workspaceRoot: this.workspace.root,
+        globalConfigDir: configDir(),
+      });
+    }
 
     await this.ensureProvider();
     const model = await this.resolveModel(
@@ -300,7 +319,19 @@ export class ChatApp {
       "- Untuk tugas berlapis, pakai tool todo_write untuk mencatat rencana sebagai checklist, lalu perbarui statusnya (pending/in_progress/completed) seiring kemajuan.",
       "- Jangan pernah menulis kredensial ke file atau output.",
     ].join("\n");
-    return memory.content ? `${header}\n\n# Konteks proyek (AGENTS.md)\n${memory.content}` : header;
+    const base = memory.content ? `${header}\n\n# Konteks proyek (AGENTS.md)\n${memory.content}` : header;
+    const skillsSection = formatSkillsForPrompt(this.skills);
+    this.baseSystemPrompt = skillsSection ? `${base}\n\n${skillsSection}` : base;
+    return this.baseSystemPrompt;
+  }
+
+  /** System prompt dasar + skill yang diaktifkan manual lewat `/skill`. */
+  private composeSystemPrompt(): string {
+    let prompt = this.baseSystemPrompt;
+    for (const skill of this.activeSkills) {
+      prompt += `\n\n# Skill aktif (dipilih pengguna): ${skill.name}\n${skill.body}`;
+    }
+    return prompt;
   }
 
   private async buildSession(
@@ -309,7 +340,8 @@ export class ChatApp {
     history: SessionRecord["history"],
     todos: SessionRecord["todos"] = [],
   ): Promise<void> {
-    const systemPrompt = await this.buildSystemPrompt();
+    await this.buildSystemPrompt();
+    const systemPrompt = this.composeSystemPrompt();
     const resolvePath = createPathResolver({
       workspace: this.workspace,
       permissions: this.permissions,
@@ -331,6 +363,7 @@ export class ChatApp {
         resolvePath,
         tracker: this.tracker,
         search: createWebSearch(this.config.searchUrl),
+        skills: this.skills,
         onUsage: (event) => this.usageStore.append(event),
         sessionId: this.record.id,
       },
@@ -512,6 +545,12 @@ export class ChatApp {
         this.io.info(`Markdown ${on ? "aktif" : "nonaktif"}.`);
         return "continue";
       }
+      case "/skills":
+        this.commandSkills();
+        return "continue";
+      case "/skill":
+        this.commandSkill(args[0]);
+        return "continue";
       case "/todos":
         this.commandTodos();
         return "continue";
@@ -657,6 +696,7 @@ export class ChatApp {
 
   private async commandNew(): Promise<void> {
     await this.saveRecord();
+    this.activeSkills = [];
     this.record = {
       id: newSessionId(),
       title: "(baru)",
@@ -764,6 +804,48 @@ export class ChatApp {
       );
     }
     process.stdout.write("\n");
+  }
+
+  private commandSkills(): void {
+    if (this.skills.length === 0) {
+      this.io.info(
+        "Belum ada skill. Letakkan folder berisi SKILL.md di ./skills, ./.nex-agent/skills, atau ~/.config/agent/skills.",
+      );
+      return;
+    }
+    process.stdout.write("\nSkill tersedia (dimuat otomatis saat relevan):\n");
+    for (const skill of this.skills) {
+      const active = this.activeSkills.some((a) => a.name === skill.name) ? color.green("●") : " ";
+      process.stdout.write(
+        `  ${active} ${skill.name.padEnd(24)} ${truncate(skill.description, 60)}\n`,
+      );
+    }
+    process.stdout.write("\n  Paksa aktif: /skill <nama>  ·  lepas semua: /skill off\n\n");
+  }
+
+  private commandSkill(name?: string): void {
+    if (!name || name === "off") {
+      this.activeSkills = [];
+      this.session.setSystemPrompt(this.composeSystemPrompt());
+      if (!name) {
+        this.commandSkills();
+        return;
+      }
+      this.io.info("Skill yang dipaksa aktif dilepas.");
+      return;
+    }
+    const skill = this.skills.find((s) => s.name === name);
+    if (!skill) {
+      this.io.warn(`Skill tidak ditemukan: ${name}. Lihat /skills.`);
+      return;
+    }
+    if (this.activeSkills.some((s) => s.name === name)) {
+      this.io.info(`Skill ${name} sudah aktif.`);
+      return;
+    }
+    this.activeSkills.push(skill);
+    this.session.setSystemPrompt(this.composeSystemPrompt());
+    this.io.info(`Skill ${name} dipaksa aktif untuk sesi ini.`);
   }
 
   private commandTodos(): void {
