@@ -39,6 +39,7 @@ async function main(): Promise<void> {
     .option("--allow-path <path>", "setujui path sebelum sesi (bisa diulang)", collect, [])
     .option("--no-thinking", "sembunyikan thinking")
     .option("--no-markdown", "jangan render markdown pada jawaban")
+    .option("--no-skills", "jangan muat skill dari SKILL.md")
     .option("--debug", "log debug")
     .option("--json", "keluaran JSON per baris")
     .action(async (goal: string | undefined, options: Record<string, unknown>) => {
@@ -59,6 +60,7 @@ async function main(): Promise<void> {
           : {}),
         thinking: options.thinking !== false,
         ...(options.markdown === false ? { markdown: false } : {}),
+        ...(options.skills === false ? { skills: false } : {}),
         ...(options.debug ? { debug: true } : {}),
         ...(options.json ? { json: true } : {}),
       };

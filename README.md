@@ -87,7 +87,7 @@ nex-agent logs <id>           # jejak satu sesi
 
 `--model`, `--provider`, `--max-steps`, `--max-cost`, `--yes`,
 `--allow-all`, `--cwd <path>`, `--allow-path <path>` (bisa diulang),
-`--no-thinking`, `--no-markdown`, `--debug`, `--json`.
+`--no-thinking`, `--no-markdown`, `--no-skills`, `--debug`, `--json`.
 
 `--yes` dan `--allow-all` menyetujui semua konfirmasi untuk sesi ini
 (termasuk akses luar workspace). Mode Plan tetap read-only karena aturan itu
@@ -105,7 +105,7 @@ Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 `/connect` · `/models [nomor|0|nama]` · `/plan` · `/build` · `/sessions` ·
 `/resume <n>` · `/new` · `/clear` · `/rename` · `/delete` · `/undo [n]` ·
 `/usage` · `/permissions` · `/allow-all [on|off]` · `/thinking` · `/markdown` ·
-`/todos` · `/exit` · `/help`.
+`/skills` · `/skill <nama>|off` · `/todos` · `/exit` · `/help`.
 
 `/sessions` menampilkan sesi bernomor (judul diambil otomatis dari pesan
 pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/allow-all` menyalakan
@@ -135,11 +135,11 @@ Disimpan di `~/.config/agent/` (bisa diubah lewat `AGENT_CONFIG_DIR`):
 src/
   core/        # loop agentik, approvals, checkpoint, context, repetition
   providers/   # ModelProvider + adapter (OpenAI-compatible, Anthropic)
-  tools/       # read_file, write_file, edit_file, list_dir, run_shell, web_search, todo_write
+  tools/       # read_file, write_file, edit_file, list_dir, run_shell, web_search, todo_write, skill
   safety/      # workspace, permissions, classifier, policy
   sessions/    # penyimpanan sesi
   usage/       # token, biaya, agregasi
-  memory/      # AGENTS.md loader
+  memory/      # loader AGENTS.md + skill (SKILL.md)
   cli/         # renderer, prompt, slash command, app
   config/      # konfigurasi & kredensial
   logging/     # logger JSONL + redaksi
@@ -159,6 +159,43 @@ lebar terminal.
   Pilihan disimpan di `config.json`, jadi bertahan setelah restart.
 - Saat pertama kali mulai: `nex-agent --no-markdown`.
 - Mode `--json` tidak merender markdown (mengeluarkan event `text` mentah).
+
+## Skill (SKILL.md)
+
+NeX-Agent memuat **Agent Skills**: folder berisi `SKILL.md` dengan frontmatter
+sederhana (`name`, `description`) plus isi instruksi. Format ini sama dengan
+skill Anthropic (`frontend-design`), keluaran **SkillUI**, dan skill **Strix**.
+
+Lokasi yang dipindai (yang belakangan menimpa jika namanya sama):
+
+```
+~/.config/agent/skills/<nama>/SKILL.md      # global
+<workspace>/skills/<nama>/SKILL.md          # proyek
+<workspace>/.nex-agent/skills/<nama>/SKILL.md
+```
+
+Cara kerjanya **progressive disclosure**:
+
+- **Otomatis** — hanya `name` + `description` yang masuk system prompt (murah).
+  Saat tugas cocok, model memanggil tool `skill` untuk memuat instruksi lengkap.
+- **Manual** — `/skills` untuk daftar, `/skill <nama>` untuk memaksa sebuah
+  skill aktif sepanjang sesi, `/skill off` untuk melepas semuanya.
+- Matikan total dengan `/skills` (lihat status) atau `nex-agent --no-skills`
+  serta `"skills": false` di `config.json`. Tool `skill` bersifat read-only,
+  jadi tetap tersedia di mode Plan.
+
+Contoh `skills/ringkas/SKILL.md`:
+
+```markdown
+---
+name: ringkas
+description: Ringkas dokumen panjang menjadi poin-poin
+---
+
+Saat diminta meringkas:
+1. Baca sumber dengan read_file.
+2. Tulis maksimal 7 poin, masing-masing < 20 kata.
+```
 
 ## Daftar tugas (todo) live
 

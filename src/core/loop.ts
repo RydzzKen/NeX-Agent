@@ -15,6 +15,7 @@ import type { ToolContext, ResolvedPath, WebSearchFn } from "../tools/types.js";
 import { ToolDeniedError, ToolInputError } from "../tools/errors.js";
 import type { AccessKind } from "./io.js";
 import type { Workspace } from "../safety/workspace.js";
+import type { Skill } from "../memory/skills.js";
 import type { PermissionManager } from "../safety/permissions.js";
 import type { UsageTracker } from "../usage/tracker.js";
 import type { UsageEvent } from "../usage/store.js";
@@ -33,6 +34,7 @@ export interface SessionDeps {
   resolvePath: (raw: string, access: AccessKind) => Promise<ResolvedPath>;
   tracker: UsageTracker;
   search?: WebSearchFn;
+  skills?: Skill[];
   onUsage?: (event: UsageEvent) => void | Promise<void>;
   sleep?: (ms: number) => Promise<void>;
   sessionId?: string;
@@ -155,6 +157,11 @@ export class AgentSession {
     this.deps.providerId = providerId;
   }
 
+  /** Ganti system prompt (mis. saat mengaktifkan skill manual). */
+  setSystemPrompt(text: string): void {
+    this.deps.systemPrompt = text;
+  }
+
   appendUserMessage(text: string): void {
     this.history.push({ role: "user", content: text });
   }
@@ -172,6 +179,7 @@ export class AgentSession {
       logger: this.deps.logger,
       todos: this.todos,
       search: this.deps.search,
+      skills: this.deps.skills,
       resolvePath: this.deps.resolvePath,
       confirm: (req, opts) => this.deps.approvals.confirm(req, opts),
       confirmSensitive: (req) => this.deps.approvals.requestSensitiveAccess(req),

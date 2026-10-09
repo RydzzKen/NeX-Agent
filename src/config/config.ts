@@ -23,6 +23,8 @@ export interface AgentConfig {
   thinking?: boolean;
   /** Render markdown pada jawaban model (default true). */
   markdown?: boolean;
+  /** Muat skill dari SKILL.md (default true). */
+  skills?: boolean;
   /** Provider default. */
   defaultProvider?: string;
   /** Model terakhir per workspace (key = path absolut root). */

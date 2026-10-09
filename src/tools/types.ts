@@ -3,6 +3,7 @@ import type { Logger } from "../logging/logger.js";
 import type { AccessKind, ConfirmDecision, ConfirmRequest, SensitiveAccessRequest } from "../core/io.js";
 import type { Mode, ToolRisk } from "../core/types.js";
 import type { TodoItem, TodoStore } from "../core/todos.js";
+import type { Skill } from "../memory/skills.js";
 import type { PermissionManager } from "../safety/permissions.js";
 import type { Workspace } from "../safety/workspace.js";
 
@@ -41,6 +42,8 @@ export interface ToolContext {
   todos: TodoStore;
   /** Fungsi pencarian web opsional (dikonfigurasi di CLI). */
   search?: WebSearchFn;
+  /** Skill yang tersedia untuk sesi ini. */
+  skills?: Skill[];
   /** Selesaikan dan cek izin akses path; melempar ToolDeniedError bila ditolak. */
   resolvePath(raw: string, access: AccessKind): Promise<ResolvedPath>;
   /** Minta persetujuan; `allowAll` mengizinkan opsi "setujui semua". */
