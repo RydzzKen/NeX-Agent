@@ -6,8 +6,12 @@ soft workspace boundary, diff + konfirmasi, checkpoint/undo, dan arsitektur
 
 ## Persyaratan
 
-- Node.js 20+ (dikembangkan di Node 24)
-- pnpm
+- Node.js 20+ (dikembangkan di Node 24) — **dipasang otomatis** bila belum ada
+  (lewat `nvm` di Linux/macOS tanpa sudo, atau `pkg` di Termux)
+- pnpm — dipasang otomatis lewat corepack atau npm
+- `git` dan `curl` (untuk mode unduh satu baris)
+- Mendukung **Termux** (Android): Node/pnpm dipasang lewat `pkg`, perintah
+  dipasang ke `$PREFIX/bin` yang sudah ada di `PATH`
 
 ## Instalasi
 
@@ -19,11 +23,16 @@ source ~/.bashrc
 nex-agent
 ```
 
-Skrip `install.sh` akan: memastikan Node 20+ dan pnpm tersedia, mengunduh
-sumber, memasang dependensi, membangun, lalu memasang perintah `nex-agent`
-(alias `agent`) ke `~/.local/bin` serta menambahkan folder itu ke
-`~/.bashrc`/`~/.zshrc`. Setelah `source ~/.bashrc`, perintah siap dipakai dari
-folder mana pun.
+Skrip `install.sh` akan: memastikan Node 20+ dan pnpm tersedia (memasangnya
+bila perlu), mengunduh sumber, memasang dependensi, membangun, lalu memasang
+perintah `nex-agent` (alias `agent`). Di Linux/macOS perintah diletakkan di
+`~/.local/bin` dan PATH-nya ditambahkan ke `~/.bashrc`/`~/.zshrc` (jalankan
+`source ~/.bashrc` sekali); di Termux perintah langsung diletakkan di
+`$PREFIX/bin` tanpa menyunting rc.
+
+Catatan toolchain: `.npmrc` menyetel `minimum-release-age=0`, dan pada pnpm 12+
+skrip otomatis memakai `--trust-lockfile` serta `pnpm approve-builds --all`
+agar instalasi dari lockfile tetap berjalan.
 
 Sesuaikan lewat variabel lingkungan bila perlu:
 
@@ -34,6 +43,20 @@ NEX_AGENT_HOME=~/.local/share/nex-agent \
 NEX_AGENT_BIN_DIR=~/.local/bin \
   bash install.sh
 ```
+
+### Termux (Android)
+
+```bash
+pkg install -y git
+curl -fsSL https://raw.githubusercontent.com/RydzzKen/NeX-Agent/main/install.sh | bash
+nex-agent --version
+```
+
+Di Termux, `install.sh` memakai `pkg install -y nodejs-lts` (Node resmi Termux
+melaporkan `process.platform === "android"`, sehingga esbuild memakai binary
+`@esbuild/android-arm64`), memasang perintah ke `$PREFIX/bin`, dan tidak
+menyunting rc. Bila build `tsup`/esbuild gagal di perangkat tertentu, installer
+otomatis jatuh ke kompilasi `tsc` (murni JS) sebagai cadangan.
 
 ### Manual (dari checkout)
 

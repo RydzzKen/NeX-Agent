@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { z } from "zod";
 import type { ToolDefinition } from "./types.js";
 import { ToolDeniedError } from "./errors.js";
@@ -6,12 +7,33 @@ import { classifyShell } from "../safety/classifier.js";
 import { commandTouchesSensitive } from "../safety/sensitive.js";
 
 const schema = z.object({
-  command: z.string().describe("Perintah shell yang dijalankan lewat /bin/sh."),
+  command: z.string().describe("Perintah shell yang dijalankan lewat shell POSIX."),
   timeoutMs: z.number().int().positive().optional().describe("Timeout dalam ms (default 60000)."),
 });
 
 const DEFAULT_TIMEOUT = 60_000;
 const MAX_OUTPUT = 40_000;
+
+/**
+ * Pilih shell POSIX yang benar-benar ada.
+ *
+ * Node memakai `/bin/sh` secara default, tetapi di Termux (Android) path itu
+ * tidak ada: shell-nya berada di `${PREFIX}/bin/sh`. Kalau tidak ada kandidat
+ * absolut, kembalikan `sh` agar dicari lewat PATH.
+ */
+export function resolveShell(env: NodeJS.ProcessEnv = process.env): string {
+  const candidates: string[] = [];
+  if (env.PREFIX) candidates.push(`${env.PREFIX}/bin/sh`);
+  candidates.push("/bin/sh", "/usr/bin/sh", "/usr/local/bin/sh");
+  for (const candidate of candidates) {
+    try {
+      if (existsSync(candidate)) return candidate;
+    } catch {
+      // abaikan kandidat yang tidak bisa diperiksa
+    }
+  }
+  return env.SHELL || "sh";
+}
 
 interface ShellOutput {
   code: number | null;
@@ -24,7 +46,7 @@ interface ShellOutput {
 
 function runShell(command: string, timeoutMs: number, cwd: string, signal: AbortSignal): Promise<ShellOutput> {
   return new Promise((resolve) => {
-    const child = spawn(command, { shell: true, cwd, env: process.env });
+    const child = spawn(command, { shell: resolveShell(), cwd, env: process.env });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
