@@ -60,6 +60,8 @@ export interface CliOptions {
   /** Izinkan semua permintaan persetujuan untuk sesi ini. */
   allowAll?: boolean;
   thinking?: boolean;
+  /** Render markdown pada jawaban model (default true). */
+  markdown?: boolean;
   debug?: boolean;
   json?: boolean;
 }
@@ -85,6 +87,7 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/permissions [revoke <path>]", "lihat/cabut izin luar workspace"],
   ["/allow-all [on|off]", "izinkan semua izin untuk sesi ini"],
   ["/thinking [on|off]", "tampilkan/sembunyikan thinking"],
+  ["/markdown [on|off]", "render markdown pada jawaban"],
   ["/todos", "tampilkan daftar tugas (checklist)"],
   ["/exit", "keluar dari sesi chat (atau Ctrl+D)"],
   ["/help", "bantuan"],
@@ -137,6 +140,7 @@ export class ChatApp {
     const io = new TerminalIO(prompter, {
       thinking: opts.thinking !== false,
       json: Boolean(opts.json),
+      markdown: opts.markdown ?? config.markdown ?? true,
     });
     const permissions = new PermissionManager(workspace.root);
     for (const p of opts.allowPath ?? []) {
@@ -498,6 +502,14 @@ export class ChatApp {
         const on = value === undefined ? !this.io.thinkingEnabled() : value === "on";
         this.io.setThinking(on);
         this.io.info(`Thinking ${on ? "aktif" : "nonaktif"}.`);
+        return "continue";
+      }
+      case "/markdown": {
+        const value = args[0];
+        const on = value === undefined ? !this.io.isMarkdownEnabled() : value === "on";
+        this.io.setMarkdown(on);
+        this.config = await saveConfig({ markdown: on });
+        this.io.info(`Markdown ${on ? "aktif" : "nonaktif"}.`);
         return "continue";
       }
       case "/todos":

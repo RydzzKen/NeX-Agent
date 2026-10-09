@@ -378,6 +378,7 @@ export class AgentSession {
       }
     }
     if (thinkingOpen) this.deps.io.thinkingEnd();
+    this.deps.io.textEnd?.();
     return turn;
   }
 

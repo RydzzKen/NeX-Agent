@@ -26,4 +26,6 @@ export const color = {
   dim: wrap("2", "22"),
   bold: wrap("1", "22"),
   underline: wrap("4", "24"),
+  italic: wrap("3", "23"),
+  strike: wrap("9", "29"),
 };

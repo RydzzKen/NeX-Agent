@@ -55,6 +55,8 @@ export interface SensitiveAccessRequest {
 export interface AgentIO {
   /** Teks jawaban final model (streaming). */
   text(chunk: string): void;
+  /** Akhir potongan teks satu giliran model (untuk flush/render). */
+  textEnd?(): void;
   /** Potongan thinking model (streaming). */
   thinking(chunk: string): void;
   thinkingEnd(): void;
@@ -95,6 +97,7 @@ export interface AgentIO {
 export function silentIO(decisions: ConfirmDecision = "no"): AgentIO {
   return {
     text: () => {},
+    textEnd: () => {},
     thinking: () => {},
     thinkingEnd: () => {},
     stepStart: () => {},

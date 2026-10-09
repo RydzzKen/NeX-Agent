@@ -10,12 +10,15 @@ import type {
 import type { StopReason } from "../core/types.js";
 import type { TodoItem } from "../core/todos.js";
 import { color } from "../util/color.js";
+import { renderMarkdown } from "../util/markdown.js";
 import { todoHeader, todoLines } from "../util/todos.js";
 import type { PrompterLike } from "./prompt.js";
 
 export interface RenderOptions {
   thinking: boolean;
   json: boolean;
+  /** Render markdown pada jawaban model (default true). */
+  markdown?: boolean;
 }
 
 const STATUS_SYMBOL: Record<StepOutcome["status"], string> = {
@@ -32,14 +35,18 @@ function truncate(text: string, max: number): string {
 export class TerminalIO implements AgentIO {
   private thinkingActive = false;
   private textOpen = false;
+  private textBuffer = "";
   private todoLineCount = 0;
   private lastWasTodos = false;
+  private markdownOn: boolean;
 
   constructor(
     private readonly prompter: PrompterLike,
     private readonly opts: RenderOptions,
     private readonly write: (s: string) => void = (s) => process.stdout.write(s),
-  ) {}
+  ) {
+    this.markdownOn = opts.markdown !== false;
+  }
 
   /** Tandai bahwa output terakhir bukan checklist, agar tidak salah timpa. */
   private unanchor(): void {
@@ -60,8 +67,37 @@ export class TerminalIO implements AgentIO {
       this.thinkingActive = false;
       this.write("\n");
     }
-    this.textOpen = true;
-    this.write(chunk);
+    if (!this.markdownOn) {
+      this.textOpen = true;
+      this.write(chunk);
+      return;
+    }
+    this.textBuffer += chunk;
+  }
+
+  /** Akhir teks satu giliran: render markdown yang terkumpul sekaligus. */
+  textEnd(): void {
+    if (this.opts.json) return;
+    if (!this.markdownOn) {
+      if (this.textOpen) {
+        this.textOpen = false;
+        this.write("\n");
+      }
+      return;
+    }
+    if (!this.textBuffer) return;
+    const rendered = renderMarkdown(this.textBuffer);
+    this.textBuffer = "";
+    this.write(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
+  }
+
+  /** Aktifkan/nonaktifkan render markdown untuk teks berikutnya. */
+  setMarkdown(value: boolean): void {
+    this.markdownOn = value;
+  }
+
+  isMarkdownEnabled(): boolean {
+    return this.markdownOn;
   }
 
   thinking(chunk: string): void {

@@ -38,6 +38,7 @@ async function main(): Promise<void> {
     .option("--cwd <path>", "direktori kerja")
     .option("--allow-path <path>", "setujui path sebelum sesi (bisa diulang)", collect, [])
     .option("--no-thinking", "sembunyikan thinking")
+    .option("--no-markdown", "jangan render markdown pada jawaban")
     .option("--debug", "log debug")
     .option("--json", "keluaran JSON per baris")
     .action(async (goal: string | undefined, options: Record<string, unknown>) => {
@@ -57,6 +58,7 @@ async function main(): Promise<void> {
           ? { allowPath: options.allowPath as string[] }
           : {}),
         thinking: options.thinking !== false,
+        ...(options.markdown === false ? { markdown: false } : {}),
         ...(options.debug ? { debug: true } : {}),
         ...(options.json ? { json: true } : {}),
       };
