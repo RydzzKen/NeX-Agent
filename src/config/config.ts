@@ -21,6 +21,8 @@ export interface AgentConfig {
   maxCost?: number;
   /** Tampilkan thinking (default true). */
   thinking?: boolean;
+  /** Render markdown pada jawaban model (default true). */
+  markdown?: boolean;
   /** Provider default. */
   defaultProvider?: string;
   /** Model terakhir per workspace (key = path absolut root). */

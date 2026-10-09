@@ -87,7 +87,7 @@ nex-agent logs <id>           # jejak satu sesi
 
 `--model`, `--provider`, `--max-steps`, `--max-cost`, `--yes`,
 `--allow-all`, `--cwd <path>`, `--allow-path <path>` (bisa diulang),
-`--no-thinking`, `--debug`, `--json`.
+`--no-thinking`, `--no-markdown`, `--debug`, `--json`.
 
 `--yes` dan `--allow-all` menyetujui semua konfirmasi untuk sesi ini
 (termasuk akses luar workspace). Mode Plan tetap read-only karena aturan itu
@@ -104,8 +104,8 @@ Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 
 `/connect` · `/models [nomor|0|nama]` · `/plan` · `/build` · `/sessions` ·
 `/resume <n>` · `/new` · `/clear` · `/rename` · `/delete` · `/undo [n]` ·
-`/usage` · `/permissions` · `/allow-all [on|off]` · `/thinking` · `/todos` ·
-`/exit` · `/help`.
+`/usage` · `/permissions` · `/allow-all [on|off]` · `/thinking` · `/markdown` ·
+`/todos` · `/exit` · `/help`.
 
 `/sessions` menampilkan sesi bernomor (judul diambil otomatis dari pesan
 pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/allow-all` menyalakan
@@ -147,6 +147,18 @@ src/
 
 Aturan: `core/` tidak mengimpor `cli/` maupun SDK provider. Interaksi pengguna
 lewat interface `AgentIO`; model lewat `ModelProvider`; tool lewat registri.
+
+## Render Markdown
+
+Jawaban model dirender sebagai Markdown di terminal: heading, daftar bersarang,
+blockquote, blok kode berkutip, tabel (dengan perataan kolom), tautan, dan gaya
+inline (**bold**, *italic*, ~~coret~~, `kode`). Paragraf dibungkus mengikuti
+lebar terminal.
+
+- Matikan sementara dengan `/markdown off` (atau `/markdown` untuk toggle).
+  Pilihan disimpan di `config.json`, jadi bertahan setelah restart.
+- Saat pertama kali mulai: `nex-agent --no-markdown`.
+- Mode `--json` tidak merender markdown (mengeluarkan event `text` mentah).
 
 ## Daftar tugas (todo) live
 
