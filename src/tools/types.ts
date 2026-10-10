@@ -58,6 +58,12 @@ export interface ToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {
   risk: ToolRisk;
   schema: S;
   /**
+   * JSON Schema mentah untuk provider (mis. skema asli tool MCP). Bila ada,
+   * dipakai langsung sebagai `parameters`; `schema` tetap dipakai loop untuk
+   * memvalidasi argumen. Tool bawaan cukup mengandalkan konversi dari `schema`.
+   */
+  jsonSchema?: Record<string, unknown>;
+  /**
    * Tool kontrol tidak ditampilkan sebagai "langkah" di layar; efeknya
    * dirender lewat hasilnya sendiri (mis. todo_write menggambar checklist).
    */

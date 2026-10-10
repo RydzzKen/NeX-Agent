@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: mulai fitur Web (chat + terminal browser).
+Terakhir diperbarui: Tahap B (MCP client) selesai.
 
 ## Selesai
 
@@ -44,15 +44,15 @@ frontend vanilla JS + `xterm.js` (aset di-`copy` ke `dist/web`, tanpa bundler); 
 
 ## Rencana plugin
 
-### Tahap B — MCP client (fondasi plugin)  ← berikutnya
+### Tahap B — MCP client (fondasi plugin)  ← selesai
 
-- [ ] Modul `src/plugins/mcp.ts`: klien MCP (stdio + HTTP/SSE)
-- [ ] `plugins.json` di `~/.config/agent/` (daftar server: command/url, env, enabled)
-- [ ] Daftarkan tool MCP ke `ToolRegistry` dengan klasifikasi `risk`
-- [ ] Default aman: tool asing = `read`; mutasi wajib lewat approval
-- [ ] Rahasia/API key lewat `CredentialStore` (jangan pernah di-log)
-- [ ] `/mcp` (daftar/status server) dan `/mcp reload`
-- [ ] Tes: server mock stdio + parsing tool schema
+- [x] Modul `src/plugins/mcp.ts`: klien MCP (stdio + HTTP/SSE)
+- [x] `plugins.json` di `~/.config/agent/` (daftar server: command/url, env, enabled)
+- [x] Daftarkan tool MCP ke `ToolRegistry` dengan klasifikasi `risk`
+- [x] Default aman: tool asing = `read`; mutasi wajib lewat approval
+- [x] Rahasia/API key lewat `CredentialStore` (jangan pernah di-log)
+- [x] `/mcp` (daftar/status server) dan `/mcp reload`
+- [x] Tes: server mock stdio + parsing tool schema
 
 ### Tahap C — Integrasi spesifik (via konfigurasi, bukan kode khusus)
 
@@ -64,7 +64,8 @@ frontend vanilla JS + `xterm.js` (aset di-`copy` ke `dist/web`, tanpa bundler); 
 
 ### Lain-lain
 
-- [ ] README: bagian MCP + contoh `plugins.json`
+- [x] README: bagian MCP + contoh `plugins.json`
+- [ ] (opsional) Ekspos tool MCP ke mode Web (`server/webapp.ts` — saat ini hanya aktif di CLI)
 - [ ] (opsional) Simpan skill yang dipaksa lewat `/skill` agar ikut saat `--resume`
 
 ## Catatan penting

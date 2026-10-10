@@ -15,6 +15,7 @@ import { createWorkspace, type Workspace } from "../safety/workspace.js";
 import { discoverSkills, type Skill } from "../memory/skills.js";
 import { buildSystemPrompt } from "../memory/system_prompt.js";
 import { CredentialStore } from "../config/credentials.js";
+import { McpManager } from "../plugins/manager.js";
 import {
   configDir,
   loadConfig,
@@ -96,6 +97,7 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/markdown [on|off]", "render markdown pada jawaban"],
   ["/skills", "daftar skill yang tersedia"],
   ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
+  ["/mcp [reload|key <nama>]", "status server MCP, muat ulang, atau atur API key"],
   ["/todos", "tampilkan daftar tugas (checklist)"],
   ["/serve [lan|stop]", "nyalakan web (lan = buka ke jaringan) / hentikan"],
   ["/exit", "keluar dari sesi chat (atau Ctrl+D)"],
@@ -131,6 +133,7 @@ export class ChatApp {
   private readonly tracker = new UsageTracker();
   private readonly usageStore = new UsageStore(path.join(configDir(), "usage.jsonl"));
   private readonly registry = new ToolRegistry();
+  private mcp!: McpManager;
   private skills: Skill[] = [];
   private activeSkills: Skill[] = [];
   private skillsEnabled = false;
@@ -219,6 +222,15 @@ export class ChatApp {
         workspaceRoot: this.workspace.root,
         globalConfigDir: configDir(),
       });
+    }
+
+    // Klien MCP: muat plugins.json, hubungkan server aktif, daftarkan tool-nya.
+    // Kegagalan satu server hanya menjadi status `/mcp`, tidak menggagalkan sesi.
+    this.mcp = new McpManager({ credentials: this.credentials, logger: this.logger });
+    try {
+      await this.mcp.start(this.registry);
+    } catch (err) {
+      this.logger.warn("mcp.start_failed", { error: (err as Error).message });
     }
 
     await this.ensureProvider();
@@ -552,6 +564,9 @@ export class ChatApp {
         return "continue";
       case "/todos":
         this.commandTodos();
+        return "continue";
+      case "/mcp":
+        await this.commandMcp(args);
         return "continue";
       case "/serve":
         await this.commandServe(args[0]);
@@ -930,11 +945,96 @@ export class ChatApp {
     process.stdout.write("\n");
   }
 
+  private async commandMcp(args: string[]): Promise<void> {
+    const [sub, second, third] = args;
+    if (sub === undefined) {
+      this.printMcp();
+      return;
+    }
+    if (sub === "reload") {
+      this.io.info("Memuat ulang konfigurasi MCP…");
+      await this.mcp.reload(this.registry);
+      this.printMcp();
+      return;
+    }
+    if (sub === "key") {
+      await this.commandMcpKey(second, third);
+      return;
+    }
+    this.io.warn(
+      `Argumen tidak dikenal: ${sub}. Pakai /mcp, /mcp reload, atau /mcp key <nama> [hapus].`,
+    );
+  }
+
+  private printMcp(): void {
+    const fileError = this.mcp.configFileError();
+    if (fileError) this.io.warn(`plugins.json bermasalah: ${fileError}`);
+    const status = this.mcp.status();
+    if (status.length === 0) {
+      if (!fileError) {
+        this.io.info(
+          "Belum ada server MCP. Tambahkan entri di ~/.config/agent/plugins.json (lihat README, bagian MCP).",
+        );
+      }
+      return;
+    }
+
+    process.stdout.write("\nServer MCP:\n");
+    for (const server of status) {
+      const marker = server.error ? color.red("✗") : server.connected ? color.green("●") : color.gray("○");
+      let detail: string;
+      if (!server.enabled) detail = "nonaktif (enabled: false)";
+      else if (server.error) detail = server.error;
+      else {
+        const bits = [`${server.tools} tool`];
+        if (server.credential) bits.push(`kredensial: ${server.credential}`);
+        detail = bits.join(" · ");
+      }
+      process.stdout.write(
+        `  ${marker} ${server.name.padEnd(20)} ${(server.transport ?? "-").padEnd(6)} ${detail}\n`,
+      );
+      if (server.registered.length > 0) {
+        const shown = server.registered.slice(0, 4).join(", ");
+        process.stdout.write(`      ${shown}${server.registered.length > 4 ? ", …" : ""}\n`);
+      }
+    }
+    process.stdout.write(
+      "\n  /mcp reload = muat ulang konfigurasi · /mcp key <nama> = simpan API key (tanpa echo)\n\n",
+    );
+  }
+
+  private async commandMcpKey(name?: string, action?: string): Promise<void> {
+    if (!name) {
+      this.io.warn("Pakai: /mcp key <nama> atau /mcp key <nama> hapus.");
+      return;
+    }
+    if (action === "hapus" || action === "delete" || action === "rm") {
+      const deleted = await this.credentials.delete(name);
+      this.io.info(deleted ? `Kredensial ${name} dihapus.` : `Tidak ada kredensial bernama ${name}.`);
+      return;
+    }
+    if (action !== undefined) {
+      this.io.warn(`Argumen tidak dikenal: ${action}. Pakai /mcp key <nama> atau /mcp key <nama> hapus.`);
+      return;
+    }
+
+    const raw = await this.prompter.secretQuestion(`API key untuk ${name}: `);
+    if (raw === PROMPT_EOF) return;
+    const value = raw.trim();
+    if (!value) {
+      this.io.warn("API key kosong; dibatalkan.");
+      return;
+    }
+    await this.credentials.set(name, { apiKey: value });
+    this.io.info(`API key ${name} tersimpan di credentials.json (izin 600; tidak pernah dicetak).`);
+  }
+
   private async close(): Promise<void> {
     if (this.webServer) {
       await this.webServer.close();
       this.webServer = undefined;
     }
+    if (this.mcp) await this.mcp.stop();
     this.logger.info("session.close", { id: this.record.id });
     if (this.logger instanceof JsonlLogger) this.logger.close();
     this.prompter.close();

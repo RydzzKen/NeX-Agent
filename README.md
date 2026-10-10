@@ -111,7 +111,8 @@ Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 `/connect` · `/models [nomor|0|nama]` · `/plan` · `/build` · `/sessions` ·
 `/resume <n>` · `/new` · `/clear` · `/rename` · `/delete` · `/undo [n]` ·
 `/usage` · `/permissions` · `/allow-all [on|off]` · `/thinking` · `/markdown` ·
-`/skills` · `/skill <nama>|off` · `/todos` · `/serve [stop]` · `/exit` · `/help`.
+`/skills` · `/skill <nama>|off` · `/mcp [reload|key <nama>]` · `/todos` ·
+`/serve [stop]` · `/exit` · `/help`.
 
 `/sessions` menampilkan sesi bernomor (judul diambil otomatis dari pesan
 pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/allow-all` menyalakan
@@ -176,12 +177,80 @@ mati saat sesi chat ditutup.
 - Tanpa argumen model/provider, `serve` memakai pilihan yang sama seperti CLI
   (tersimpan per workspace), jadi tidak perlu menyetel ulang setiap kali.
 
+## Plugin MCP (Model Context Protocol)
+
+Server **MCP** (transport `stdio` local, atau `http`/`sse` jarak jauh) bisa
+menjadi sumber tool tambahan. Daftar server disimpan di
+`~/.config/agent/plugins.json`:
+
+```json
+{
+  "mcp": {
+    "context7": {
+      "transport": "http",
+      "url": "https://mcp.context7.com/mcp"
+    },
+    "supabase": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@supabase/mcp-server-supabase", "--access-token", "${SUPABASE_ACCESS_TOKEN}"]
+    },
+    "lokal": {
+      "transport": "stdio",
+      "command": "node",
+      "args": ["mcp-server.js"],
+      "env": { "TOKEN": "${apiKey}" }
+    }
+  }
+}
+```
+
+Tool dari server MCP didaftarkan ke provider dengan nama
+`mcp__<server>__<tool>` (karakter selain `A-Za-z0-9_-` disamakan). Opsi per
+server: `transport`, `command`/`args`, `url`, `env`, `headers`, `credential`,
+`risk`, `timeoutMs`, `enabled` (default `true`), dan `tools` untuk menimpa
+per tool:
+
+```json
+{
+  "mcp": {
+    "supabase": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@supabase/mcp-server-supabase"],
+      "tools": {
+        "list_tables": { "risk": "read" },
+        "execute_sql": { "risk": "mutate", "enabled": true }
+      }
+    }
+  }
+}
+```
+
+- **Klasifikasi risiko.** Default tool asing = `read`. Tool yang namanya jelas
+  mengubah keadaan (mis. `delete_*`, `execute_*`, `insert_*`) otomatis naik ke
+  `mutate`: perlu konfirmasi sebelum dipanggil, dan **tidak diekspos di mode
+  Plan** (ditegakkan di kode, bukan lewat prompt). Urutan prioritas:
+  override per tool > `risk` server > heuristik nama.
+- **Rahasia.** `plugins.json` hanya menyimpan *referensi*. Nilai nyata diambil
+  dari `CredentialStore` (`${apiKey}`/`${baseURL}`) atau variabel lingkungan
+  (`${NAMA_VAR}`), lalu dikirim ke proses server lewat env — tidak pernah masuk
+  log atau layar. Simpan kunci server dengan `/mcp key <nama>` (input
+  tersembunyi saat mengetik). Template yang tidak terpenuhi membuat server itu
+  gagal dengan status error di `/mcp` (jangan kirim nilai kosong).
+- **Status & pengelolaan.** `/mcp` menampilkan status semua server (tersambung,
+  jumlah tool terdaftar, error), `/mcp reload` memuat ulang `plugins.json`
+  tanpa keluar dari sesi. Server yang rusak atau gagal dijalankan tidak
+  menghentikan sesi — hanya tercatat di `/mcp`.
+- Tool MCP aktif di sesi CLI. (Mode Web belum memuat tool MCP — mengikuti.)
+
 ## Konfigurasi & kredensial
 
 Disimpan di `~/.config/agent/` (bisa diubah lewat `AGENT_CONFIG_DIR`):
 
 - `config.json` — preferensi (model per workspace, anggaran, dll.)
 - `credentials.json` — kredensial, izin `600`, tidak pernah dicetak/log
+- `plugins.json` — daftar server MCP (lihat bagian Plugin MCP)
 - `AGENTS.md` — aturan global pengguna (dimuat otomatis)
 - `sessions/` — riwayat sesi
 - `logs/` — log JSONL terstruktur
@@ -197,6 +266,7 @@ src/
   sessions/    # penyimpanan sesi
   usage/       # token, biaya, agregasi
   memory/      # loader AGENTS.md + skill (SKILL.md)
+  plugins/     # klien MCP (stdio/HTTP/SSE), plugins.json, registrasi tool MCP
   server/      # server web (HTTP + WS), terminal PTY, protokol
   cli/         # renderer, prompt, slash command, app
   config/      # konfigurasi & kredensial
