@@ -38,8 +38,9 @@ import { runConnect } from "./connect.js";
 import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice } from "./models.js";
 import { TerminalIO } from "./render.js";
 import { Prompter, PROMPT_EOF } from "./prompt.js";
-import { createWebServer, type WebServerHandle } from "../server/server.js";
+import { createWebServer, isLoopbackHost, reachableUrl, type WebServerHandle } from "../server/server.js";
 import { ServerConfigError } from "../server/webapp.js";
+import { qrLines } from "../util/qr.js";
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -96,7 +97,7 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/skills", "daftar skill yang tersedia"],
   ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
   ["/todos", "tampilkan daftar tugas (checklist)"],
-  ["/serve [stop]", "nyalakan/hentikan server web (chat + terminal)"],
+  ["/serve [lan|stop]", "nyalakan web (lan = buka ke jaringan) / hentikan"],
   ["/exit", "keluar dari sesi chat (atau Ctrl+D)"],
   ["/help", "bantuan"],
 ];
@@ -861,8 +862,8 @@ export class ChatApp {
       this.io.info("Server web dihentikan.");
       return;
     }
-    if (arg) {
-      this.io.warn(`Argumen tidak dikenal: ${arg}. Gunakan /serve atau /serve stop.`);
+    if (arg && arg !== "lan") {
+      this.io.warn(`Argumen tidak dikenal: ${arg}. Gunakan /serve, /serve lan, atau /serve stop.`);
       return;
     }
     if (this.webServer) {
@@ -870,7 +871,8 @@ export class ChatApp {
       return;
     }
 
-    const host = this.config.webHost ?? "127.0.0.1";
+    // `/serve lan` mengekspos ke jaringan (0.0.0.0); selain itu ikuti config.
+    const host = arg === "lan" ? "0.0.0.0" : (this.config.webHost ?? "127.0.0.1");
     const port = this.config.webPort ?? 0;
     try {
       this.webServer = await createWebServer({
@@ -896,12 +898,14 @@ export class ChatApp {
       return;
     }
 
-    const local = host === "127.0.0.1" || host === "localhost" || host === "::1";
     this.io.info("Server web berjalan (chat + terminal):");
-    process.stdout.write(`  ${this.webServer.url}\n`);
+    for (const url of this.webServer.urls) process.stdout.write(`  ${url}\n`);
     process.stdout.write(`  terminal: ${this.webServer.backend}\n`);
-    if (!local) {
+    if (!isLoopbackHost(this.webServer.host)) {
       this.io.warn("Server terikat ke jaringan — siapa pun yang punya token bisa menjalankan shell.");
+      const target = reachableUrl(this.webServer.urls) ?? this.webServer.url;
+      process.stdout.write("\n  Pindai kode QR untuk membuka di perangkat lain:\n\n");
+      process.stdout.write(qrLines(target).map((line) => `  ${line}`).join("\n") + "\n");
     }
     process.stdout.write("  Buka di browser. Hentikan dengan /serve stop.\n");
   }

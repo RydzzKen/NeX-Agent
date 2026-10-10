@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -20,11 +21,55 @@ export interface WebServerOptions extends WebAppOptions {
 
 export interface WebServerHandle {
   url: string;
+  /** Semua URL yang bisa dibuka (loopback + alamat LAN bila terikat ke jaringan). */
+  urls: string[];
   token: string;
   host: string;
   port: number;
   backend: string;
   close(): Promise<void>;
+}
+
+/** Host yang hanya bisa dijangkau dari mesin yang sama. */
+export function isLoopbackHost(host: string): boolean {
+  return host === "127.0.0.1" || host === "localhost" || host === "::1" || host === "[::1]";
+}
+
+/** Alamat IPv4 non-loopback pada mesin ini (untuk URL yang bisa dibuka dari LAN). */
+export function lanAddresses(): string[] {
+  const found = new Set<string>();
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const info of list ?? []) {
+      if (info.family === "IPv4" && !info.internal) found.add(info.address);
+    }
+  }
+  return [...found];
+}
+
+/** Susun daftar URL yang dapat dibuka untuk host/port yang diberikan. */
+export function buildUrls(host: string, port: number, token: string): string[] {
+  const make = (h: string): string => {
+    const shown = h.includes(":") && !h.startsWith("[") ? `[${h}]` : h;
+    return `http://${shown}:${port}/#t=${token}`;
+  };
+  if (isLoopbackHost(host)) return [make(host === "localhost" ? "127.0.0.1" : host)];
+  if (host === "0.0.0.0" || host === "::") {
+    // Terikat ke semua antarmuka: loopback + setiap alamat LAN.
+    return [make("127.0.0.1"), ...lanAddresses().map(make)];
+  }
+  return [make(host)];
+}
+
+/** URL pertama yang bisa dibuka dari perangkat lain (bila ada). */
+export function reachableUrl(urls: string[]): string | undefined {
+  return urls.find((u) => {
+    try {
+      const { hostname } = new URL(u);
+      return hostname !== "127.0.0.1" && hostname !== "localhost" && hostname !== "::1";
+    } catch {
+      return false;
+    }
+  });
 }
 
 const MIME: Record<string, string> = {
@@ -296,11 +341,11 @@ export async function createWebServer(opts: WebServerOptions): Promise<WebServer
     });
   });
 
-  const shownHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
-  const url = `http://${shownHost}:${port}/#t=${token}`;
+  const urls = buildUrls(host, port, token);
 
   return {
-    url,
+    url: urls[0]!,
+    urls,
     token,
     host,
     port,
