@@ -1,6 +1,7 @@
 import type { ModelInfo, NeutralMessage, TokenUsage } from "../core/types.js";
 import { EMPTY_USAGE } from "../core/types.js";
 import type { ChatRequest, ModelProvider, StreamEvent } from "./provider.js";
+import { formatHttpError } from "./errors.js";
 import { parseSSE } from "./sse.js";
 
 export interface AnthropicOptions {
@@ -127,7 +128,7 @@ export class AnthropicProvider implements ModelProvider {
     });
     if (!response.ok || !response.body) {
       const text = await response.text().catch(() => "");
-      throw new Error(`Provider ${this.id} gagal: HTTP ${response.status} ${text.slice(0, 300)}`);
+      throw new Error(formatHttpError(this.id, response.status, text));
     }
 
     const blocks = new Map<number, AnthropicBlock>();
