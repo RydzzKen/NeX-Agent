@@ -37,6 +37,7 @@ frontend vanilla JS + `xterm.js` (aset di-`copy` ke `dist/web`, tanpa bundler); 
 - [x] `src/server/server.ts` (HTTP + WS, REST sesi, static) + tes
 - [x] `web/` SPA (chat: daftar sesi, streaming, approval, markdown ringan)
 - [x] Tab terminal `xterm.js` + `addon-fit`
+- [x] UI responsif (drawer sesi di mobile, safe-area/notch, terminal fit saat keyboard, input 16px)
 - [x] `nex-agent serve` + config `webHost`/`webPort` + README
 - [~] `node-pty` sebagai backend PTY opsional (fallback `script` sudah memadai)
 
