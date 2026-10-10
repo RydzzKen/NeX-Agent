@@ -172,6 +172,10 @@ async function main(): Promise<void> {
           process.stdout.write(`\n  Pindai kode QR untuk membuka di perangkat lain:\n\n`);
           process.stdout.write(qrLines(target).map((line) => `  ${line}`).join("\n") + "\n\n");
         }
+      } else {
+        process.stdout.write(
+          "  (hanya loopback — tambahkan --lan untuk akses dari HP/LAN + kode QR)\n",
+        );
       }
       process.stdout.write("  Tekan Ctrl+C untuk berhenti.\n");
 

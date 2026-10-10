@@ -906,6 +906,8 @@ export class ChatApp {
       const target = reachableUrl(this.webServer.urls) ?? this.webServer.url;
       process.stdout.write("\n  Pindai kode QR untuk membuka di perangkat lain:\n\n");
       process.stdout.write(qrLines(target).map((line) => `  ${line}`).join("\n") + "\n");
+    } else {
+      process.stdout.write("  (hanya loopback — ketik /serve lan untuk akses dari HP/LAN + kode QR)\n");
     }
     process.stdout.write("  Buka di browser. Hentikan dengan /serve stop.\n");
   }
