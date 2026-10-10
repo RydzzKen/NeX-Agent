@@ -445,7 +445,7 @@ export class ChatApp {
     this.io.info("Ketik /help untuk daftar perintah. Ctrl+C dua kali untuk keluar.");
     for (;;) {
       const prompt = `${color.gray("[")}${this.session.getMode()}${color.gray("]")} › `;
-      const line = (await this.prompter.question(`\n${prompt}`)).trim();
+      const line = (await this.prompter.question(`\n${prompt}`, { suggest: true })).trim();
       if (line === PROMPT_EOF) break;
       if (line === "") continue;
       if (line.startsWith("/")) {

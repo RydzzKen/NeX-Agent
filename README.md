@@ -117,7 +117,9 @@ Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 `/skills` · `/skill <nama>|off` · `/mcp [reload|key <nama>]` · `/todos` ·
 `/serve [stop]` · `/exit` · `/help`.
 
-Tab melengkapi perintah slash, subperintah (`/provider <Tab>`), dan path berkas.
+Mengetik `/` menampilkan daftar perintah terkait secara langsung di atas baris
+input (di TTY). Tab melengkapi perintah slash, subperintah (`/provider <Tab>`),
+dan path berkas.
 `/provider` menampilkan provider tersimpan (base URL + status kunci, **tanpa**
 membocorkan nilainya); `use` mengaktifkannya, `edit` mengubah base URL/API key,
 `hapus` menghapusnya. `/connect` juga menampilkan provider custom tersimpan agar

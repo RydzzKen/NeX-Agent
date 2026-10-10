@@ -43,6 +43,16 @@ function completePath(token: string, cwd: string): [string[], string] {
 }
 
 /**
+ * Format satu baris petunjuk "dropdown" dari kandidat, dibatasi `max` agar
+ * tidak memenuhi layar. Murni agar mudah diuji.
+ */
+export function formatHint(hits: string[], max = 6): string {
+  const shown = hits.slice(0, max);
+  const more = hits.length > max ? `  …(+${hits.length - max})` : "";
+  return `  ${shown.join("   ")}${more}`;
+}
+
+/**
  * Kembalikan `[kandidat, token]` seperti yang diharapkan `readline.completer`.
  * Bila tidak ada kandidat, kembalikan daftar kosong agar Tab tidak "memaksa".
  */
