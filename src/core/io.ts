@@ -20,7 +20,7 @@ export type AccessKind = "read" | "write";
 
 /** Pertanyaan konfirmasi generik. */
 export interface ConfirmRequest {
-  kind: "shell" | "write" | "read" | "cost" | "exit";
+  kind: "shell" | "write" | "read" | "cost" | "exit" | "mcp";
   title: string;
   detail: string;
   /** Diff berwarna (sudah di-render) bila relevan. */

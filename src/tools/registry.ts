@@ -37,6 +37,25 @@ export class ToolRegistry {
     return this.tools.get(name);
   }
 
+  has(name: string): boolean {
+    return this.tools.has(name);
+  }
+
+  /**
+   * Daftarkan tool tambahan (mis. dari server MCP). Ditolak — tanpa menimpa —
+   * bila nama sudah terpakai agar tool bawaan tidak bisa diganti.
+   */
+  register(tool: AnyTool): boolean {
+    if (this.tools.has(tool.name)) return false;
+    this.tools.set(tool.name, tool);
+    return true;
+  }
+
+  /** Lepas tool berdasarkan nama (dipakai saat koneksi MCP ditutup). */
+  unregister(name: string): boolean {
+    return this.tools.delete(name);
+  }
+
   all(): AnyTool[] {
     return [...this.tools.values()];
   }
@@ -52,7 +71,7 @@ export class ToolRegistry {
     return this.forMode(mode).map((tool) => ({
       name: tool.name,
       description: tool.description,
-      parameters: zodToJsonSchema(tool.schema) as Record<string, unknown>,
+      parameters: tool.jsonSchema ?? (zodToJsonSchema(tool.schema) as Record<string, unknown>),
     }));
   }
 }
