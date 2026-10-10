@@ -450,11 +450,14 @@ export class ChatApp {
       }
       const controller = new AbortController();
       const cleanup = this.installInterrupt(controller);
+      this.io.lineBreak();
+      this.prompter.pause?.();
       this.io.busy(true);
       try {
         await this.session.run(line, controller.signal);
       } finally {
         this.io.busy(false);
+        this.prompter.resume?.();
         cleanup();
         await this.saveRecord();
       }
