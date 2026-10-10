@@ -2,9 +2,25 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { completeLine } from "../src/cli/complete.js";
+import { completeLine, formatHint } from "../src/cli/complete.js";
 
 const CMDS = ["/connect", "/models", "/mcp", "/provider", "/sessions", "/serve"];
+
+describe("formatHint", () => {
+  it("membatasi jumlah kandidat dan menandai sisanya", () => {
+    const many = Array.from({ length: 9 }, (_, i) => `/c${i}`);
+    const line = formatHint(many, 6);
+    expect(line).toContain("/c0");
+    expect(line).toContain("…(+3)");
+    expect(line).not.toContain("/c6");
+  });
+
+  it("menggabungkan beberapa kandidat dalam satu baris", () => {
+    const line = formatHint(["/sessions", "/serve"]);
+    expect(line).toContain("/sessions");
+    expect(line).toContain("/serve");
+  });
+});
 
 describe("completeLine", () => {
   let dir: string;

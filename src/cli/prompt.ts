@@ -1,11 +1,16 @@
 import readline from "node:readline";
-import { completeLine } from "./complete.js";
+import { completeLine, formatHint } from "./complete.js";
 
 /** Nilai yang dikembalikan saat input ditutup (Ctrl+D / EOF). */
 export const PROMPT_EOF = "\u0004";
 
+export interface QuestionOptions {
+  /** Tampilkan daftar saran live saat mengetik perintah "/" (butuh TTY). */
+  suggest?: boolean;
+}
+
 export interface PrompterLike {
-  question(query: string): Promise<string>;
+  question(query: string, options?: QuestionOptions): Promise<string>;
   close(): void;
   pause?: () => void;
   resume?: () => void;
@@ -26,6 +31,10 @@ export class Prompter implements PrompterLike {
   private closed = false;
   private completing = true;
   private pending: ((answer: string) => void) | undefined;
+  /** Prompt dasar + daftar saran yang sedang tampil (mode suggest). */
+  private basePrompt = "";
+  private hint = "";
+  private suggesting = false;
 
   constructor(options: PrompterOptions = {}) {
     this.commands = options.commands ?? [];
@@ -43,16 +52,48 @@ export class Prompter implements PrompterLike {
     });
   }
 
-  question(query: string): Promise<string> {
+  question(query: string, options: QuestionOptions = {}): Promise<string> {
     if (this.closed) return Promise.resolve(PROMPT_EOF);
+    const suggest = options.suggest === true && Boolean(process.stdin.isTTY) && this.commands.length > 0;
     return new Promise((resolve) => {
       this.pending = resolve;
+      if (suggest) {
+        this.basePrompt = query;
+        this.hint = "";
+        this.suggesting = true;
+        process.stdin.on("keypress", this.onKeypress);
+      }
       this.rl.question(query, (answer) => {
+        if (suggest) {
+          this.suggesting = false;
+          this.hint = "";
+          process.stdin.removeListener("keypress", this.onKeypress);
+        }
         this.pending = undefined;
         resolve(answer);
       });
     });
   }
+
+  /**
+   * Perbarui daftar saran "dropdown" di atas baris input saat mengetik.
+   * Hanya untuk token perintah pertama (diawali `/`, tanpa spasi). Readline
+   * yang menggambar ulang prompt multi-baris, jadi tidak ada tulis ANSI manual.
+   */
+  private readonly onKeypress = (): void => {
+    if (!this.suggesting) return;
+    const line = this.rl.line ?? "";
+    const left = line.replace(/^\s+/, "");
+    let hint = "";
+    if (left.startsWith("/") && !left.includes(" ")) {
+      const [hits] = completeLine(line, this.commands, this.cwd);
+      if (hits.length > 1) hint = formatHint(hits);
+    }
+    if (hint === this.hint) return;
+    this.hint = hint;
+    this.rl.setPrompt(hint ? `${hint}\n${this.basePrompt}` : this.basePrompt);
+    this.rl.prompt(true);
+  };
 
   /**
    * Tanya input rahasia (API key) tanpa menampilkan isinya di layar.
