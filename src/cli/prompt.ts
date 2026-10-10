@@ -6,6 +6,8 @@ export const PROMPT_EOF = "\u0004";
 export interface PrompterLike {
   question(query: string): Promise<string>;
   close(): void;
+  pause?: () => void;
+  resume?: () => void;
 }
 
 /** Pembungkus readline tunggal untuk seluruh sesi CLI. */
@@ -55,6 +57,16 @@ export class Prompter implements PrompterLike {
     } finally {
       rl._writeToOutput = original;
     }
+  }
+
+  pause(): void {
+    if (this.closed) return;
+    this.rl.pause();
+  }
+
+  resume(): void {
+    if (this.closed) return;
+    this.rl.resume();
   }
 
   close(): void {

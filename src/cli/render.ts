@@ -123,6 +123,11 @@ export class TerminalIO implements AgentIO {
     this.write(`\r\u001b[2K${body}\u001b[?25l`);
   }
 
+  /** Cetak baris baru setelah input agar output/spinner muncul di baris bersih. */
+  lineBreak(): void {
+    this.writeContent("\n");
+  }
+
   /** Hentikan sementara (mis. saat menunggu jawaban konfirmasi pengguna). */
   private suspendSpinner(): void {
     this.suspended = true;
