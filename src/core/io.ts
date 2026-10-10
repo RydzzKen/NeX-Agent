@@ -91,6 +91,12 @@ export interface AgentIO {
 
   /** Mode saat ini berubah. */
   modeChanged?(mode: Mode): void;
+
+  /**
+   * Indikator agen mulai/selesai bekerja, dipakai UI untuk spinner/status.
+   * Opsional; dipanggil lapisan UI mengelilingi satu giliran `run`.
+   */
+  busy?(on: boolean): void;
 }
 
 /** IO diam untuk tes dan mode non-interaktif tanpa `--yes`. */
