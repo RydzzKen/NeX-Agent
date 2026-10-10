@@ -5,8 +5,9 @@ import { SessionStore } from "./sessions/store.js";
 import { UsageStore, type UsageRange } from "./usage/store.js";
 import { renderCrossSession } from "./cli/usage.js";
 import { ChatApp, ConfigError, type CliOptions } from "./cli/app.js";
-import { createWebServer } from "./server/server.js";
+import { createWebServer, isLoopbackHost, reachableUrl } from "./server/server.js";
 import { ServerConfigError } from "./server/webapp.js";
+import { qrLines } from "./util/qr.js";
 import type { Mode } from "./core/types.js";
 
 function collect(value: string, previous: string[]): string[] {
@@ -118,6 +119,8 @@ async function main(): Promise<void> {
     .command("serve")
     .description("jalankan server web (chat + terminal di browser)")
     .option("--host <host>", "alamat bind (default: config atau 127.0.0.1)")
+    .option("--lan", "bind ke 0.0.0.0 agar bisa dibuka dari LAN + tampilkan QR")
+    .option("--no-qr", "jangan tampilkan kode QR")
     .option("--port <port>", "port (0 = acak)", (v) => Number.parseInt(v, 10))
     .option("--token <token>", "token akses (default: dibuat otomatis)")
     .option("--cwd <path>", "direktori kerja")
@@ -135,7 +138,9 @@ async function main(): Promise<void> {
       // gabungkan opsi global agar `agent serve --model m` tetap terbaca.
       const merged = command.optsWithGlobals() as Record<string, unknown>;
       const config = await loadConfig();
-      const host = (merged.host as string | undefined) ?? config.webHost ?? "127.0.0.1";
+      const host = merged.lan
+        ? "0.0.0.0"
+        : ((merged.host as string | undefined) ?? config.webHost ?? "127.0.0.1");
       const port = (merged.port as number | undefined) ?? config.webPort ?? 0;
 
       const handle = await createWebServer({
@@ -154,14 +159,19 @@ async function main(): Promise<void> {
         ...(merged.debug ? { debug: true } : {}),
       });
 
-      const local = host === "127.0.0.1" || host === "localhost" || host === "::1";
+      const local = isLoopbackHost(handle.host);
       process.stdout.write("NeX-Agent web berjalan:\n");
-      process.stdout.write(`  ${handle.url}\n`);
+      for (const url of handle.urls) process.stdout.write(`  ${url}\n`);
       process.stdout.write(`  terminal: ${handle.backend}\n`);
       if (!local) {
         process.stdout.write(
           "  ⚠ Server terikat ke jaringan — siapa pun yang punya token bisa menjalankan shell.\n",
         );
+        const target = reachableUrl(handle.urls) ?? handle.url;
+        if (merged.qr !== false) {
+          process.stdout.write(`\n  Pindai kode QR untuk membuka di perangkat lain:\n\n`);
+          process.stdout.write(qrLines(target).map((line) => `  ${line}`).join("\n") + "\n\n");
+        }
       }
       process.stdout.write("  Tekan Ctrl+C untuk berhenti.\n");
 

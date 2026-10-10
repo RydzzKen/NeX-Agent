@@ -31,12 +31,14 @@
     "@xterm/xterm": "^6.0.0",
     "commander": "^12.1.0",
     "diff": "^5.2.0",
+    "qrcode-terminal": "^0.12.0",
     "ws": "^8.22.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/diff": "^5.2.3",
     "@types/node": "^22.10.0",
+    "@types/qrcode-terminal": "^0.12.2",
     "@types/ws": "^8.18.2",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",

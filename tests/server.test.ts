@@ -126,6 +126,51 @@ describe("terminal", () => {
   });
 });
 
+import { buildUrls, isLoopbackHost, lanAddresses, reachableUrl } from "../src/server/server.js";
+import { renderQr } from "../src/util/qr.js";
+
+describe("URL server & QR", () => {
+  it("mengenali host loopback", () => {
+    expect(isLoopbackHost("127.0.0.1")).toBe(true);
+    expect(isLoopbackHost("localhost")).toBe(true);
+    expect(isLoopbackHost("::1")).toBe(true);
+    expect(isLoopbackHost("0.0.0.0")).toBe(false);
+    expect(isLoopbackHost("192.168.1.5")).toBe(false);
+  });
+
+  it("menyusun URL untuk loopback dan host spesifik", () => {
+    expect(buildUrls("127.0.0.1", 8080, "tok")).toEqual(["http://127.0.0.1:8080/#t=tok"]);
+    expect(buildUrls("localhost", 8080, "tok")).toEqual(["http://127.0.0.1:8080/#t=tok"]);
+    expect(buildUrls("192.168.1.5", 8080, "tok")).toEqual(["http://192.168.1.5:8080/#t=tok"]);
+  });
+
+  it("menyertakan loopback + alamat LAN saat bind 0.0.0.0", () => {
+    const urls = buildUrls("0.0.0.0", 4170, "tok");
+    expect(urls[0]).toBe("http://127.0.0.1:4170/#t=tok");
+    expect(urls.every((u) => u.includes("#t=tok"))).toBe(true);
+    expect(urls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("memilih URL yang bisa dijangkau dari LAN", () => {
+    const urls = ["http://127.0.0.1:1/#t=t", "http://192.168.1.5:1/#t=t"];
+    expect(reachableUrl(urls)).toBe("http://192.168.1.5:1/#t=t");
+    expect(reachableUrl(["http://127.0.0.1:1/#t=t", "http://localhost:1/#t=t"])).toBeUndefined();
+  });
+
+  it("mengembalikan daftar alamat LAN (tanpa loopback)", () => {
+    const addrs = lanAddresses();
+    expect(Array.isArray(addrs)).toBe(true);
+    expect(addrs.every((a) => !a.startsWith("127."))).toBe(true);
+  });
+
+  it("merender URL menjadi kode QR terminal", () => {
+    const qr = renderQr("http://192.168.1.5:4170/#t=token");
+    expect(qr.length).toBeGreaterThan(0);
+    expect(qr).toMatch(/[▀▄█]/);
+    expect(qr.split("\n").length).toBeGreaterThan(3);
+  });
+});
+
 describe("WebIO", () => {
   it("meneruskan peristiwa ke sink", () => {
     const sent: ServerMessage[] = [];

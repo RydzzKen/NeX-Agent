@@ -21,6 +21,7 @@ Terakhir diperbarui: mulai fitur Web (chat + terminal browser).
 - [x] Contoh skill bawaan: `skills/coding-skill.md` (`design-taste-frontend`)
 - [x] **Mode Web** (`nex-agent serve`): chat browser + terminal PTY nyata, token wajib, sesi persisten
 - [x] `/serve [stop]` di dalam sesi chat (nyalakan/hentikan web tanpa keluar)
+- [x] Mode LAN (`--lan`/`/serve lan`): cetak URL IPv4 LAN + kode QR untuk ponsel
 
 ## Web (chat + terminal di browser)  ← selesai
 

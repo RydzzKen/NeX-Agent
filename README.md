@@ -128,7 +128,9 @@ Kode keluar: `0` sukses, `1` gagal tugas, `2` error konfigurasi,
 ```bash
 nex-agent serve                 # buka http://127.0.0.1:<port>/#t=<token>
 nex-agent serve --port 8080     # port tetap
-nex-agent serve --host 0.0.0.0  # akses dari LAN (lihat peringatan)
+nex-agent serve --lan           # bind ke 0.0.0.0 + tampilkan URL LAN & QR
+nex-agent serve --host 0.0.0.0  # sama seperti --lan (lihat peringatan)
+nex-agent serve --no-qr         # sembunyikan kode QR
 ```
 
 `serve` menjalankan server HTTP + WebSocket yang menyajikan antarmuka web:
@@ -136,13 +138,17 @@ nex-agent serve --host 0.0.0.0  # akses dari LAN (lihat peringatan)
 persetujuan) dan **tab Terminal** (shell interaktif nyata lewat `xterm.js`).
 
 Bisa juga dinyalakan **dari dalam sesi chat** tanpa keluar: ketik `/serve`
-(menyalakan, memakai workspace/model/provider/mode aktif) dan `/serve stop`
-(atau `/exit`) untuk mematikannya. Server web ikut mati saat sesi chat ditutup.
+(memakai workspace/model/provider/mode aktif), `/serve lan` untuk mengekspos ke
+jaringan, dan `/serve stop` (atau `/exit`) untuk mematikannya. Server web ikut
+mati saat sesi chat ditutup.
 
-- **Keamanan** — server hanya mendengarkan `127.0.0.1` dan mewajibkan **token**
-  acak (dibuat otomatis, dicetak di URL sebagai fragmen `#t=…`; token tidak
-  pernah ditulis ke log). Membind ke `0.0.0.0` memunculkan peringatan: siapa pun
-  yang memegang token bisa menjalankan shell.
+- **LAN & QR** — dengan `--lan` (atau `/serve lan`) server mendengarkan semua
+  antarmuka, mencetak URL loopback **dan** setiap alamat IPv4 LAN, lalu menampilkan
+  **kode QR** dari URL LAN agar bisa langsung dipindai dari ponsel.
+- **Keamanan** — secara default server hanya mendengarkan `127.0.0.1` dan
+  mewajibkan **token** acak (dibuat otomatis, dicetak di URL sebagai fragmen
+  `#t=…`; token tidak pernah ditulis ke log). Saat terikat ke jaringan (`--lan`)
+  muncul peringatan: siapa pun yang memegang token bisa menjalankan shell.
 - **Persisten** — terminal berjalan selama proses server hidup; me-refresh
   halaman menyambung ulang ke shell yang sama (buffer keluaran diputar ulang).
   Backend PTY memakai `script` (`util-linux`/BSD/busybox), dengan cadangan pipe
