@@ -12,6 +12,8 @@
   const modeBadge = $("mode-badge");
   const connEl = $("conn");
   const terminalEl = $("terminal");
+  const backdropEl = $("backdrop");
+  const sidebarToggle = $("sidebar-toggle");
 
   // ---- token ----
   function readToken() {
@@ -130,6 +132,33 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  // ---- drawer (mobile) ----
+  function openDrawer() {
+    document.body.classList.add("drawer-open");
+    if (sidebarToggle) sidebarToggle.setAttribute("aria-expanded", "true");
+  }
+
+  function closeDrawer() {
+    if (!document.body.classList.contains("drawer-open")) return;
+    document.body.classList.remove("drawer-open");
+    if (sidebarToggle) sidebarToggle.setAttribute("aria-expanded", "false");
+  }
+
+  function clearEmpty() {
+    const el = messagesEl.querySelector(".empty-state");
+    if (el) el.remove();
+  }
+
+  function renderEmpty() {
+    messagesEl.innerHTML = "";
+    const el = document.createElement("div");
+    el.className = "empty-state";
+    el.innerHTML =
+      "<h2>Mulai percakapan</h2><p>Tulis pesan di bawah, atau buka tab " +
+      "<strong>Terminal</strong> untuk shell penuh di browser.</p>";
+    messagesEl.appendChild(el);
+  }
+
   // ---- state ----
   let ws = null;
   let state = null;
@@ -142,6 +171,7 @@
 
   // ---- rendering ----
   function addMessage(kind, label) {
+    clearEmpty();
     const wrap = document.createElement("div");
     wrap.className = "msg " + kind;
     if (label) {
@@ -159,6 +189,7 @@
   }
 
   function newTurn() {
+    clearEmpty();
     const wrap = document.createElement("div");
     wrap.className = "msg assistant";
     const who = document.createElement("div");
@@ -365,7 +396,10 @@
       row.appendChild(title);
       row.appendChild(when);
       row.appendChild(del);
-      row.addEventListener("click", () => send({ type: "session.open", id: s.id }));
+      row.addEventListener("click", () => {
+        send({ type: "session.open", id: s.id });
+        closeDrawer();
+      });
       sessionsEl.appendChild(row);
     }
   }
@@ -380,7 +414,13 @@
   }
 
   function renderHistory(history) {
-    for (const m of history) {
+    messagesEl.innerHTML = "";
+    const items = history || [];
+    if (!items.length) {
+      renderEmpty();
+      return;
+    }
+    for (const m of items) {
       if (m.role === "user") addMessage("user", "kamu").textContent = m.content;
       else if (m.role === "assistant" && m.content) addMessage("assistant", "assistant").innerHTML = renderMarkdown(m.content);
     }
@@ -410,7 +450,6 @@
         break;
       case "session":
         currentTurn = null;
-        messagesEl.innerHTML = "";
         renderHistory(msg.history || []);
         if (state) {
           state.current = msg.summary;
@@ -524,6 +563,16 @@
     else pendingTerm.push([id, data]);
   }
 
+  function refit() {
+    if (!term || !fit) return;
+    try {
+      fit.fit();
+      send({ type: "terminal.resize", id: terminalId, cols: term.cols, rows: term.rows });
+    } catch {
+      /* abaikan */
+    }
+  }
+
   function ensureTerminal() {
     if (term) {
       try {
@@ -539,7 +588,7 @@
     }
     term = new Terminal({
       fontFamily: '"JetBrains Mono", Menlo, Consolas, monospace',
-      fontSize: 13,
+      fontSize: window.innerWidth < 480 ? 12 : 13,
       cursorBlink: true,
       scrollback: 5000,
       theme: { background: "#0b0f14", foreground: "#dfe6ef", cursor: "#4f9cf9" },
@@ -555,31 +604,23 @@
     for (const entry of pendingTerm.splice(0)) {
       if (entry[0] === terminalId) term.write(entry[1]);
     }
-    window.addEventListener("resize", () => {
-      if (!term || !fit) return;
-      try {
-        fit.fit();
-        send({ type: "terminal.resize", id: terminalId, cols: term.cols, rows: term.rows });
-      } catch {
-        /* abaikan */
-      }
-    });
+    window.addEventListener("resize", refit);
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", refit);
   }
 
   // ---- tabs & events ----
   function setTab(name) {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
+    document.querySelectorAll(".tab").forEach((t) => {
+      const on = t.dataset.tab === name;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", on ? "true" : "false");
+    });
     $("view-chat").hidden = name !== "chat";
     $("view-terminal").hidden = name !== "terminal";
+    closeDrawer();
     if (name === "terminal") {
       ensureTerminal();
-      setTimeout(() => {
-        try {
-          fit && fit.fit();
-        } catch {
-          /* abaikan */
-        }
-      }, 40);
+      setTimeout(refit, 40);
     }
   }
 
@@ -594,11 +635,31 @@
   }
 
   document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
-  $("new-session").addEventListener("click", () => send({ type: "session.new" }));
+  $("new-session").addEventListener("click", () => {
+    send({ type: "session.new" });
+    closeDrawer();
+  });
+  if (sidebarToggle) sidebarToggle.addEventListener("click", openDrawer);
+  if (backdropEl) backdropEl.addEventListener("click", closeDrawer);
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeDrawer();
+  });
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > 820) closeDrawer();
+  });
   allowAllEl.addEventListener("change", () => send({ type: "allowAll.set", on: allowAllEl.checked }));
+  function toggleMode() {
+    send({ type: "mode.set", mode: state && state.mode === "plan" ? "build" : "plan" });
+  }
   modeBadge.style.cursor = "pointer";
   modeBadge.title = "Klik untuk ganti mode";
-  modeBadge.addEventListener("click", () => send({ type: "mode.set", mode: state && state.mode === "plan" ? "build" : "plan" }));
+  modeBadge.addEventListener("click", toggleMode);
+  modeBadge.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      toggleMode();
+    }
+  });
   sendBtn.addEventListener("click", submit);
   stopBtn.addEventListener("click", () => send({ type: "chat.interrupt" }));
   inputEl.addEventListener("keydown", (e) => {
@@ -612,5 +673,6 @@
     inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + "px";
   });
 
+  renderEmpty();
   connect();
 })();

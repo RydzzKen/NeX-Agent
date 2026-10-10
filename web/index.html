@@ -2,38 +2,74 @@
 <html lang="id">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0b0e14" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>NeX-Agent Web</title>
     <link rel="stylesheet" href="/assets/vendor/xterm.css" />
     <link rel="stylesheet" href="/assets/styles.css" />
   </head>
   <body>
     <div id="app">
-      <aside id="sidebar">
+      <aside id="sidebar" aria-label="Daftar sesi">
         <header class="sidebar-head">
-          <div class="brand"><span class="dot"></span>NeX-Agent</div>
-          <button id="new-session" class="icon-btn" title="Sesi baru">+</button>
+          <div class="brand"><span class="dot"></span><span>NeX-Agent</span></div>
+          <button id="new-session" class="icon-btn" title="Sesi baru" aria-label="Sesi baru">+</button>
         </header>
         <div id="sessions" class="sessions"></div>
         <footer id="conn" class="conn">menyambung…</footer>
       </aside>
 
+      <div id="backdrop" class="backdrop"></div>
+
       <main>
         <nav class="tabs">
-          <button class="tab active" data-tab="chat">Chat</button>
-          <button class="tab" data-tab="terminal">Terminal</button>
+          <button
+            id="sidebar-toggle"
+            class="icon-btn hamburger"
+            title="Menu sesi"
+            aria-label="Buka menu sesi"
+            aria-expanded="false"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              aria-hidden="true"
+            >
+              <path d="M3 6h18M3 12h18M3 18h18" />
+            </svg>
+          </button>
+
+          <div class="tabgroup" role="tablist" aria-label="Tampilan">
+            <button class="tab active" data-tab="chat" role="tab" aria-selected="true">Chat</button>
+            <button class="tab" data-tab="terminal" role="tab" aria-selected="false">Terminal</button>
+          </div>
+
           <span class="spacer"></span>
-          <span id="mode-badge" class="badge">build</span>
+          <span id="mode-badge" class="badge" role="button" tabindex="0" title="Klik untuk ganti mode"
+            >build</span
+          >
           <label class="toggle" title="Izinkan semua permintaan izin untuk sesi ini">
-            <input type="checkbox" id="allow-all" /> allow-all
+            <input type="checkbox" id="allow-all" />
+            <span class="toggle-text">allow-all</span>
           </label>
         </nav>
 
         <section id="view-chat" class="view">
           <div id="messages" class="messages"></div>
           <div class="composer">
-            <textarea id="input" rows="1" placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)"></textarea>
+            <textarea
+              id="input"
+              rows="1"
+              placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)"
+            ></textarea>
             <button id="send" class="primary">Kirim</button>
             <button id="stop" class="danger" hidden>Stop</button>
           </div>

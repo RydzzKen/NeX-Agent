@@ -155,6 +155,10 @@ mati saat sesi chat ditutup.
   bila `script` tidak ada.
 - **Sesi** — sidebar menampilkan semua sesi. Klik untuk membuka, `✕` untuk
   menghapus; membuka sesi dari workspace lain otomatis berpindah workspace.
+- **Responsif** — tata letak menyesuaikan desktop & ponsel: di layar sempit
+  sidebar menjadi *drawer* yang dibuka lewat tombol menu, input 16px (mencegah
+  zoom iOS), dan terminal otomatis menyesuaikan ukuran saat keyboard muncul.
+  Aman untuk notch (`viewport-fit=cover` + `safe-area-inset`).
 - **Persetujuan** — konfirmasi tool muncul di percakapan (Ya / Tidak / Selalu).
   `--allow-all`/`--yes` di `serve` menyetujui otomatis; file sensitif tetap
   minta konfirmasi eksplisit.
