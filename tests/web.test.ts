@@ -123,9 +123,9 @@ interface Client {
   messages: ServerMessage[];
 }
 
-async function connect(withToken = true): Promise<Client> {
-  const suffix = withToken ? `?token=${encodeURIComponent(handle.token)}` : "";
-  const ws = new WebSocket(`ws://127.0.0.1:${handle.port}/ws${suffix}`);
+async function connect(withToken = true, target: WebServerHandle = handle): Promise<Client> {
+  const suffix = withToken ? `?token=${encodeURIComponent(target.token)}` : "";
+  const ws = new WebSocket(`ws://127.0.0.1:${target.port}/ws${suffix}`);
   const messages: ServerMessage[] = [];
   ws.on("message", (raw) => messages.push(JSON.parse(raw.toString()) as ServerMessage));
   await new Promise<void>((resolve, reject) => {
@@ -145,6 +145,30 @@ describe("web server", () => {
     expect(ready.state.provider).toBe("custom:local");
     expect(ready.state.mode).toBe("build");
     client.ws.close();
+  });
+
+  it("menerapkan opsi yang diteruskan /serve (model, provider, mode, allow-all)", async () => {
+    const extra = await createWebServer({
+      host: "127.0.0.1",
+      port: 0,
+      cwd: workspace,
+      model: "other-model",
+      provider: "custom:local",
+      mode: "plan",
+      allowAll: false,
+    });
+    try {
+      const client = await connect(true, extra);
+      const ready = await waitFor(() => client.messages.find((m) => m.type === "ready"));
+      if (ready.type !== "ready") throw new Error("bukan ready");
+      expect(ready.state.model).toBe("other-model");
+      expect(ready.state.provider).toBe("custom:local");
+      expect(ready.state.mode).toBe("plan");
+      expect(ready.state.allowAll).toBe(false);
+      client.ws.close();
+    } finally {
+      await extra.close();
+    }
   });
 
   it("menolak koneksi tanpa token", async () => {

@@ -38,6 +38,8 @@ import { runConnect } from "./connect.js";
 import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice } from "./models.js";
 import { TerminalIO } from "./render.js";
 import { Prompter, PROMPT_EOF } from "./prompt.js";
+import { createWebServer, type WebServerHandle } from "../server/server.js";
+import { ServerConfigError } from "../server/webapp.js";
 
 export class ConfigError extends Error {
   constructor(message: string) {
@@ -94,6 +96,7 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/skills", "daftar skill yang tersedia"],
   ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
   ["/todos", "tampilkan daftar tugas (checklist)"],
+  ["/serve [stop]", "nyalakan/hentikan server web (chat + terminal)"],
   ["/exit", "keluar dari sesi chat (atau Ctrl+D)"],
   ["/help", "bantuan"],
 ];
@@ -131,6 +134,8 @@ export class ChatApp {
   private activeSkills: Skill[] = [];
   private skillsEnabled = false;
   private baseSystemPrompt = "";
+  /** Server web (dinyalakan lewat `/serve`) selama proses chat ini hidup. */
+  private webServer?: WebServerHandle;
 
   private constructor(
     private readonly workspace: Workspace,
@@ -543,6 +548,9 @@ export class ChatApp {
       case "/todos":
         this.commandTodos();
         return "continue";
+      case "/serve":
+        await this.commandServe(args[0]);
+        return "continue";
       default:
         this.io.warn(`Perintah tidak dikenal: ${cmd}. Ketik /help.`);
         return "continue";
@@ -837,6 +845,67 @@ export class ChatApp {
     this.io.info(`Skill ${name} dipaksa aktif untuk sesi ini.`);
   }
 
+  /**
+   * Nyalakan server web (chat + terminal di browser) tanpa keluar dari sesi
+   * chat CLI. Memakai workspace, model, provider, dan mode yang sedang aktif.
+   * Perintah `nex-agent serve` tetap tersedia untuk mode standalone.
+   */
+  private async commandServe(arg?: string): Promise<void> {
+    if (arg === "stop" || arg === "off") {
+      if (!this.webServer) {
+        this.io.info("Server web belum berjalan.");
+        return;
+      }
+      await this.webServer.close();
+      this.webServer = undefined;
+      this.io.info("Server web dihentikan.");
+      return;
+    }
+    if (arg) {
+      this.io.warn(`Argumen tidak dikenal: ${arg}. Gunakan /serve atau /serve stop.`);
+      return;
+    }
+    if (this.webServer) {
+      this.io.info(`Server web sudah berjalan: ${this.webServer.url}`);
+      return;
+    }
+
+    const host = this.config.webHost ?? "127.0.0.1";
+    const port = this.config.webPort ?? 0;
+    try {
+      this.webServer = await createWebServer({
+        host,
+        port,
+        cwd: this.workspace.root,
+        mode: this.session.getMode(),
+        model: this.session.getModel(),
+        provider: this.providerKey,
+        // Sama seperti sesi CLI: allow-all hanya berlaku untuk sesi ini.
+        allowAll: this.approvals.allowAll(),
+        skills: this.skillsEnabled,
+        ...(this.opts.maxSteps !== undefined ? { maxSteps: this.opts.maxSteps } : {}),
+        ...(this.opts.maxCost !== undefined ? { maxCost: this.opts.maxCost } : {}),
+        ...(this.opts.debug ? { debug: true } : {}),
+      });
+    } catch (err) {
+      if (err instanceof ServerConfigError) {
+        this.io.error(`Gagal menjalankan server web: ${err.message}`);
+        return;
+      }
+      this.io.error(`Gagal menjalankan server web: ${(err as Error).message}`);
+      return;
+    }
+
+    const local = host === "127.0.0.1" || host === "localhost" || host === "::1";
+    this.io.info("Server web berjalan (chat + terminal):");
+    process.stdout.write(`  ${this.webServer.url}\n`);
+    process.stdout.write(`  terminal: ${this.webServer.backend}\n`);
+    if (!local) {
+      this.io.warn("Server terikat ke jaringan — siapa pun yang punya token bisa menjalankan shell.");
+    }
+    process.stdout.write("  Buka di browser. Hentikan dengan /serve stop.\n");
+  }
+
   private commandTodos(): void {
     const todos = this.session.getTodos();
     if (todos.length === 0) {
@@ -852,6 +921,10 @@ export class ChatApp {
   }
 
   private async close(): Promise<void> {
+    if (this.webServer) {
+      await this.webServer.close();
+      this.webServer = undefined;
+    }
     this.logger.info("session.close", { id: this.record.id });
     if (this.logger instanceof JsonlLogger) this.logger.close();
     this.prompter.close();
