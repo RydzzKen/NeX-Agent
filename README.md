@@ -110,11 +110,18 @@ Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 
 ### Slash command (mode chat)
 
-`/connect` · `/models [nomor|0|nama]` · `/plan` · `/build` · `/sessions` ·
-`/resume <n>` · `/new` · `/clear` · `/rename` · `/delete` · `/undo [n]` ·
+`/connect` · `/provider [use|edit|hapus <nama>]` · `/models [nomor|0|nama]` ·
+`/plan` · `/build` · `/sessions [clear]` · `/resume <n>` · `/new` · `/clear` ·
+`/rename` · `/delete [all]` · `/undo [n]` ·
 `/usage` · `/permissions` · `/allow-all [on|off]` · `/thinking` · `/markdown` ·
 `/skills` · `/skill <nama>|off` · `/mcp [reload|key <nama>]` · `/todos` ·
 `/serve [stop]` · `/exit` · `/help`.
+
+Tab melengkapi perintah slash, subperintah (`/provider <Tab>`), dan path berkas.
+`/provider` menampilkan provider tersimpan (base URL + status kunci, **tanpa**
+membocorkan nilainya); `use` mengaktifkannya, `edit` mengubah base URL/API key,
+`hapus` menghapusnya. `/connect` juga menampilkan provider custom tersimpan agar
+bisa dipakai ulang tanpa mengetik ulang.
 
 `/sessions` menampilkan sesi bernomor (judul diambil otomatis dari pesan
 pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/allow-all` menyalakan
