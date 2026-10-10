@@ -112,6 +112,36 @@ describe("discoverSkills", () => {
     const skill = skills.find((s) => s.name === "custom");
     expect(skill?.description).toBe("Isi tanpa frontmatter");
   });
+
+  it("mengikuti symlink berkas datar skills/<nama>.md", async () => {
+    const real = path.join(root, "real-file.md");
+    await fs.writeFile(real, "---\nname: flatlink\ndescription: file via symlink\n---\nbody\n", "utf8");
+    await fs.mkdir(path.join(globalDir, "skills"), { recursive: true });
+    await fs.symlink(real, path.join(globalDir, "skills", "flatlink.md"), "file");
+    const skills = await discoverSkills({ workspaceRoot: root, globalConfigDir: globalDir });
+    expect(skills.find((s) => s.name === "flatlink")?.description).toBe("file via symlink");
+  });
+
+  it("mengikuti symlink folder skill di direktori global", async () => {
+    const realDir = path.join(root, "linked-src");
+    await fs.mkdir(path.join(realDir, "linked"), { recursive: true });
+    await fs.writeFile(
+      path.join(realDir, "linked", "SKILL.md"),
+      "---\nname: linked\ndescription: folder via symlink\n---\nbody\n",
+      "utf8",
+    );
+    await fs.mkdir(path.join(globalDir, "skills"), { recursive: true });
+    await fs.symlink(path.join(realDir, "linked"), path.join(globalDir, "skills", "linked"), "dir");
+    const skills = await discoverSkills({ workspaceRoot: root, globalConfigDir: globalDir });
+    expect(skills.find((s) => s.name === "linked")?.description).toBe("folder via symlink");
+  });
+
+  it("mengabaikan symlink yang putus (dangling)", async () => {
+    await fs.mkdir(path.join(globalDir, "skills"), { recursive: true });
+    await fs.symlink(path.join(root, "tidak-ada.md"), path.join(globalDir, "skills", "broken.md"), "file");
+    const skills = await discoverSkills({ workspaceRoot: root, globalConfigDir: globalDir });
+    expect(skills).toHaveLength(0);
+  });
 });
 
 describe("formatSkillsForPrompt", () => {

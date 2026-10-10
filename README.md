@@ -343,6 +343,14 @@ Format berkas yang diterima (huruf besar-kecil tidak masalah):
 skills/<nama>/SKILL.md    skills/<nama>/skill.md    skills/<nama>.md    skills/<nama>/*.md
 ```
 
+**Agar terlihat dari semua workspace**, taruh skill di `~/.config/agent/skills/`
+(dicek dari folder mana pun). Symlink juga didukung — pasang sekali ke skill yang
+kamu kembangkan di repo:
+
+```bash
+ln -s "$PWD/skills/coding-skill.md" ~/.config/agent/skills/coding-skill.md
+```
+
 Cara kerjanya **progressive disclosure**:
 
 - **Otomatis** — hanya `name` + `description` yang masuk system prompt (murah).
