@@ -1,10 +1,12 @@
 import { Command } from "commander";
 import path from "node:path";
-import { configDir, sessionsDir } from "./config/config.js";
+import { configDir, loadConfig, sessionsDir } from "./config/config.js";
 import { SessionStore } from "./sessions/store.js";
 import { UsageStore, type UsageRange } from "./usage/store.js";
 import { renderCrossSession } from "./cli/usage.js";
 import { ChatApp, ConfigError, type CliOptions } from "./cli/app.js";
+import { createWebServer } from "./server/server.js";
+import { ServerConfigError } from "./server/webapp.js";
 import type { Mode } from "./core/types.js";
 
 function collect(value: string, previous: string[]): string[] {
@@ -112,11 +114,69 @@ async function main(): Promise<void> {
       }
     });
 
+  program
+    .command("serve")
+    .description("jalankan server web (chat + terminal di browser)")
+    .option("--host <host>", "alamat bind (default: config atau 127.0.0.1)")
+    .option("--port <port>", "port (0 = acak)", (v) => Number.parseInt(v, 10))
+    .option("--token <token>", "token akses (default: dibuat otomatis)")
+    .option("--cwd <path>", "direktori kerja")
+    .option("--mode <mode>", "mode awal: plan atau build")
+    .option("--model <model>", "model yang dipakai")
+    .option("--provider <provider>", "provider yang dipakai")
+    .option("--max-steps <n>", "batas langkah", (v) => Number.parseInt(v, 10))
+    .option("--max-cost <n>", "anggaran biaya (USD)", (v) => Number.parseFloat(v))
+    .option("--yes", "setujui semua kategori konfirmasi")
+    .option("--allow-all", "izinkan semua permintaan izin untuk sesi ini")
+    .option("--no-skills", "jangan muat skill dari SKILL.md")
+    .option("--debug", "log debug")
+    .action(async (_options: Record<string, unknown>, command: Command) => {
+      // Opsi seperti --model/--cwd juga didefinisikan pada perintah induk, jadi
+      // gabungkan opsi global agar `agent serve --model m` tetap terbaca.
+      const merged = command.optsWithGlobals() as Record<string, unknown>;
+      const config = await loadConfig();
+      const host = (merged.host as string | undefined) ?? config.webHost ?? "127.0.0.1";
+      const port = (merged.port as number | undefined) ?? config.webPort ?? 0;
+
+      const handle = await createWebServer({
+        host,
+        port,
+        ...(merged.token ? { token: merged.token as string } : {}),
+        ...(merged.cwd ? { cwd: merged.cwd as string } : {}),
+        ...(merged.mode ? { mode: parseMode(merged.mode as string) } : {}),
+        ...(merged.model ? { model: merged.model as string } : {}),
+        ...(merged.provider ? { provider: merged.provider as string } : {}),
+        ...(merged.maxSteps !== undefined ? { maxSteps: merged.maxSteps as number } : {}),
+        ...(merged.maxCost !== undefined ? { maxCost: merged.maxCost as number } : {}),
+        ...(merged.yes ? { yes: true } : {}),
+        ...(merged.allowAll ? { allowAll: true } : {}),
+        ...(merged.skills === false ? { skills: false } : {}),
+        ...(merged.debug ? { debug: true } : {}),
+      });
+
+      const local = host === "127.0.0.1" || host === "localhost" || host === "::1";
+      process.stdout.write("NeX-Agent web berjalan:\n");
+      process.stdout.write(`  ${handle.url}\n`);
+      process.stdout.write(`  terminal: ${handle.backend}\n`);
+      if (!local) {
+        process.stdout.write(
+          "  ⚠ Server terikat ke jaringan — siapa pun yang punya token bisa menjalankan shell.\n",
+        );
+      }
+      process.stdout.write("  Tekan Ctrl+C untuk berhenti.\n");
+
+      const shutdown = (): void => {
+        void handle.close().then(() => process.exit(0));
+      };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
+    });
+
   await program.parseAsync(process.argv);
 }
 
 main().catch((err: unknown) => {
-  if (err instanceof ConfigError) {
+  if (err instanceof ConfigError || err instanceof ServerConfigError) {
     process.stderr.write(`Error konfigurasi: ${err.message}\n`);
     process.exitCode = 2;
     return;

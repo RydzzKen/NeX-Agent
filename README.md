@@ -79,6 +79,7 @@ nex-agent --resume <id>       # lanjutkan sesi
 nex-agent --continue          # lanjutkan sesi terakhir di workspace ini
 nex-agent usage today         # rekap pemakaian lintas sesi
 nex-agent logs <id>           # jejak satu sesi
+nex-agent serve               # buka chat + terminal di browser
 ```
 
 `nex-agent` dan `agent` adalah perintah yang sama.
@@ -119,6 +120,36 @@ atau langsung `/models <nama>`. Pilihan model diingat per workspace di
 Kode keluar: `0` sukses, `1` gagal tugas, `2` error konfigurasi,
 `3` batas langkah/anggaran/pengulangan, `130` diinterupsi.
 
+## Mode Web (chat + terminal di browser)
+
+```bash
+nex-agent serve                 # buka http://127.0.0.1:<port>/#t=<token>
+nex-agent serve --port 8080     # port tetap
+nex-agent serve --host 0.0.0.0  # akses dari LAN (lihat peringatan)
+```
+
+`serve` menjalankan server HTTP + WebSocket yang menyajikan antarmuka web:
+**tab Chat** (streaming jawaban, thinking, langkah tool, diff, todo, tombol
+persetujuan) dan **tab Terminal** (shell interaktif nyata lewat `xterm.js`).
+
+- **Keamanan** — server hanya mendengarkan `127.0.0.1` dan mewajibkan **token**
+  acak (dibuat otomatis, dicetak di URL sebagai fragmen `#t=…`; token tidak
+  pernah ditulis ke log). Membind ke `0.0.0.0` memunculkan peringatan: siapa pun
+  yang memegang token bisa menjalankan shell.
+- **Persisten** — terminal berjalan selama proses server hidup; me-refresh
+  halaman menyambung ulang ke shell yang sama (buffer keluaran diputar ulang).
+  Backend PTY memakai `script` (`util-linux`/BSD/busybox), dengan cadangan pipe
+  bila `script` tidak ada.
+- **Sesi** — sidebar menampilkan semua sesi. Klik untuk membuka, `✕` untuk
+  menghapus; membuka sesi dari workspace lain otomatis berpindah workspace.
+- **Persetujuan** — konfirmasi tool muncul di percakapan (Ya / Tidak / Selalu).
+  `--allow-all`/`--yes` di `serve` menyetujui otomatis; file sensitif tetap
+  minta konfirmasi eksplisit.
+- Port/host default bisa disetel di `config.json` lewat `webHost` dan `webPort`
+  (kosong/`0` = port acak).
+- Tanpa argumen model/provider, `serve` memakai pilihan yang sama seperti CLI
+  (tersimpan per workspace), jadi tidak perlu menyetel ulang setiap kali.
+
 ## Konfigurasi & kredensial
 
 Disimpan di `~/.config/agent/` (bisa diubah lewat `AGENT_CONFIG_DIR`):
@@ -140,10 +171,14 @@ src/
   sessions/    # penyimpanan sesi
   usage/       # token, biaya, agregasi
   memory/      # loader AGENTS.md + skill (SKILL.md)
+  server/      # server web (HTTP + WS), terminal PTY, protokol
   cli/         # renderer, prompt, slash command, app
   config/      # konfigurasi & kredensial
   logging/     # logger JSONL + redaksi
 ```
+
+`web/` (di root) berisi aset antarmuka web (HTML/CSS/JS); saat `pnpm build`,
+aset itu bersama `xterm.js` disalin ke `dist/web/` dan disajikan oleh `serve`.
 
 Aturan: `core/` tidak mengimpor `cli/` maupun SDK provider. Interaksi pengguna
 lewat interface `AgentIO`; model lewat `ModelProvider`; tool lewat registri.

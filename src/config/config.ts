@@ -31,6 +31,10 @@ export interface AgentConfig {
   models?: Record<string, string>;
   /** URL layanan pencarian web opsional. */
   searchUrl?: string;
+  /** Host bind server web (`nex-agent serve`). Default 127.0.0.1. */
+  webHost?: string;
+  /** Port server web. Kosong/0 = port acak. */
+  webPort?: number;
 }
 
 async function readConfig(): Promise<AgentConfig> {

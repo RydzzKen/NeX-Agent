@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>NeX-Agent Web</title>
+    <link rel="stylesheet" href="/assets/vendor/xterm.css" />
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <header class="sidebar-head">
+          <div class="brand"><span class="dot"></span>NeX-Agent</div>
+          <button id="new-session" class="icon-btn" title="Sesi baru">+</button>
+        </header>
+        <div id="sessions" class="sessions"></div>
+        <footer id="conn" class="conn">menyambung…</footer>
+      </aside>
+
+      <main>
+        <nav class="tabs">
+          <button class="tab active" data-tab="chat">Chat</button>
+          <button class="tab" data-tab="terminal">Terminal</button>
+          <span class="spacer"></span>
+          <span id="mode-badge" class="badge">build</span>
+          <label class="toggle" title="Izinkan semua permintaan izin untuk sesi ini">
+            <input type="checkbox" id="allow-all" /> allow-all
+          </label>
+        </nav>
+
+        <section id="view-chat" class="view">
+          <div id="messages" class="messages"></div>
+          <div class="composer">
+            <textarea id="input" rows="1" placeholder="Tulis pesan… (Enter kirim, Shift+Enter baris baru)"></textarea>
+            <button id="send" class="primary">Kirim</button>
+            <button id="stop" class="danger" hidden>Stop</button>
+          </div>
+        </section>
+
+        <section id="view-terminal" class="view" hidden>
+          <div id="terminal"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/assets/vendor/xterm.js"></script>
+    <script src="/assets/vendor/addon-fit.js"></script>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
