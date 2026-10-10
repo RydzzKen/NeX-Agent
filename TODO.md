@@ -65,6 +65,7 @@ frontend vanilla JS + `xterm.js` (aset di-`copy` ke `dist/web`, tanpa bundler); 
 ### Lain-lain
 
 - [x] README: bagian MCP + contoh `plugins.json`
+- [ ] (opsional) Dukungan OAuth (PKCE) di klien MCP — server hosted yang mewajibkannya, mis. sebagian endpoint Cloudflare
 - [ ] (opsional) Ekspos tool MCP ke mode Web (`server/webapp.ts` — saat ini hanya aktif di CLI)
 - [ ] (opsional) Simpan skill yang dipaksa lewat `/skill` agar ikut saat `--resume`
 

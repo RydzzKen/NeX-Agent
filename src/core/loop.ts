@@ -16,6 +16,7 @@ import { ToolDeniedError, ToolInputError } from "../tools/errors.js";
 import type { AccessKind } from "./io.js";
 import type { Workspace } from "../safety/workspace.js";
 import type { Skill } from "../memory/skills.js";
+import { modeDirective } from "../memory/system_prompt.js";
 import type { PermissionManager } from "../safety/permissions.js";
 import type { UsageTracker } from "../usage/tracker.js";
 import type { UsageEvent } from "../usage/store.js";
@@ -350,7 +351,9 @@ export class AgentSession {
 
     const stream = this.deps.provider.stream({
       model: this.model,
-      system: this.deps.systemPrompt,
+      // Direktif mode disusun dari mode SAAT INI setiap giliran, jadi ganti
+      // mode (/plan, /build, web) langsung terlihat oleh model tanpa rebuild.
+      system: `${this.deps.systemPrompt}\n\n${modeDirective(this.mode)}`,
       messages: this.history,
       tools,
       signal,

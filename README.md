@@ -92,7 +92,9 @@ nex-agent serve               # buka chat + terminal di browser
 
 `--yes` dan `--allow-all` menyetujui semua konfirmasi untuk sesi ini
 (termasuk akses luar workspace). Mode Plan tetap read-only karena aturan itu
-ditegakkan di kode, bukan lewat prompt.
+ditegakkan di kode, bukan lewat prompt. Direktif mode yang selalu ikut tiap
+giliran membuat tahu mode aktifnya: di Plan, bila kamu meminta eksekusi, dia
+akan menganalisis dulu lalu mengarahkanmu pindah dengan `/build`.
 
 **Indikator bekerja.** Selama agen memproses, terminal menampilkan spinner
 `⠋ sedang bekerja… <detik>` (hanya di TTY, redup saat menunggu jawaban
@@ -243,6 +245,36 @@ per tool:
   tanpa keluar dari sesi. Server yang rusak atau gagal dijalankan tidak
   menghentikan sesi — hanya tercatat di `/mcp`.
 - Tool MCP aktif di sesi CLI. (Mode Web belum memuat tool MCP — mengikuti.)
+
+Contoh server sungguhan — **Cloudflare** (kelola Workers, DNS, dll.) dan
+**Context7** (dokumentasi library):
+
+```json
+{
+  "mcp": {
+    "cloudflare": {
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@cloudflare/mcp-server-cloudflare"],
+      "env": { "CLOUDFLARE_API_TOKEN": "${apiKey}" },
+      "credential": "cloudflare"
+    },
+    "cloudflare-docs": {
+      "transport": "http",
+      "url": "https://docs.mcp.cloudflare.com/mcp"
+    },
+    "context7": {
+      "transport": "http",
+      "url": "https://mcp.context7.com/mcp"
+    }
+  }
+}
+```
+
+Simpan token Cloudflare dengan `/mcp key cloudflare`. Catatan: server MCP
+hosted yang mewajibkan **OAuth** (mis. sebagian endpoint `*.mcp.cloudflare.com`)
+belum didukung — pakai server stdio lokal, atau endpoint yang cukup dengan
+`Authorization: Bearer` di `headers`.
 
 ## Konfigurasi & kredensial
 
