@@ -1,17 +1,54 @@
 import type { ModelProvider } from "../providers/provider.js";
 import type { CredentialStore } from "../config/credentials.js";
 import type { PrompterLike } from "./prompt.js";
-import { BUILTIN_PROVIDERS, createProvider, customKey } from "../providers/factory.js";
+import {
+  BUILTIN_PROVIDERS,
+  CUSTOM_PROVIDER_PREFIX,
+  createProvider,
+  customKey,
+} from "../providers/factory.js";
 
 export interface ConnectResult {
   providerKey: string;
   provider: ModelProvider;
 }
 
-const MENU = [
-  ...BUILTIN_PROVIDERS.map((p) => ({ key: p.key, label: p.label })),
-  { key: "custom", label: "Custom (kompatibel OpenAI)" },
-];
+/**
+ * Susun menu `/connect`: provider bawaan, lalu provider custom yang sudah
+ * tersimpan (agar bisa dipakai ulang, bukan bikin baru), lalu opsi custom baru.
+ * Bawaan yang sudah tersimpan tidak diduplikasi.
+ */
+export function buildConnectMenu(saved: string[]): Array<{ key: string; label: string }> {
+  const builtinKeys = new Set(BUILTIN_PROVIDERS.map((p) => p.key));
+  const menu = BUILTIN_PROVIDERS.map((p) => ({ key: p.key, label: p.label }));
+  const custom = saved
+    .filter((key) => key.startsWith(CUSTOM_PROVIDER_PREFIX) && !builtinKeys.has(key))
+    .sort()
+    .map((key) => ({ key, label: `${key} (tersimpan)` }));
+  return [...menu, ...custom, { key: "custom", label: "Custom baru (kompatibel OpenAI)" }];
+}
+
+/** Basis URL bawaan untuk provider builtin (untuk ditampilkan bila tak ada nilai tersimpan). */
+export function defaultBaseURL(key: string): string | undefined {
+  return BUILTIN_PROVIDERS.find((p) => p.key === key)?.baseURL;
+}
+
+export interface ProviderView {
+  key: string;
+  baseURL: string;
+  hasApiKey: boolean;
+  active: boolean;
+  isDefault: boolean;
+}
+
+/** Satu baris ringkasan provider untuk `/provider` (tanpa membocorkan nilai kunci). */
+export function describeProvider(view: ProviderView): string {
+  const mark = view.active ? "*" : " ";
+  const base = view.baseURL || "-";
+  const keyState = view.hasApiKey ? "api key ok" : "tanpa api key";
+  const def = view.isDefault ? "  (default)" : "";
+  return `${mark} ${view.key.padEnd(22)} ${base}  ${keyState}${def}`;
+}
 
 /** Alur `/connect` interaktif. */
 export async function runConnect(
@@ -19,11 +56,14 @@ export async function runConnect(
   credentials: CredentialStore,
   fetchImpl?: typeof fetch,
 ): Promise<ConnectResult | undefined> {
+  const saved = await credentials.list();
+  const menu = buildConnectMenu(saved);
+
   process.stdout.write("\nPilih provider:\n");
-  MENU.forEach((item, i) => process.stdout.write(`  ${i + 1}) ${item.label}\n`));
+  menu.forEach((item, i) => process.stdout.write(`  ${i + 1}) ${item.label}\n`));
   const choice = (await prompter.question("Nomor provider: ")).trim();
   const index = Number.parseInt(choice, 10) - 1;
-  const selected = MENU[index];
+  const selected = menu[index];
   if (!selected) {
     process.stdout.write("Pilihan tidak valid.\n");
     return undefined;
@@ -31,6 +71,14 @@ export async function runConnect(
 
   if (selected.key === "custom") {
     return connectCustom(prompter, credentials, fetchImpl);
+  }
+
+  // Provider yang sudah tersimpan dipakai ulang tanpa menanyakan ulang kunci.
+  if (saved.includes(selected.key)) {
+    const provider = await createProvider(selected.key, credentials, fetchImpl);
+    if (!provider) return undefined;
+    process.stdout.write(`Memakai ${selected.key} yang tersimpan.\n`);
+    return { providerKey: selected.key, provider };
   }
 
   const apiKey = (await prompter.question(`API key ${selected.label}: `)).trim();

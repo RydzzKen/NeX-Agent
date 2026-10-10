@@ -1,4 +1,5 @@
 import path from "node:path";
+import fs from "node:fs/promises";
 import type { Mode, ModelInfo, StopReason } from "../core/types.js";
 import { AgentSession } from "../core/loop.js";
 import { Approvals } from "../core/approvals.js";
@@ -7,7 +8,7 @@ import { ContextManager } from "../core/context.js";
 import { TodoStore } from "../core/todos.js";
 import type { AgentIO } from "../core/io.js";
 import type { ModelProvider } from "../providers/provider.js";
-import { createProvider } from "../providers/factory.js";
+import { CUSTOM_PROVIDER_PREFIX, createProvider } from "../providers/factory.js";
 import { ToolRegistry } from "../tools/registry.js";
 import { createPathResolver } from "../safety/policy.js";
 import { PermissionManager } from "../safety/permissions.js";
@@ -35,7 +36,7 @@ import { color } from "../util/color.js";
 import { firstNonEmpty } from "../util/strings.js";
 import { todoHeader, todoLines } from "../util/todos.js";
 import { renderCrossSession, renderUsage } from "./usage.js";
-import { runConnect } from "./connect.js";
+import { runConnect, describeProvider, defaultBaseURL } from "./connect.js";
 import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice } from "./models.js";
 import { TerminalIO } from "./render.js";
 import { Prompter, PROMPT_EOF } from "./prompt.js";
@@ -79,16 +80,17 @@ interface ResolvedModel {
 }
 
 const SLASH_HELP: Array<[string, string]> = [
-  ["/connect", "hubungkan provider"],
+  ["/connect", "hubungkan provider (yang tersimpan bisa dipakai ulang)"],
+  ["/provider [use|edit|hapus <nama>]", "kelola provider tersimpan"],
   ["/models [nomor|0|nama]", "lihat/ganti model (0 = custom)"],
   ["/plan", "pindah ke mode Plan (read-only)"],
   ["/build", "pindah ke mode Build (eksekusi)"],
-  ["/sessions", "daftar sesi"],
+  ["/sessions [clear]", "daftar sesi / hapus semua sesi workspace ini"],
   ["/resume <n>", "lanjut sesi ke-n (atau /resume <id>)"],
   ["/new", "mulai sesi baru"],
   ["/clear", "bersihkan riwayat sesi ini"],
   ["/rename <judul>", "ganti judul sesi"],
-  ["/delete", "hapus sesi ini"],
+  ["/delete [all]", "hapus sesi ini (all = semua sesi workspace)"],
   ["/undo [n]", "batalkan perubahan file (ke sebelum langkah n)"],
   ["/usage [today|week|all|<id>]", "pemakaian token & biaya"],
   ["/permissions [revoke <path>]", "lihat/cabut izin luar workspace"],
@@ -158,7 +160,10 @@ export class ChatApp {
     const config = await loadConfig();
     const credentials = new CredentialStore();
     const logger = new JsonlLogger(path.join(logsDir(), "agent.jsonl"), { debug: Boolean(opts.debug) });
-    const prompter = new Prompter();
+    const prompter = new Prompter({
+      commands: SLASH_HELP.map(([usage]) => usage.split(/\s+/)[0]!),
+      cwd: workspace.root,
+    });
     const io = new TerminalIO(prompter, {
       thinking: opts.thinking !== false,
       json: Boolean(opts.json),
@@ -501,11 +506,14 @@ export class ChatApp {
       case "/connect":
         await this.commandConnect();
         return "continue";
+      case "/provider":
+        await this.commandProvider(args);
+        return "continue";
       case "/models":
         await this.commandModels(args[0]);
         return "continue";
       case "/sessions":
-        await this.commandSessions();
+        await this.commandSessions(args[0]);
         return "continue";
       case "/resume":
         await this.commandResume(args[0]);
@@ -522,7 +530,8 @@ export class ChatApp {
         await this.commandRename(args.join(" "));
         return "continue";
       case "/delete":
-        await this.commandDelete();
+        if (args[0] === "all") await this.clearSessions();
+        else await this.commandDelete();
         return "continue";
       case "/undo":
         await this.commandUndo(args[0]);
@@ -607,6 +616,135 @@ export class ChatApp {
     this.io.info(`Terhubung ke ${result.providerKey} / ${model.id}.`);
   }
 
+  /**
+   * Kelola provider tersimpan: tampilkan daftar, aktifkan, edit, atau hapus.
+   * Nilai API key tidak pernah ditampilkan (hanya status ada/tidak).
+   */
+  private async commandProvider(args: string[]): Promise<void> {
+    const sub = args[0];
+    const name = args[1];
+
+    if (!sub) {
+      await this.listProviders();
+      return;
+    }
+
+    if (sub === "use" || sub === "pakai") {
+      if (!name) {
+        this.io.warn("Pakai: /provider use <nama>.");
+        return;
+      }
+      const provider = await createProvider(name, this.credentials);
+      if (!provider) {
+        this.io.warn(`Provider tidak dikenal atau belum tersimpan: ${name}. Lihat /provider.`);
+        return;
+      }
+      this.provider = provider;
+      this.providerKey = name;
+      this.config = await saveConfig({ defaultProvider: name });
+      const model = await this.resolveModel(this.provider, undefined);
+      if (!model) {
+        this.io.warn("Tidak ada model terpilih.");
+        return;
+      }
+      this.session.setProvider(this.provider, name);
+      this.session.setModel(model.id, model.info);
+      this.record.providerId = name;
+      this.record.model = model.id;
+      await rememberModel(this.workspace.root, model.id);
+      this.io.info(`Provider aktif: ${name} / ${model.id}.`);
+      return;
+    }
+
+    if (sub === "edit") {
+      if (!name) {
+        this.io.warn("Pakai: /provider edit <nama>.");
+        return;
+      }
+      await this.editProvider(name);
+      return;
+    }
+
+    if (sub === "hapus" || sub === "delete" || sub === "rm") {
+      if (!name) {
+        this.io.warn("Pakai: /provider hapus <nama>.");
+        return;
+      }
+      const deleted = await this.credentials.delete(name);
+      if (!deleted) {
+        this.io.warn(`Tidak ada provider tersimpan bernama ${name}.`);
+        return;
+      }
+      if (this.config.defaultProvider === name) {
+        this.config = await saveConfig({ defaultProvider: undefined });
+      }
+      const active = name === this.providerKey ? " (masih aktif sampai sesi ini berakhir)" : "";
+      this.io.info(`Provider ${name} dihapus${active}.`);
+      return;
+    }
+
+    this.io.warn(`Argumen tidak dikenal: ${sub}. Pakai /provider [use|edit|hapus <nama>].`);
+  }
+
+  private async listProviders(): Promise<void> {
+    const keys = (await this.credentials.list()).sort();
+    if (keys.length === 0) {
+      this.io.info("Belum ada provider tersimpan. Jalankan /connect untuk menambahkan.");
+      return;
+    }
+    process.stdout.write("\nProvider tersimpan:\n");
+    for (const key of keys) {
+      const creds = await this.credentials.get(key);
+      process.stdout.write(
+        `  ${describeProvider({
+          key,
+          baseURL: creds?.baseURL ?? defaultBaseURL(key) ?? "",
+          hasApiKey: Boolean(creds?.apiKey),
+          active: key === this.providerKey,
+          isDefault: this.config.defaultProvider === key,
+        })}\n`,
+      );
+    }
+    process.stdout.write(
+      "\n  (* = aktif)  /provider use <nama> · /provider edit <nama> · /provider hapus <nama>\n\n",
+    );
+  }
+
+  private async editProvider(name: string): Promise<void> {
+    const creds = await this.credentials.get(name);
+    if (!creds) {
+      this.io.warn(`Tidak ada provider tersimpan bernama ${name}. Lihat /provider.`);
+      return;
+    }
+    const baseDefault = creds.baseURL ?? defaultBaseURL(name) ?? "";
+    const baseAnswer = (
+      await this.prompter.question(`Base URL [${baseDefault}]: `)
+    ).trim();
+    const baseURL = baseAnswer || baseDefault;
+
+    const keyAnswer = await this.prompter.secretQuestion("API key baru (kosongkan untuk tetap): ");
+    const keepKey = keyAnswer === PROMPT_EOF || !keyAnswer.trim();
+    const apiKey = keepKey ? creds.apiKey : keyAnswer.trim();
+
+    const next = {
+      ...(baseURL ? { baseURL } : {}),
+      ...(apiKey ? { apiKey } : {}),
+    };
+    await this.credentials.set(name, next);
+
+    // Bila provider ini sedang aktif, pakai konfigurasi baru langsung.
+    const isActive = name === this.providerKey;
+    if (isActive) {
+      const provider = await createProvider(name, this.credentials);
+      if (provider) {
+        this.provider = provider;
+        this.session.setProvider(provider, name);
+      }
+    }
+    const tail = name.startsWith(CUSTOM_PROVIDER_PREFIX) ? "" : " (base URL hanya berlaku bila adapter mendukung)";
+    this.io.info(`Provider ${name} diperbarui${isActive ? " dan diterapkan" : ""}${tail}.`);
+  }
+
   private async commandModels(arg?: string): Promise<void> {
     let models: ModelInfo[] = [];
     try {
@@ -650,7 +788,11 @@ export class ChatApp {
     this.io.info(`Model diganti ke ${this.providerKey} / ${model.id}.`);
   }
 
-  private async commandSessions(): Promise<void> {
+  private async commandSessions(arg?: string): Promise<void> {
+    if (arg === "clear" || arg === "hapus" || arg === "bersihkan") {
+      await this.clearSessions();
+      return;
+    }
     const sessions = await this.store.listForWorkspace(this.workspace.root);
     if (sessions.length === 0) {
       this.io.info("Belum ada sesi untuk workspace ini.");
@@ -663,7 +805,32 @@ export class ChatApp {
         `  ${active} ${String(i + 1).padStart(2)}) ${s.updatedAt.slice(0, 16).replace("T", " ")}  ${(s.model || "-").padEnd(20)}  ${s.title}\n`,
       );
     });
-    process.stdout.write("\n  Gunakan /resume <nomor> untuk melanjutkan sesi.\n\n");
+    process.stdout.write("\n  Gunakan /resume <nomor> untuk melanjutkan sesi.\n");
+    process.stdout.write("  /sessions clear (atau /delete all) untuk menghapus semua sesi workspace ini.\n\n");
+  }
+
+  /** Hapus semua sesi workspace ini (termasuk checkpoint-nya) setelah konfirmasi. */
+  private async clearSessions(): Promise<void> {
+    const sessions = await this.store.listForWorkspace(this.workspace.root);
+    if (sessions.length === 0) {
+      this.io.info("Belum ada sesi untuk workspace ini.");
+      return;
+    }
+    const answer = (
+      await this.prompter.question(`Hapus ${sessions.length} sesi workspace ini? (y/N): `)
+    )
+      .trim()
+      .toLowerCase();
+    if (answer !== "y" && answer !== "ya") {
+      this.io.info("Dibatalkan.");
+      return;
+    }
+    const removed = await this.store.deleteMany(sessions.map((s) => s.id));
+    for (const s of sessions) {
+      await fs.rm(path.join(sessionsDir(), s.id), { recursive: true, force: true }).catch(() => undefined);
+    }
+    this.io.info(`${removed} sesi dihapus.`);
+    await this.commandNew();
   }
 
   /** Lanjutkan sesi berdasarkan nomor (urutan /sessions) atau id. */

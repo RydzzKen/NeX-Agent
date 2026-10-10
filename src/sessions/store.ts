@@ -105,4 +105,13 @@ export class SessionStore {
       return false;
     }
   }
+
+  /** Hapus banyak sesi; kembalikan jumlah yang benar-benar terhapus. */
+  async deleteMany(ids: string[]): Promise<number> {
+    let removed = 0;
+    for (const id of ids) {
+      if (await this.delete(id)) removed++;
+    }
+    return removed;
+  }
 }

@@ -66,6 +66,17 @@ describe("SessionStore", () => {
     expect(list.map((r) => r.id)).toEqual(["b", "c", "a"]);
     expect((await store.lastForWorkspace("/ws"))?.id).toBe("b");
   });
+
+  it("deleteMany menghapus beberapa sesi dan mengembalikan jumlah yang terhapus", async () => {
+    const store = new SessionStore(dir);
+    await store.save(record("a", "/ws", "2026-01-01T00:00:00.000Z"));
+    await store.save(record("b", "/ws", "2026-01-02T00:00:00.000Z"));
+
+    const removed = await store.deleteMany(["a", "tidak-ada"]);
+    expect(removed).toBe(1);
+    expect(await store.load("a")).toBeUndefined();
+    expect(await store.load("b")).toBeDefined();
+  });
 });
 
 describe("selectSession", () => {

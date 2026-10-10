@@ -1,4 +1,5 @@
 import readline from "node:readline";
+import { completeLine } from "./complete.js";
 
 /** Nilai yang dikembalikan saat input ditutup (Ctrl+D / EOF). */
 export const PROMPT_EOF = "\u0004";
@@ -10,14 +11,31 @@ export interface PrompterLike {
   resume?: () => void;
 }
 
+export interface PrompterOptions {
+  /** Perintah slash untuk autocomplete token pertama. */
+  commands?: string[];
+  /** Direktori dasar untuk autocomplete path. */
+  cwd?: string;
+}
+
 /** Pembungkus readline tunggal untuk seluruh sesi CLI. */
 export class Prompter implements PrompterLike {
   private readonly rl: readline.Interface;
+  private readonly commands: string[];
+  private readonly cwd: string;
   private closed = false;
+  private completing = true;
   private pending: ((answer: string) => void) | undefined;
 
-  constructor() {
-    this.rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  constructor(options: PrompterOptions = {}) {
+    this.commands = options.commands ?? [];
+    this.cwd = options.cwd ?? process.cwd();
+    this.rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      completer: (line: string): [string[], string] =>
+        this.completing ? completeLine(line, this.commands, this.cwd) : [[], line],
+    });
     this.rl.on("close", () => {
       this.closed = true;
       this.pending?.(PROMPT_EOF);
@@ -52,9 +70,11 @@ export class Prompter implements PrompterLike {
     rl._writeToOutput = (text: string): void => {
       if (text === query || text === "\n" || text === "\r\n") bound(text);
     };
+    this.completing = false;
     try {
       return await this.question(query);
     } finally {
+      this.completing = true;
       rl._writeToOutput = original;
     }
   }
