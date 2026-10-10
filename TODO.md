@@ -20,6 +20,7 @@ Terakhir diperbarui: mulai fitur Web (chat + terminal browser).
 - [x] **Instal skill eksternal** lewat `run_shell` (mis. `git clone`, `npx skillui`) — didokumentasikan di README
 - [x] Contoh skill bawaan: `skills/coding-skill.md` (`design-taste-frontend`)
 - [x] **Mode Web** (`nex-agent serve`): chat browser + terminal PTY nyata, token wajib, sesi persisten
+- [x] `/serve [stop]` di dalam sesi chat (nyalakan/hentikan web tanpa keluar)
 
 ## Web (chat + terminal di browser)  ← selesai
 

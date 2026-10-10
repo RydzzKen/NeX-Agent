@@ -106,11 +106,14 @@ Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 `/connect` · `/models [nomor|0|nama]` · `/plan` · `/build` · `/sessions` ·
 `/resume <n>` · `/new` · `/clear` · `/rename` · `/delete` · `/undo [n]` ·
 `/usage` · `/permissions` · `/allow-all [on|off]` · `/thinking` · `/markdown` ·
-`/skills` · `/skill <nama>|off` · `/todos` · `/exit` · `/help`.
+`/skills` · `/skill <nama>|off` · `/todos` · `/serve [stop]` · `/exit` · `/help`.
 
 `/sessions` menampilkan sesi bernomor (judul diambil otomatis dari pesan
 pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/allow-all` menyalakan
-mode izinkan-semua tanpa keluar dari sesi. `/exit` (atau Ctrl+D) keluar dari chat.
+mode izinkan-semua tanpa keluar dari sesi. `/serve` menyalakan server web
+(chat + terminal) di dalam sesi yang sedang berjalan, memakai workspace, model,
+provider, dan mode aktif; `/serve stop` mematikannya. `/exit` (atau Ctrl+D)
+keluar dari chat (server web ikut berhenti).
 
 `/models` menampilkan daftar model bernomor dengan opsi `0) Custom model`.
 Ganti model dengan `/models 2`, `/models 0` (lalu ketik nama model manual),
@@ -131,6 +134,10 @@ nex-agent serve --host 0.0.0.0  # akses dari LAN (lihat peringatan)
 `serve` menjalankan server HTTP + WebSocket yang menyajikan antarmuka web:
 **tab Chat** (streaming jawaban, thinking, langkah tool, diff, todo, tombol
 persetujuan) dan **tab Terminal** (shell interaktif nyata lewat `xterm.js`).
+
+Bisa juga dinyalakan **dari dalam sesi chat** tanpa keluar: ketik `/serve`
+(menyalakan, memakai workspace/model/provider/mode aktif) dan `/serve stop`
+(atau `/exit`) untuk mematikannya. Server web ikut mati saat sesi chat ditutup.
 
 - **Keamanan** — server hanya mendengarkan `127.0.0.1` dan mewajibkan **token**
   acak (dibuat otomatis, dicetak di URL sebagai fragmen `#t=…`; token tidak
