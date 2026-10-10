@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: sesi plugin (commit `2ac1fee`).
+Terakhir diperbarui: sesi skill fleksibel (setelah commit `2ac1fee`).
 
 ## Selesai
 
@@ -15,6 +15,10 @@ Terakhir diperbarui: sesi plugin (commit `2ac1fee`).
 - [x] Installer `curl` global (`nex-agent`/`agent`), Node auto-install, dukungan Termux, penanganan pnpm 12
 - [x] Renderer Markdown ANSI (`/markdown`, `--no-markdown`) — commit `4143e07`
 - [x] **Skill loader** (SKILL.md, progressive disclosure, tool `skill`, `/skills`, `/skill`) — commit `2ac1fee`
+- [x] Format file skill fleksibel: `SKILL.md`/`skill.md` (tanpa peduli huruf besar-kecil), `skills/<nama>.md` datar, atau satu berkas `.md` di folder skill
+- [x] Agent bisa **membuat skill sendiri**: tulis `skills/<nama>/SKILL.md` lewat `write_file` (diarahkan di system prompt; tetap butuh konfirmasi)
+- [x] **Instal skill eksternal** lewat `run_shell` (mis. `git clone`, `npx skillui`) — didokumentasikan di README
+- [x] Contoh skill bawaan: `skills/coding-skill.md` (`design-taste-frontend`)
 
 ## Rencana plugin
 

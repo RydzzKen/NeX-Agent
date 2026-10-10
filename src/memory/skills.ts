@@ -84,7 +84,35 @@ function firstMeaningfulLine(body: string): string {
   return "";
 }
 
-async function readSkillFile(file: string): Promise<Skill | undefined> {
+function stripMd(name: string): string {
+  return name.replace(/\.md$/i, "");
+}
+
+/** Dokumen utama skill: `SKILL.md` / `skill.md` (tanpa peduli huruf besar-kecil). */
+function isSkillDoc(name: string): boolean {
+  return /^skill\.md$/i.test(name);
+}
+
+/**
+ * Cari dokumen skill di dalam folder. Prioritas: `SKILL.md`/`skill.md`, lalu
+ * satu-satunya berkas `.md` (mis. `coding-skill.md`).
+ */
+async function findSkillDoc(dir: string): Promise<string | undefined> {
+  let entries: Array<{ name: string; isFile: () => boolean }>;
+  try {
+    entries = await fs.readdir(dir, { withFileTypes: true });
+  } catch {
+    return undefined;
+  }
+  const files = entries.filter((entry) => entry.isFile());
+  const preferred = files.find((entry) => isSkillDoc(entry.name));
+  if (preferred) return path.join(dir, preferred.name);
+  const markdown = files.filter((entry) => entry.name.toLowerCase().endsWith(".md"));
+  if (markdown.length === 1) return path.join(dir, markdown[0]!.name);
+  return undefined;
+}
+
+async function readSkillFile(file: string, fallbackName: string): Promise<Skill | undefined> {
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
@@ -93,18 +121,10 @@ async function readSkillFile(file: string): Promise<Skill | undefined> {
   }
   const dir = path.dirname(file);
   const { data, body } = parseFrontmatter(raw);
-  const name = (data.name ?? path.basename(dir)).trim();
+  const name = (data.name ?? fallbackName).trim();
   if (!name) return undefined;
   const description = (data.description ?? firstMeaningfulLine(body)).trim();
   return { name, description, path: file, dir, body: body.trim() };
-}
-
-async function listDir(dir: string): Promise<string[]> {
-  try {
-    return await fs.readdir(dir);
-  } catch {
-    return [];
-  }
 }
 
 /**
@@ -119,9 +139,28 @@ export async function discoverSkills(opts: SkillLoadOptions): Promise<Skill[]> {
   ];
 
   const byName = new Map<string, Skill>();
-  for (const dir of dirs) {
-    for (const entry of await listDir(dir)) {
-      const skill = await readSkillFile(path.join(dir, entry, "SKILL.md"));
+  for (const base of dirs) {
+    let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }>;
+    try {
+      entries = await fs.readdir(base, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(base, entry.name);
+      let file: string | undefined;
+      let fallbackName: string;
+      if (entry.isDirectory()) {
+        file = await findSkillDoc(full);
+        fallbackName = entry.name;
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+        file = full;
+        fallbackName = stripMd(entry.name);
+      } else {
+        continue;
+      }
+      if (!file) continue;
+      const skill = await readSkillFile(file, fallbackName);
       if (skill) byName.set(skill.name, skill);
     }
   }

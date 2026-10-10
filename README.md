@@ -174,15 +174,31 @@ Lokasi yang dipindai (yang belakangan menimpa jika namanya sama):
 <workspace>/.nex-agent/skills/<nama>/SKILL.md
 ```
 
+Format berkas yang diterima (huruf besar-kecil tidak masalah):
+
+```
+skills/<nama>/SKILL.md    skills/<nama>/skill.md    skills/<nama>.md    skills/<nama>/*.md
+```
+
 Cara kerjanya **progressive disclosure**:
 
 - **Otomatis** — hanya `name` + `description` yang masuk system prompt (murah).
   Saat tugas cocok, model memanggil tool `skill` untuk memuat instruksi lengkap.
 - **Manual** — `/skills` untuk daftar, `/skill <nama>` untuk memaksa sebuah
   skill aktif sepanjang sesi, `/skill off` untuk melepas semuanya.
-- Matikan total dengan `/skills` (lihat status) atau `nex-agent --no-skills`
-  serta `"skills": false` di `config.json`. Tool `skill` bersifat read-only,
-  jadi tetap tersedia di mode Plan.
+- Matikan total dengan `nex-agent --no-skills` atau `"skills": false` di
+  `config.json`. Tool `skill` bersifat read-only, jadi tetap aman di mode Plan.
+
+### Agent bisa membuat & memasang skill sendiri
+
+- **Membuat skill baru** — minta agent menyimpan sebuah prosedur, lalu ia menulis
+  `skills/<nama>/SKILL.md` via `write_file` (tetap butuh konfirmasi + diff).
+- **Memasang skill eksternal** — minta agent menjalankan, mis.:
+  ```bash
+  git clone <repo-skill>   # lalu letakkan foldernya di skills/
+  npx skillui --url https://contoh.com --out-dir skills/desain
+  ```
+  Keduanya lewat `run_shell` sehingga tetap melalui persetujuan.
 
 Contoh `skills/ringkas/SKILL.md`:
 

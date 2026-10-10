@@ -129,6 +129,7 @@ export class ChatApp {
   private readonly registry = new ToolRegistry();
   private skills: Skill[] = [];
   private activeSkills: Skill[] = [];
+  private skillsEnabled = false;
   private baseSystemPrompt = "";
 
   private constructor(
@@ -206,7 +207,8 @@ export class ChatApp {
     const sessionDir = path.join(sessionsDir(), this.record.id);
     this.checkpoints = await CheckpointManager.load(sessionDir, this.logger);
 
-    if (this.opts.skills ?? this.config.skills ?? true) {
+    this.skillsEnabled = this.opts.skills ?? this.config.skills ?? true;
+    if (this.skillsEnabled) {
       this.skills = await discoverSkills({
         workspaceRoot: this.workspace.root,
         globalConfigDir: configDir(),
@@ -307,17 +309,26 @@ export class ChatApp {
       workspaceRoot: this.workspace.root,
       globalConfigDir: configDir(),
     });
-    const header = [
-      "Kamu adalah agent CLI untuk rekayasa perangkat lunak, berjalan di terminal.",
-      `Workspace: ${this.workspace.root}`,
-      "",
-      "Aturan:",
+    const rules = [
       "- Selalu jawab setiap tool call dengan memanggil tool; jangan mengarang hasil.",
       "- Di mode Plan kamu hanya boleh membaca; jangan menulis file.",
       "- Buat perubahan kecil dan terarah; jangan mengubah file di luar tugas.",
       "- Perubahan file memerlukan persetujuan dan menampilkan diff; jelaskan alasan singkat.",
       "- Untuk tugas berlapis, pakai tool todo_write untuk mencatat rencana sebagai checklist, lalu perbarui statusnya (pending/in_progress/completed) seiring kemajuan.",
       "- Jangan pernah menulis kredensial ke file atau output.",
+    ];
+    if (this.skillsEnabled) {
+      rules.push(
+        "- Muat instruksi skill lewat tool `skill` saat tugas cocok dengan skill yang terdaftar.",
+        "- Bila pengguna meminta, kamu boleh membuat skill baru dengan menulis `skills/<nama>/SKILL.md` (frontmatter `name` + `description`). Perubahan file tetap butuh konfirmasi.",
+      );
+    }
+    const header = [
+      "Kamu adalah agent CLI untuk rekayasa perangkat lunak, berjalan di terminal.",
+      `Workspace: ${this.workspace.root}`,
+      "",
+      "Aturan:",
+      ...rules,
     ].join("\n");
     const base = memory.content ? `${header}\n\n# Konteks proyek (AGENTS.md)\n${memory.content}` : header;
     const skillsSection = formatSkillsForPrompt(this.skills);

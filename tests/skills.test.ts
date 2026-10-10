@@ -80,6 +80,38 @@ describe("discoverSkills", () => {
     const skills = await discoverSkills({ workspaceRoot: root, globalConfigDir: globalDir });
     expect(skills.map((s) => s.name)).toEqual(["alpha", "zeta"]);
   });
+
+  it("mendukung nama berkas skill.md huruf kecil", async () => {
+    const dir = path.join(root, "skills", "lower");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(
+      path.join(dir, "skill.md"),
+      "---\nname: lower\ndescription: huruf kecil\n---\nbody\n",
+      "utf8",
+    );
+    const skills = await discoverSkills({ workspaceRoot: root, globalConfigDir: globalDir });
+    expect(skills.find((s) => s.name === "lower")?.description).toBe("huruf kecil");
+  });
+
+  it("membaca berkas datar skills/<nama>.md", async () => {
+    await fs.mkdir(path.join(root, "skills"), { recursive: true });
+    await fs.writeFile(
+      path.join(root, "skills", "coding-skill.md"),
+      "---\nname: coding\ndescription: dari berkas datar\n---\nbody\n",
+      "utf8",
+    );
+    const skills = await discoverSkills({ workspaceRoot: root, globalConfigDir: globalDir });
+    expect(skills.find((s) => s.name === "coding")?.description).toBe("dari berkas datar");
+  });
+
+  it("memakai nama folder untuk satu berkas .md non-standar", async () => {
+    const dir = path.join(root, "skills", "custom");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "coding-skill.md"), "Isi tanpa frontmatter\n", "utf8");
+    const skills = await discoverSkills({ workspaceRoot: root, globalConfigDir: globalDir });
+    const skill = skills.find((s) => s.name === "custom");
+    expect(skill?.description).toBe("Isi tanpa frontmatter");
+  });
 });
 
 describe("formatSkillsForPrompt", () => {
