@@ -112,6 +112,16 @@ async function findSkillDoc(dir: string): Promise<string | undefined> {
   return undefined;
 }
 
+/** Jenis entri setelah mengikuti symlink; `undefined` bila path tidak ada/putus. */
+async function kindOf(full: string): Promise<{ directory: boolean; file: boolean } | undefined> {
+  try {
+    const stat = await fs.stat(full);
+    return { directory: stat.isDirectory(), file: stat.isFile() };
+  } catch {
+    return undefined;
+  }
+}
+
 async function readSkillFile(file: string, fallbackName: string): Promise<Skill | undefined> {
   let raw: string;
   try {
@@ -148,12 +158,14 @@ export async function discoverSkills(opts: SkillLoadOptions): Promise<Skill[]> {
     }
     for (const entry of entries) {
       const full = path.join(base, entry.name);
+      const kind = await kindOf(full);
+      if (!kind) continue;
       let file: string | undefined;
       let fallbackName: string;
-      if (entry.isDirectory()) {
+      if (kind.directory) {
         file = await findSkillDoc(full);
         fallbackName = entry.name;
-      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+      } else if (kind.file && entry.name.toLowerCase().endsWith(".md")) {
         file = full;
         fallbackName = stripMd(entry.name);
       } else {
