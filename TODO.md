@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: sesi skill fleksibel (setelah commit `2ac1fee`).
+Terakhir diperbarui: mulai fitur Web (chat + terminal browser).
 
 ## Selesai
 
@@ -19,6 +19,24 @@ Terakhir diperbarui: sesi skill fleksibel (setelah commit `2ac1fee`).
 - [x] Agent bisa **membuat skill sendiri**: tulis `skills/<nama>/SKILL.md` lewat `write_file` (diarahkan di system prompt; tetap butuh konfirmasi)
 - [x] **Instal skill eksternal** lewat `run_shell` (mis. `git clone`, `npx skillui`) — didokumentasikan di README
 - [x] Contoh skill bawaan: `skills/coding-skill.md` (`design-taste-frontend`)
+- [x] **Mode Web** (`nex-agent serve`): chat browser + terminal PTY nyata, token wajib, sesi persisten
+
+## Web (chat + terminal di browser)  ← selesai
+
+Keputusan: terminal = **shell bebas** (`$SHELL -i`) via PTY, **persisten selama server hidup**;
+frontend vanilla JS + `xterm.js` (aset di-`copy` ke `dist/web`, tanpa bundler); transport WebSocket (`ws`).
+
+- [x] Ekstrak `buildSystemPrompt` bersama (`src/memory/system_prompt.ts`)
+- [x] `src/server/protocol.ts` (skema Zod pesan WS) + tes
+- [x] `src/server/auth.ts` (token, timing-safe) + tes
+- [x] `src/server/webio.ts` (approval/path/sensitive via WS) + tes
+- [x] `src/server/terminal.ts` (PTY via `script`, fallback pipe) + tes
+- [x] `src/server/webapp.ts` (orkestrasi sesi web)
+- [x] `src/server/server.ts` (HTTP + WS, REST sesi, static) + tes
+- [x] `web/` SPA (chat: daftar sesi, streaming, approval, markdown ringan)
+- [x] Tab terminal `xterm.js` + `addon-fit`
+- [x] `nex-agent serve` + config `webHost`/`webPort` + README
+- [~] `node-pty` sebagai backend PTY opsional (fallback `script` sudah memadai)
 
 ## Rencana plugin
 
@@ -37,7 +55,7 @@ Terakhir diperbarui: sesi skill fleksibel (setelah commit `2ac1fee`).
 - [ ] **Context7** (`@upstash/context7-mcp`) — dokumen library terbaru. Prioritas tertinggi, read-only, aman di Termux
 - [ ] **Supabase** (`@supabase/mcp-server-supabase`) — read-only default; mutasi DB lewat konfirmasi; token di CredentialStore
 - [ ] **Playwright** (`@playwright/mcp`) — E2E/inspeksi UI. Berat (unduh browser); kemungkinan **tidak jalan di Termux**
-- [ ] **Strix** (skill + tool `run_strix` opsional) — butuh Docker, opt-in, target harus disetujui. **Tidak untuk Termux**
+- [ ] **Strix** (skill + tool `run_strix` opsional) — butuh Docker, **default NONAKTIF**, hanya aktif lewat `plugins.json` (`enabled: true`) atau `--enable strix`; target harus disetujui. **Tidak untuk Termux**
 - [ ] **SkillUI** (`npx skillui`) — sudah didukung lewat Skill loader; tambah tool pembungkus opsional
 
 ### Lain-lain

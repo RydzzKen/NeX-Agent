@@ -12,8 +12,8 @@ import { ToolRegistry } from "../tools/registry.js";
 import { createPathResolver } from "../safety/policy.js";
 import { PermissionManager } from "../safety/permissions.js";
 import { createWorkspace, type Workspace } from "../safety/workspace.js";
-import { loadAgentsMd } from "../memory/agents_md.js";
-import { discoverSkills, formatSkillsForPrompt, type Skill } from "../memory/skills.js";
+import { discoverSkills, type Skill } from "../memory/skills.js";
+import { buildSystemPrompt } from "../memory/system_prompt.js";
 import { CredentialStore } from "../config/credentials.js";
 import {
   configDir,
@@ -305,34 +305,12 @@ export class ChatApp {
   }
 
   private async buildSystemPrompt(): Promise<string> {
-    const memory = await loadAgentsMd({
+    this.baseSystemPrompt = await buildSystemPrompt({
       workspaceRoot: this.workspace.root,
       globalConfigDir: configDir(),
+      skills: this.skills,
+      skillsEnabled: this.skillsEnabled,
     });
-    const rules = [
-      "- Selalu jawab setiap tool call dengan memanggil tool; jangan mengarang hasil.",
-      "- Di mode Plan kamu hanya boleh membaca; jangan menulis file.",
-      "- Buat perubahan kecil dan terarah; jangan mengubah file di luar tugas.",
-      "- Perubahan file memerlukan persetujuan dan menampilkan diff; jelaskan alasan singkat.",
-      "- Untuk tugas berlapis, pakai tool todo_write untuk mencatat rencana sebagai checklist, lalu perbarui statusnya (pending/in_progress/completed) seiring kemajuan.",
-      "- Jangan pernah menulis kredensial ke file atau output.",
-    ];
-    if (this.skillsEnabled) {
-      rules.push(
-        "- Muat instruksi skill lewat tool `skill` saat tugas cocok dengan skill yang terdaftar.",
-        "- Bila pengguna meminta, kamu boleh membuat skill baru dengan menulis `skills/<nama>/SKILL.md` (frontmatter `name` + `description`). Perubahan file tetap butuh konfirmasi.",
-      );
-    }
-    const header = [
-      "Kamu adalah agent CLI untuk rekayasa perangkat lunak, berjalan di terminal.",
-      `Workspace: ${this.workspace.root}`,
-      "",
-      "Aturan:",
-      ...rules,
-    ].join("\n");
-    const base = memory.content ? `${header}\n\n# Konteks proyek (AGENTS.md)\n${memory.content}` : header;
-    const skillsSection = formatSkillsForPrompt(this.skills);
-    this.baseSystemPrompt = skillsSection ? `${base}\n\n${skillsSection}` : base;
     return this.baseSystemPrompt;
   }
 
