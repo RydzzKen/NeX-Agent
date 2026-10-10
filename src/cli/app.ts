@@ -408,10 +408,12 @@ export class ChatApp {
     const controller = new AbortController();
     const cleanup = this.installInterrupt(controller);
     let code: number;
+    this.io.busy(true);
     try {
       const result = await this.session.run(goal, controller.signal);
       code = exitCodeFor(result.stopReason);
     } finally {
+      this.io.busy(false);
       cleanup();
       await this.saveRecord();
       await this.close();
@@ -436,9 +438,11 @@ export class ChatApp {
       }
       const controller = new AbortController();
       const cleanup = this.installInterrupt(controller);
+      this.io.busy(true);
       try {
         await this.session.run(line, controller.signal);
       } finally {
+        this.io.busy(false);
         cleanup();
         await this.saveRecord();
       }

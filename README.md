@@ -94,6 +94,11 @@ nex-agent serve               # buka chat + terminal di browser
 (termasuk akses luar workspace). Mode Plan tetap read-only karena aturan itu
 ditegakkan di kode, bukan lewat prompt.
 
+**Indikator bekerja.** Selama agen memproses, terminal menampilkan spinner
+`⠋ sedang bekerja… <detik>` (hanya di TTY, redup saat menunggu jawaban
+konfirmasi). Spinner hilang begitu ada keluaran atau giliran selesai, jadi
+Anda tahu kapan agen masih mengerjakan sesuatu dan kapan sudah berhenti.
+
 **File sensitif tetap dilindungi.** Terlepas dari `--allow-all`/`--yes`, akses
 ke `.env`, kredensial (`.npmrc`, `.git-credentials`, `credentials.json`),
 private key (`id_rsa`, `*.pem`, `*.key`), dan folder `.ssh`/`.aws`/`.gnupg`
@@ -155,6 +160,10 @@ mati saat sesi chat ditutup.
   bila `script` tidak ada.
 - **Sesi** — sidebar menampilkan semua sesi. Klik untuk membuka, `✕` untuk
   menghapus; membuka sesi dari workspace lain otomatis berpindah workspace.
+- **Indikator status** — pill di bilah atas menunjukkan **siap** (hijau),
+  **bekerja…** (biru, titik berdenyut), atau **terputus** (merah). Saat agen
+  bekerja muncul indikator "sedang mengerjakan…" di percakapan dan judul tab
+  diberi tanda `●`; tombol Kirim nonaktif diganti tombol Stop.
 - **Responsif** — tata letak menyesuaikan desktop & ponsel: di layar sempit
   sidebar menjadi *drawer* yang dibuka lewat tombol menu, input 16px (mencegah
   zoom iOS), dan terminal otomatis menyesuaikan ukuran saat keyboard muncul.

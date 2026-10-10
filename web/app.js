@@ -14,6 +14,7 @@
   const terminalEl = $("terminal");
   const backdropEl = $("backdrop");
   const sidebarToggle = $("sidebar-toggle");
+  const statusEl = $("status");
 
   // ---- token ----
   function readToken() {
@@ -149,6 +150,36 @@
     if (el) el.remove();
   }
 
+  let workingEl = null;
+
+  function showWorking() {
+    clearEmpty();
+    if (workingEl) {
+      messagesEl.appendChild(workingEl);
+      scrollDown();
+      return;
+    }
+    const el = document.createElement("div");
+    el.className = "working";
+    el.innerHTML =
+      '<span class="wdot"></span><span class="wdot"></span><span class="wdot"></span>' +
+      '<span class="wlabel">sedang mengerjakan…</span>';
+    messagesEl.appendChild(el);
+    workingEl = el;
+    scrollDown();
+  }
+
+  function hideWorking() {
+    if (!workingEl) return;
+    workingEl.remove();
+    workingEl = null;
+  }
+
+  /** Jika agen masih bekerja, taruh indikator lagi di paling bawah. */
+  function touchWorking() {
+    if (busy) showWorking();
+  }
+
   function renderEmpty() {
     messagesEl.innerHTML = "";
     const el = document.createElement("div");
@@ -163,6 +194,8 @@
   let ws = null;
   let state = null;
   let currentTurn = null;
+  let busy = false;
+  let baseTitle = document.title || "NeX-Agent";
   const pendingApprovals = new Map();
 
   function send(message) {
@@ -221,6 +254,7 @@
     }
     turn.text += chunk;
     turn.textEl.innerHTML = renderMarkdown(turn.text);
+    touchWorking();
     scrollDown();
   }
 
@@ -241,6 +275,7 @@
       turn.thinkBody = body;
     }
     turn.thinkBody.textContent += chunk;
+    touchWorking();
     scrollDown();
   }
 
@@ -257,6 +292,7 @@
       escapeHtml(info.argsSummary || "") +
       "</span>";
     turn.bubble.appendChild(el);
+    touchWorking();
     scrollDown();
   }
 
@@ -277,6 +313,7 @@
     pre.className = "diffblock";
     pre.textContent = String(text || "");
     turn.bubble.appendChild(pre);
+    touchWorking();
     scrollDown();
   }
 
@@ -368,6 +405,7 @@
     }
     turn.bubble.appendChild(box);
     pendingApprovals.set(id, box);
+    touchWorking();
     scrollDown();
   }
 
@@ -410,11 +448,14 @@
     modeBadge.className = "badge " + next.mode;
     allowAllEl.checked = Boolean(next.allowAll);
     renderSessions(next.sessions || []);
-    document.title = "NeX-Agent — " + (next.current ? next.current.title : "web");
+    baseTitle = "NeX-Agent — " + (next.current ? next.current.title : "web");
+    updateTitle();
+    setBusy(Boolean(next.busy));
   }
 
   function renderHistory(history) {
     messagesEl.innerHTML = "";
+    workingEl = null;
     const items = history || [];
     if (!items.length) {
       renderEmpty();
@@ -427,12 +468,34 @@
     scrollDown();
   }
 
+  function updateTitle() {
+    document.title = (busy ? "● " : "") + baseTitle;
+  }
+
+  function setStatus(kind, label) {
+    if (!statusEl) return;
+    statusEl.className = "status " + kind;
+    const text = statusEl.querySelector(".stext");
+    if (text) text.textContent = label;
+    statusEl.title = "Status agen: " + label;
+  }
+
   function setBusy(on) {
+    const was = busy;
+    busy = on;
     sendBtn.disabled = on;
     inputEl.disabled = on;
     stopBtn.hidden = !on;
-    if (on) inputEl.blur();
-    else inputEl.focus();
+    if (on) {
+      inputEl.blur();
+      showWorking();
+      setStatus("busy", "bekerja…");
+    } else {
+      hideWorking();
+      if (was) inputEl.focus();
+      setStatus("idle", "siap");
+    }
+    updateTitle();
   }
 
   // ---- websocket ----
@@ -526,16 +589,19 @@
     ws.addEventListener("open", () => {
       connEl.textContent = "terhubung";
       connEl.className = "conn ok";
+      if (!busy) setStatus("idle", "siap");
     });
     ws.addEventListener("close", () => {
       connEl.textContent = "terputus — menyambung ulang…";
       connEl.className = "conn bad";
       setBusy(false);
+      setStatus("offline", "terputus");
       setTimeout(connect, 1500);
     });
     ws.addEventListener("error", () => {
       connEl.textContent = "error koneksi";
       connEl.className = "conn bad";
+      setStatus("offline", "error");
     });
     ws.addEventListener("message", (ev) => {
       let msg;
