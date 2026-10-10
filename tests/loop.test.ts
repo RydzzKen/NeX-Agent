@@ -155,6 +155,31 @@ describe("loop agentik (kriteria penerimaan)", () => {
     }
   });
 
+  it("menyuntikkan direktif mode terkini setiap giliran (deteksi mode)", async () => {
+    const systems: string[] = [];
+    const harness = await createHarness({
+      mode: "plan",
+      script: (turn, req) => {
+        systems.push(req.system ?? "");
+        return { text: turn % 2 === 0 ? "analisis" : "selesai" };
+      },
+    });
+    try {
+      await harness.run("analisa dulu");
+      expect(systems[0]).toContain("Mode saat ini: Plan");
+      expect(systems[0]).toContain("/build");
+
+      harness.session.setMode("build");
+      await harness.run("sekarang eksekusi");
+      const latest = systems[systems.length - 1]!;
+      expect(latest).toContain("Mode saat ini: Build");
+      expect(latest).not.toContain("Mode saat ini: Plan");
+      expect(latest).not.toContain("/build");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("edit tiga file lalu undo mengembalikan ketiganya persis", async () => {
     const files = ["a.ts", "b.ts", "c.ts"];
     const harness = await createHarness({
