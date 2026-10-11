@@ -282,7 +282,10 @@ Sisanya diatur lewat `config.json`:
 - **Persetujuan** — prompt konfirmasi (tulis file, shell, akses luar workspace,
   file sensitif) diteruskan ke Telegram; balas `y` (setuju), `n` (tolak), atau
   `a` (setuju semua).
-- **Perintah chat** — `/new` (sesi baru), `/interrupt` (hentikan), `/help`.
+- **Perintah chat** — `/new` (sesi baru) · `/update` (perbarui NeX-Agent dari
+  repo) · `/interrupt` (hentikan) · `/help`. Daftar ini otomatis didaftarkan ke
+  Telegram (`setMyCommands`) sehingga muncul di menu tombol **"/"**; perintah
+  tak dikenal dibalas dengan petunjuk (tidak diteruskan ke agen).
 - **Kelola** — `/telegram` (nyalakan) · `/telegram stop` ·
   `/telegram restart` · `/telegram status` · `/telegram logs` ·
   `/telegram token <TOKEN>|hapus` · `/telegram allow <chatId...|clear>` ·

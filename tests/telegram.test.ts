@@ -6,6 +6,7 @@ import type { ServerMessage } from "../src/server/protocol.js";
 import {
   TelegramBridge,
   TelegramClient,
+  TELEGRAM_COMMANDS,
   chunkText,
   clearTelegramToken,
   formatConfirmPrompt,
@@ -15,15 +16,18 @@ import {
   maskToken,
   parseBooleanReply,
   parseConfirmReply,
+  parseTelegramCommand,
   resolveTelegramSettings,
   saveTelegramToken,
   stripAnsi,
   telegramSecretPath,
   type TelegramAgent,
   type TelegramClientLike,
+  type TelegramCommand,
   type TelegramSettings,
   type TelegramUpdate,
 } from "../src/server/telegram.js";
+import type { UpdateOutcome } from "../src/cli/update.js";
 
 function until(predicate: () => boolean, timeoutMs = 1500): Promise<void> {
   const start = Date.now();
@@ -40,6 +44,7 @@ function until(predicate: () => boolean, timeoutMs = 1500): Promise<void> {
 class FakeClient implements TelegramClientLike {
   readonly sends: Array<{ chatId: string; text: string }> = [];
   readonly actions: Array<{ chatId: string; action: string }> = [];
+  readonly commands: TelegramCommand[][] = [];
   private queue: TelegramUpdate[][] = [];
   private waiters: Array<() => void> = [];
 
@@ -52,6 +57,10 @@ class FakeClient implements TelegramClientLike {
 
   async getMe(): Promise<{ id: number; username: string }> {
     return { id: 1, username: "test_bot" };
+  }
+
+  async setMyCommands(commands: TelegramCommand[]): Promise<void> {
+    this.commands.push(commands);
   }
 
   async getUpdates(_offset: number, _timeout: number, signal?: AbortSignal): Promise<TelegramUpdate[]> {
@@ -80,6 +89,7 @@ interface Harness {
   client: FakeClient;
   sentPrompts: string[];
   resolutions: Array<{ id: string; value: unknown }>;
+  newSessions: () => number;
   emit(message: ServerMessage): void;
 }
 
@@ -87,10 +97,12 @@ function harness(options: {
   settings?: Partial<TelegramSettings>;
   send?: TelegramAgent["send"];
   busy?: boolean;
+  update?: (log: (line: string) => void) => Promise<UpdateOutcome>;
 } = {}): Harness {
   const client = new FakeClient();
   const sentPrompts: string[] = [];
   const resolutions: Array<{ id: string; value: unknown }> = [];
+  let sessionCount = 0;
   let sink: ((message: ServerMessage) => void) | undefined;
 
   const defaultSend: TelegramAgent["send"] = async (text) => {
@@ -103,7 +115,9 @@ function harness(options: {
 
   const app: TelegramAgent = {
     send: options.send ?? defaultSend,
-    newSession: async () => {},
+    newSession: async () => {
+      sessionCount += 1;
+    },
     interrupt: () => {},
     isBusy: () => Boolean(options.busy),
     resolveApproval: (id, value) => {
@@ -124,6 +138,7 @@ function harness(options: {
       },
       client,
       log: () => {},
+      ...(options.update ? { update: options.update } : {}),
     },
   );
 
@@ -132,6 +147,7 @@ function harness(options: {
     client,
     sentPrompts,
     resolutions,
+    newSessions: () => sessionCount,
     emit: (message) => sink?.(message),
   };
 }
@@ -342,5 +358,95 @@ describe("TelegramBridge", () => {
     await until(() => h.client.sends.some((s) => s.text.includes("sedang menjalankan tugas lain")));
     expect(h.sentPrompts).toEqual([]);
     await h.bridge.stop();
+  });
+
+  it("mendaftarkan menu perintah lewat setMyCommands saat verify", async () => {
+    const h = harness();
+    await h.bridge.verify();
+    expect(h.client.commands).toHaveLength(1);
+    const names = h.client.commands[0]!.map((c) => c.command);
+    expect(names).toContain("update");
+    expect(names).toContain("new");
+    expect(names).toContain("interrupt");
+    await h.bridge.stop();
+  });
+
+  it("menerima perintah dengan sufiks @botname", async () => {
+    const h = harness();
+    h.client.push([message(1, 5, "/new@test_bot")]);
+    await until(() => h.newSessions() === 1);
+    expect(h.sentPrompts).toEqual([]);
+    await h.bridge.stop();
+  });
+
+  it("membalas petunjuk untuk perintah tak dikenal tanpa memanggil model", async () => {
+    const h = harness();
+    h.client.push([message(1, 5, "/apalah")]);
+    await until(() => h.client.sends.some((s) => s.text.includes("Perintah tidak dikenal")));
+    expect(h.sentPrompts).toEqual([]);
+    await h.bridge.stop();
+  });
+
+  it("meneruskan teks yang berawalan garis miring tapi bukan perintah", async () => {
+    const h = harness();
+    h.client.push([message(1, 5, "/usr/bin/env adalah path")]);
+    await until(() => h.sentPrompts.length > 0);
+    expect(h.sentPrompts[0]).toContain("/usr/bin/env");
+    await h.bridge.stop();
+  });
+
+  it("/update menjalankan pembaruan lalu meminta restart saat ada versi baru", async () => {
+    let called = false;
+    const h = harness({
+      update: async () => {
+        called = true;
+        return { status: "updated", version: "0.2.0", from: "aaaaaaa", to: "bbbbbbb" };
+      },
+    });
+    h.client.push([message(1, 5, "/update")]);
+    await until(() => h.client.sends.some((s) => s.text.includes("Berhasil diperbarui")));
+    expect(called).toBe(true);
+    expect(h.client.sends.some((s) => s.text.includes("telegram restart"))).toBe(true);
+    expect(h.sentPrompts).toEqual([]);
+    await h.bridge.stop();
+  });
+
+  it("/update melaporkan sudah versi terbaru tanpa menyuruh restart", async () => {
+    const h = harness({ update: async () => ({ status: "latest", version: "0.2.0" }) });
+    h.client.push([message(1, 5, "/update")]);
+    await until(() => h.client.sends.some((s) => s.text.includes("Sudah versi terbaru")));
+    expect(h.client.sends.some((s) => s.text.includes("restart"))).toBe(false);
+    await h.bridge.stop();
+  });
+});
+
+describe("parseTelegramCommand", () => {
+  it("mengenali perintah dasar dan argumen", () => {
+    expect(parseTelegramCommand("/new")).toEqual({ name: "new", args: "" });
+    expect(parseTelegramCommand("  /Update --check ")).toEqual({ name: "update", args: "--check" });
+  });
+
+  it("menghormati sufiks @botname", () => {
+    expect(parseTelegramCommand("/new@test_bot", "test_bot")).toEqual({
+      name: "new",
+      args: "",
+      mention: "test_bot",
+    });
+    expect(parseTelegramCommand("/new@other", "test_bot")).toBeUndefined();
+    expect(parseTelegramCommand("/new@other")).toEqual({ name: "new", args: "", mention: "other" });
+  });
+
+  it("bukan perintah bila bukan pola perintah", () => {
+    expect(parseTelegramCommand("halo")).toBeUndefined();
+    expect(parseTelegramCommand("/usr/bin/env")).toBeUndefined();
+    expect(parseTelegramCommand("/")).toBeUndefined();
+  });
+
+  it("menu perintah berisi nama yang valid untuk Telegram", () => {
+    for (const cmd of TELEGRAM_COMMANDS) {
+      expect(cmd.command).toMatch(/^[a-z0-9_]{1,32}$/);
+      expect(cmd.description.length).toBeGreaterThanOrEqual(3);
+      expect(cmd.description.length).toBeLessThanOrEqual(256);
+    }
   });
 });

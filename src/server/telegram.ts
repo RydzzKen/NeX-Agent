@@ -6,6 +6,7 @@ import type {
   SensitiveAccessRequest,
 } from "../core/io.js";
 import { configDir, type AgentConfig } from "../config/config.js";
+import { describeUpdate, runUpdate, type UpdateOutcome } from "../cli/update.js";
 import type { ServerMessage } from "./protocol.js";
 
 /**
@@ -182,7 +183,28 @@ export interface TelegramClientLike {
   getUpdates(offset: number, timeoutSec: number, signal?: AbortSignal): Promise<TelegramUpdate[]>;
   sendMessage(chatId: string, text: string, signal?: AbortSignal): Promise<void>;
   sendChatAction(chatId: string, action: string, signal?: AbortSignal): Promise<void>;
+  /** Daftarkan menu perintah (opsional; dipakai agar tombol "/" muncul). */
+  setMyCommands?(commands: TelegramCommand[], signal?: AbortSignal): Promise<void>;
 }
+
+/** Satu entri menu perintah Telegram. */
+export interface TelegramCommand {
+  command: string;
+  description: string;
+}
+
+/**
+ * Daftar perintah yang didaftarkan lewat `setMyCommands` agar tombol "/" di
+ * Telegram menampilkan menunya. Harus cocok dengan yang ditangani jembatan.
+ */
+export const TELEGRAM_COMMANDS: TelegramCommand[] = [
+  { command: "start", description: "Mulai bot" },
+  { command: "new", description: "Mulai sesi baru" },
+  { command: "update", description: "Perbarui NeX-Agent dari repo git" },
+  { command: "interrupt", description: "Hentikan tugas yang berjalan" },
+  { command: "help", description: "Tampilkan bantuan" },
+];
+
 
 /** Klien Bot API minimal. */
 export class TelegramClient implements TelegramClientLike {
@@ -237,6 +259,11 @@ export class TelegramClient implements TelegramClientLike {
   async sendChatAction(chatId: string, action: string, signal?: AbortSignal): Promise<void> {
     await this.call("sendChatAction", { chat_id: chatId, action }, signal).catch(() => undefined);
   }
+
+  /** Daftarkan daftar perintah agar tombol "/" muncul di klien Telegram. */
+  async setMyCommands(commands: TelegramCommand[], signal?: AbortSignal): Promise<void> {
+    await this.call("setMyCommands", { commands }, signal);
+  }
 }
 
 /** Bagian WebApp yang dipakai jembatan; dibuat minimal agar mudah diuji. */
@@ -255,6 +282,32 @@ export interface TelegramBridgeDeps {
   log?: (message: string) => void;
   /** Klien kustom (untuk tes). */
   client?: TelegramClientLike;
+  /** Jalankan pembaruan mandiri; dapat diganti di tes. */
+  update?: (log: (line: string) => void) => Promise<UpdateOutcome>;
+}
+
+/** Parse perintah Telegram dari teks pesan (murni). */
+export interface ParsedCommand {
+  name: string;
+  args: string;
+  mention?: string;
+}
+
+const COMMAND_RE = /^\/([A-Za-z0-9_]+)(?:@(\S+))?(?:\s+([\s\S]*))?$/;
+
+/**
+ * Kenali `/perintah [argumen]` (dengan dukungan `/perintah@BotName`). Mengembalikan
+ * undefined bila teks bukan perintah (mis. `/usr/bin` yang punya lebih dari satu
+ * garis miring) agar pesan biasa tetap diteruskan ke agen.
+ */
+export function parseTelegramCommand(text: string, botUsername?: string): ParsedCommand | undefined {
+  const match = COMMAND_RE.exec(text.trim());
+  if (!match) return undefined;
+  const name = (match[1] ?? "").toLowerCase();
+  if (!name) return undefined;
+  const mention = match[2];
+  if (mention && botUsername && mention.toLowerCase() !== botUsername.toLowerCase()) return undefined;
+  return { name, args: (match[3] ?? "").trim(), ...(mention ? { mention } : {}) };
 }
 
 const HELP_TEXT = [
@@ -262,6 +315,7 @@ const HELP_TEXT = [
   "",
   "Perintah:",
   "  /new — mulai sesi baru",
+  "  /update — perbarui NeX-Agent dari repo git",
   "  /interrupt — hentikan tugas yang berjalan",
   "  /help — bantuan ini",
   "",
@@ -286,6 +340,7 @@ export class TelegramBridge {
   private readonly abort = new AbortController();
   private unsubscribe: (() => void) | undefined;
   private activeChatId: string | undefined;
+  private botUsername: string | undefined;
   private textBuffer = "";
   private pending: PendingApproval | undefined;
   private readonly polling: Promise<void>;
@@ -312,10 +367,22 @@ export class TelegramBridge {
     await this.polling.catch(() => undefined);
   }
 
-  /** Cek token dan ambil identitas bot; melempar bila token tidak valid. */
+  /** Cek token, ambil identitas bot, dan daftarkan menu perintah. */
   async verify(): Promise<{ username?: string }> {
     const me = await this.client.getMe(this.abort.signal);
+    this.botUsername = me.username;
+    await this.registerCommands();
     return { ...(me.username ? { username: me.username } : {}) };
+  }
+
+  /** Daftarkan menu perintah agar tombol "/" muncul di klien Telegram. */
+  async registerCommands(): Promise<void> {
+    if (!this.client.setMyCommands) return;
+    try {
+      await this.client.setMyCommands(TELEGRAM_COMMANDS, this.abort.signal);
+    } catch (err) {
+      this.deps.log?.(`setMyCommands gagal: ${(err as Error).message}`);
+    }
   }
 
   private async poll(): Promise<void> {
@@ -365,23 +432,9 @@ export class TelegramBridge {
       return;
     }
 
-    const command = text.trim().toLowerCase();
-    if (command === "/start" || command === "/help") {
-      await this.safeSend(chatId, HELP_TEXT);
-      return;
-    }
-    if (command === "/new") {
-      try {
-        await this.deps.app.newSession?.();
-        await this.safeSend(chatId, "Sesi baru dibuat.");
-      } catch (err) {
-        await this.safeSend(chatId, `Gagal membuat sesi: ${(err as Error).message}`);
-      }
-      return;
-    }
-    if (command === "/interrupt" || command === "/stop") {
-      this.deps.app.interrupt?.();
-      await this.safeSend(chatId, "Permintaan henti dikirim.");
+    const parsed = parseTelegramCommand(text, this.botUsername);
+    if (parsed) {
+      await this.handleCommand(chatId, parsed);
       return;
     }
 
@@ -400,6 +453,54 @@ export class TelegramBridge {
       await Promise.resolve(this.deps.app.send(text));
     } catch (err) {
       await this.safeSend(chatId, `Terjadi kesalahan: ${(err as Error).message}`);
+    }
+  }
+
+  private async handleCommand(chatId: string, command: ParsedCommand): Promise<void> {
+    switch (command.name) {
+      case "start":
+      case "help":
+        await this.safeSend(chatId, HELP_TEXT);
+        return;
+      case "new":
+        try {
+          await this.deps.app.newSession?.();
+          await this.safeSend(chatId, "Sesi baru dibuat.");
+        } catch (err) {
+          await this.safeSend(chatId, `Gagal membuat sesi: ${(err as Error).message}`);
+        }
+        return;
+      case "interrupt":
+      case "stop":
+        this.deps.app.interrupt?.();
+        await this.safeSend(chatId, "Permintaan henti dikirim.");
+        return;
+      case "update":
+        await this.handleUpdateCommand(chatId);
+        return;
+      default:
+        await this.safeSend(chatId, `Perintah tidak dikenal: /${command.name}. Ketik /help.`);
+    }
+  }
+
+  /** `/update`: tarik versi terbaru dari repo lalu minta restart agar terpakai. */
+  private async handleUpdateCommand(chatId: string): Promise<void> {
+    await this.safeSend(chatId, "Memeriksa pembaruan dari repo git...");
+    const update = this.deps.update ?? ((log: (line: string) => void) => runUpdate({ log }));
+    let outcome: UpdateOutcome;
+    try {
+      outcome = await update(() => undefined);
+    } catch (err) {
+      await this.safeSend(chatId, `Gagal memperbarui: ${(err as Error).message}`);
+      return;
+    }
+    await this.safeSend(chatId, describeUpdate(outcome));
+    if (outcome.status === "updated") {
+      await this.safeSend(
+        chatId,
+        "Bot ini masih menjalankan versi lama. Jalankan `nex-agent telegram restart` di terminal " +
+          "(atau `/telegram restart` dari sesi chat) agar versi baru terpakai.",
+      );
     }
   }
 
