@@ -216,6 +216,9 @@ ok "Build selesai ($(node "$SRC_DIR/dist/index.js" --version))."
 ENV_BIN="$(command -v env 2>/dev/null || echo /usr/bin/env)"
 mkdir -p "$BIN_DIR"
 write_launcher() {
+  # Hapus dulu: bila $BIN_DIR/$1 berupa symlink ke sumber lain (mis. checkout
+  # pengembangan), `cat >` akan menembus symlink dan menimpa targetnya.
+  rm -f "$BIN_DIR/$1"
   cat >"$BIN_DIR/$1" <<EOF
 #!$ENV_BIN sh
 exec node "$SRC_DIR/dist/index.js" "\$@"

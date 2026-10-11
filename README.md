@@ -315,6 +315,19 @@ lokal, tambahkan **`--stash`** (`/update --stash`): perubahan disimpan sementara
 ke `git stash` (termasuk file baru), update dijalankan, lalu dipulihkan; kalau
 bentrok, konfliknya diberitahukan untuk diselesaikan manual.
 
+**Alternatif (force-update).** Menjalankan ulang installer
+(`curl -fsSL https://raw.githubusercontent.com/RydzzKen/NeX-Agent/main/install.sh | bash`)
+juga memperbarui instalasi standar: skrip mendeteksi folder sumber yang sudah ada
+(`~/.local/share/nex-agent`), menarik `origin/main`, menjalankan `git reset --hard`,
+lalu `pnpm install` + `pnpm build`. Bedanya dari `/update`: perubahan lokal di folder
+sumber **dibuang** (bukan disimpan), tanpa konfirmasi, dan launcher ditulis ulang.
+Cocok untuk memperbaiki instalasi yang macet; untuk update sehari-hari lebih aman pakai
+`/update`. Config di `~/.config/agent` tidak disentuh oleh keduanya.
+
+> Catatan untuk checkout pengembangan: jangan jalankan installer ini di repo kerja Anda.
+> Launcher `~/.local/bin/agent` (symlink ke `dist/index.js`) akan dialihkan ke folder
+> instalasi, dan tanpa perlindungan `rm` launcher bisa menimpa berkas dev lewat symlink.
+
 Setelah update selesai, jalankan **`/restart`**: di chat/terminal ia menjalankan
 ulang proses agar `dist/` terbaru dimuat; di Telegram ia menyalakan ulang worker,
 sehingga versi baru langsung terpakai.
