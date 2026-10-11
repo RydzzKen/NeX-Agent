@@ -360,6 +360,10 @@ perintah:
 /mcp add context7     # dokumentasi library & API terbaru (HTTP, read-only)
 /mcp add playwright   # otomasi browser via Playwright MCP (headless, berat)
 /mcp add supabase     # kelola project Supabase (butuh Personal Access Token)
+/mcp add github       # repo/issue/PR GitHub (HTTP read-only, butuh PAT)
+/mcp add cloudflare-docs  # dokumentasi Cloudflare (HTTP, tanpa token)
+/mcp add fetch        # ambil halaman web → Markdown (butuh uv/uvx)
+/mcp add filesystem   # akses folder (baca/tulis, perlu persetujuan)
 /mcp presets          # daftar semua preset
 /mcp remove <nama>    # hapus server dari plugins.json
 ```
@@ -393,6 +397,14 @@ eksplisit (`--name`) menolak menimpa server yang sudah ada.
   daripada MCP.
 - **Supabase** — butuh Personal Access Token dari dashboard Supabase; simpan
   lewat `/mcp key supabase`.
+- **GitHub** — butuh Personal Access Token (`/mcp key github`); default
+  **read-only** (header `X-MCP-Readonly: "true"`). Untuk mengizinkan tulis,
+  hapus header itu dan sesuaikan `risk` di `plugins.json`.
+- **Cloudflare Docs** — dokumentasi Cloudflare terbaru, HTTP read-only, tanpa token.
+- **Fetch** — butuh `uv`/`uvx` terpasang. Alternatif tanpa Python:
+  `/mcp add --name fetch docker run -i --rm mcp/fetch`.
+- **Filesystem** — default membuka folder kerja saat ini (`.`). Semua tool
+  diklasifikasikan `mutate` (perlu persetujuan) karena bisa menulis/menghapus.
 
 Tool dari server MCP didaftarkan ke provider dengan nama
 `mcp__<server>__<tool>` (karakter selain `A-Za-z0-9_-` disamakan). Opsi per

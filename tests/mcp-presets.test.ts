@@ -97,13 +97,21 @@ describe("saveMcpServer / removeMcpServer", () => {
 describe("preset MCP", () => {
   it("berisi preset yang didokumentasikan", () => {
     const names = listMcpPresets().map((p) => p.name);
-    expect(names).toContain("context7");
-    expect(names).toContain("playwright");
-    expect(names).toContain("supabase");
+    for (const name of ["context7", "playwright", "supabase", "github", "cloudflare-docs", "fetch", "filesystem"]) {
+      expect(names).toContain(name);
+    }
+  });
+
+  it("preset yang butuh kredensial hanya menyimpan referensi, bukan nilai", () => {
+    const github = findMcpPreset("github")!;
+    expect(github.config.credential).toBe("github");
+    expect(github.config.headers).toMatchObject({ Authorization: "Bearer ${apiKey}" });
+    expect(JSON.stringify(github.config)).not.toMatch(/ghp_|github_pat_/);
   });
 
   it("findMcpPreset tidak peduli huruf besar-kecil dan spasi", () => {
     expect(findMcpPreset("  Context7 ")?.name).toBe("context7");
+    expect(findMcpPreset("Cloudflare-Docs")?.name).toBe("cloudflare-docs");
     expect(findMcpPreset("tidak-ada")).toBeUndefined();
   });
 });

@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: `/mcp add` (preset + command/URL mentah) selesai.
+Terakhir diperbarui: preset tambahan (`github`, `cloudflare-docs`, `fetch`, `filesystem`) selesai.
 
 ## Selesai
 
@@ -85,6 +85,7 @@ walau sesi chat ditutup, dengan restart otomatis; token disimpan aman (`~/.confi
 - [x] **Context7** (`/mcp add context7`) — dokumen library terbaru, read-only, aman di Termux. Limit tinggi: `/mcp key context7`
 - [x] **Supabase** (`/mcp add supabase`) — read-only default; mutasi DB lewat konfirmasi; token di CredentialStore (`/mcp key supabase`)
 - [x] **Playwright** (`/mcp add playwright`) — MCP browser headless, semua aksi = `mutate`. Berat (unduh Chromium); **tidak untuk Termux**
+- [x] **Preset tambahan** — `github` (HTTP read-only + PAT), `cloudflare-docs` (HTTP tanpa token), `fetch` (`uvx mcp-server-fetch`), `filesystem` (`@modelcontextprotocol/server-filesystem`)
 - [~] **Playwright CLI** (`@playwright/cli`) — alternatif lebih hemat token untuk agent pengkodean via `run_shell`; belum dibungkus tool khusus
 - [ ] **Strix** (skill + tool `run_strix` opsional) — butuh Docker, **default NONAKTIF**, hanya aktif lewat `plugins.json` (`enabled: true`) atau `--enable strix`; target harus disetujui. **Tidak untuk Termux**
 - [ ] **SkillUI** (`npx skillui`) — sudah didukung lewat Skill loader; tambah tool pembungkus opsional

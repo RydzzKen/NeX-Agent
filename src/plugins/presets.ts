@@ -60,6 +60,55 @@ export const MCP_PRESETS: Record<string, McpPreset> = {
       risk: "read",
     },
   },
+  github: {
+    name: "github",
+    description: "Kelola repo/issue/PR GitHub (HTTP, read-only, butuh PAT)",
+    note:
+      "Setel token dulu: /mcp key github (Personal Access Token dari github.com/settings/tokens). " +
+      'Default read-only (header X-MCP-Readonly: "true"). Untuk izin tulis, hapus header itu dari plugins.json.',
+    config: {
+      transport: "http",
+      url: "https://api.githubcopilot.com/mcp/",
+      headers: { Authorization: "Bearer ${apiKey}", "X-MCP-Readonly": "true" },
+      credential: "github",
+      risk: "read",
+    },
+  },
+  "cloudflare-docs": {
+    name: "cloudflare-docs",
+    description: "Dokumentasi Cloudflare terbaru (HTTP, read-only, tanpa token)",
+    config: {
+      transport: "http",
+      url: "https://docs.mcp.cloudflare.com/mcp",
+      risk: "read",
+    },
+  },
+  fetch: {
+    name: "fetch",
+    description: "Ambil halaman web & ubah ke Markdown (butuh uv/uvx + Python)",
+    note:
+      "Butuh `uv` (https://docs.astral.sh/uv). Alternatif Docker: " +
+      "/mcp add --name fetch docker run -i --rm mcp/fetch",
+    config: {
+      transport: "stdio",
+      command: "uvx",
+      args: ["mcp-server-fetch"],
+      risk: "read",
+    },
+  },
+  filesystem: {
+    name: "filesystem",
+    description: "Akses folder via filesystem MCP (baca/tulis, perlu persetujuan)",
+    note:
+      "Default membuka folder kerja saat ini ('.'). Folder lain: " +
+      "/mcp remove filesystem lalu /mcp add --name fs npx -y @modelcontextprotocol/server-filesystem /path/anda",
+    config: {
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-filesystem", "."],
+      risk: "mutate",
+    },
+  },
 };
 
 /** Cari preset berdasarkan alias (tidak peduli huruf besar-kecil/spasi). */
