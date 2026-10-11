@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: preset tambahan (`github`, `cloudflare-docs`, `fetch`, `filesystem`) selesai.
+Terakhir diperbarui: pembungkus **SkillUI** (`skill_install` + `/skills install`) selesai.
 
 ## Selesai
 
@@ -88,7 +88,7 @@ walau sesi chat ditutup, dengan restart otomatis; token disimpan aman (`~/.confi
 - [x] **Preset tambahan** — `github` (HTTP read-only + PAT), `cloudflare-docs` (HTTP tanpa token), `fetch` (`uvx mcp-server-fetch`), `filesystem` (`@modelcontextprotocol/server-filesystem`)
 - [~] **Playwright CLI** (`@playwright/cli`) — alternatif lebih hemat token untuk agent pengkodean via `run_shell`; belum dibungkus tool khusus
 - [ ] **Strix** (skill + tool `run_strix` opsional) — butuh Docker, **default NONAKTIF**, hanya aktif lewat `plugins.json` (`enabled: true`) atau `--enable strix`; target harus disetujui. **Tidak untuk Termux**
-- [ ] **SkillUI** (`npx skillui`) — sudah didukung lewat Skill loader; tambah tool pembungkus opsional
+- [x] **SkillUI** (`npx skillui`) — tool `skill_install` + `/skills install <url|repo|folder>` (`--name`, `--ultra`, `--overwrite`); hasil disalin ke `skills/<nama>/` & langsung aktif — `src/memory/skillui.ts`, `src/tools/skill_install.ts`
 
 ### Lain-lain
 

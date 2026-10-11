@@ -493,7 +493,7 @@ Disimpan di `~/.config/agent/` (bisa diubah lewat `AGENT_CONFIG_DIR`):
 src/
   core/        # loop agentik, approvals, checkpoint, context, repetition
   providers/   # ModelProvider + adapter (OpenAI-compatible, Anthropic)
-  tools/       # read_file, write_file, edit_file, list_dir, run_shell, web_search, todo_write, skill, skill_write
+  tools/       # read_file, write_file, edit_file, list_dir, run_shell, web_search, todo_write, skill, skill_write, skill_install
   safety/      # workspace, permissions, classifier, policy
   sessions/    # penyimpanan sesi
   usage/       # token, biaya, agregasi
@@ -556,7 +556,8 @@ Cara kerjanya **progressive disclosure**:
 - **Otomatis** — hanya `name` + `description` yang masuk system prompt (murah).
   Saat tugas cocok, model memanggil tool `skill` untuk memuat instruksi lengkap.
 - **Manual** — `/skills` untuk daftar, `/skill <nama>` untuk memaksa sebuah
-  skill aktif sepanjang sesi, `/skill off` untuk melepas semuanya.
+  skill aktif sepanjang sesi, `/skill off` untuk melepas semuanya,
+  `/skills install <sumber>` untuk memasang skill baru via SkillUI.
 - Matikan total dengan `nex-agent --no-skills` atau `"skills": false` di
   `config.json`. Tool `skill` bersifat read-only, jadi tetap aman di mode Plan.
 
@@ -566,12 +567,21 @@ Cara kerjanya **progressive disclosure**:
   `skill_write` (name/description/body tervalidasi Zod) untuk menulis
   `skills/<nama>/SKILL.md` (tetap butuh konfirmasi + diff). Skill yang baru dibuat
   **langsung aktif** untuk sesi berjalan — tanpa restart — berkat hot-reload.
-- **Memasang skill eksternal** — minta agent menjalankan, mis.:
-  ```bash
-  git clone <repo-skill>   # lalu letakkan foldernya di skills/
-  npx skillui --url https://contoh.com --out-dir skills/desain
+- **Memasang skill eksternal (SkillUI)** — `/skills install <url|repo|folder>`
+  atau minta agent memakai tool `skill_install`. Wrapper ini menjalankan
+  [SkillUI](https://skillui.vercel.app) (`npx skillui`), mengambil `SKILL.md`
+  yang dihasilkan, lalu menyalinnya ke `skills/<nama>/` dan **langsung
+  mengaktifkannya**. SkillUI menyalin sistem desain (warna, tipografi, komponen)
+  dari situs/repo/folder — tanpa AI, tanpa API key.
   ```
-  Keduanya lewat `run_shell` sehingga tetap melalui persetujuan.
+  /skills install https://linear.app
+  /skills install https://github.com/org/repo --name linear
+  /skills install ./frontend --ultra --overwrite
+  ```
+  Opsi: `--name <nama>`, `--ultra` (Playwright: screenshot + animasi, lebih
+  berat), `--overwrite`. Folder sementara selalu dibersihkan; tidak ada yang
+  ditulis di luar `skills/`. Cara manual tetap bisa lewat `run_shell`
+  (mis. `git clone <repo-skill>` lalu letakkan foldernya di `skills/`).
 
 Contoh `skills/ringkas/SKILL.md`:
 

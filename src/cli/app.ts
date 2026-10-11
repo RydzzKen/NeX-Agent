@@ -15,6 +15,7 @@ import { createPathResolver } from "../safety/policy.js";
 import { PermissionManager } from "../safety/permissions.js";
 import { createWorkspace, type Workspace } from "../safety/workspace.js";
 import { discoverSkills, type Skill } from "../memory/skills.js";
+import { installSkillViaSkillui, parseSkillInstallTokens } from "../memory/skillui.js";
 import { buildSystemPrompt } from "../memory/system_prompt.js";
 import { CredentialStore } from "../config/credentials.js";
 import { McpManager } from "../plugins/manager.js";
@@ -113,7 +114,7 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/allow-all [on|off]", "izinkan semua izin untuk sesi ini"],
   ["/thinking [on|off]", "tampilkan/sembunyikan thinking"],
   ["/markdown [on|off]", "render markdown pada jawaban"],
-  ["/skills", "daftar skill yang tersedia"],
+  ["/skills [install <sumber>]", "daftar skill · pasang skill via SkillUI"],
   ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
   ["/mcp [add|remove|reload|key|presets]", "status server MCP; tambah preset, muat ulang, atau atur API key"],
   ["/todos", "tampilkan daftar tugas (checklist)"],
@@ -626,7 +627,7 @@ export class ChatApp {
         return "continue";
       }
       case "/skills":
-        await this.commandSkills();
+        await this.commandSkills(args);
         return "continue";
       case "/skill":
         await this.commandSkill(args[0]);
@@ -1064,7 +1065,11 @@ export class ChatApp {
     process.stdout.write("\n");
   }
 
-  private async commandSkills(): Promise<void> {
+  private async commandSkills(args: string[] = []): Promise<void> {
+    if (args[0] === "install" || args[0] === "pasang") {
+      await this.commandSkillInstall(args.slice(1));
+      return;
+    }
     await this.reloadSkills();
     if (this.skills.length === 0) {
       this.io.info(
@@ -1079,7 +1084,37 @@ export class ChatApp {
         `  ${active} ${skill.name.padEnd(24)} ${truncate(skill.description, 60)}\n`,
       );
     }
-    process.stdout.write("\n  Paksa aktif: /skill <nama>  ·  lepas semua: /skill off\n\n");
+    process.stdout.write(
+      "\n  Paksa aktif: /skill <nama>  ·  lepas semua: /skill off  ·  pasang: /skills install <sumber>\n\n",
+    );
+  }
+
+  /**
+   * Pasang skill eksternal lewat SkillUI tanpa mengetik perintah shell manual:
+   * `/skills install <url|repo|folder> [--name <nama>] [--ultra] [--overwrite]`.
+   */
+  private async commandSkillInstall(tokens: string[]): Promise<void> {
+    const { source, name, ultra, overwrite } = parseSkillInstallTokens(tokens);
+    if (!source) {
+      this.io.warn("Pakai: /skills install <url|repo|folder> [--name <nama>] [--ultra] [--overwrite]");
+      return;
+    }
+
+    this.io.info(`Memasang skill dari ${source} via SkillUI… (bisa butuh beberapa saat)`);
+    const result = await installSkillViaSkillui({
+      workspaceRoot: this.workspace.root,
+      source,
+      name,
+      ultra,
+      overwrite,
+    });
+    if (!result.ok) {
+      this.io.warn(result.error);
+      if (result.output) this.io.info(result.output);
+      return;
+    }
+    await this.reloadSkills();
+    this.io.info(`Skill "${result.slug}" terpasang di skills/${result.slug}/ dan siap dipakai.`);
   }
 
   private async commandSkill(name?: string): Promise<void> {

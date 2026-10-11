@@ -122,7 +122,8 @@ async function kindOf(full: string): Promise<{ directory: boolean; file: boolean
   }
 }
 
-async function readSkillFile(file: string, fallbackName: string): Promise<Skill | undefined> {
+/** Baca satu berkas skill (frontmatter + isi). Dipakai juga oleh tool skill_install. */
+export async function readSkillFile(file: string, fallbackName: string): Promise<Skill | undefined> {
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");

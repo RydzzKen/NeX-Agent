@@ -18,6 +18,7 @@ export const SUBCOMMANDS: Record<string, string[]> = {
   "/sessions": ["clear"],
   "/delete": ["all"],
   "/skill": ["off"],
+  "/skills": ["install"],
   "/telegram": ["start", "stop", "restart", "status", "logs", "token", "allow", "deny", "on", "off"],
   "/web": ["lan", "stop"],
 };
