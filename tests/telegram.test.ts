@@ -42,7 +42,7 @@ function until(predicate: () => boolean, timeoutMs = 1500): Promise<void> {
 }
 
 class FakeClient implements TelegramClientLike {
-  readonly sends: Array<{ chatId: string; text: string }> = [];
+  readonly sends: Array<{ chatId: string; text: string; parseMode?: string }> = [];
   readonly actions: Array<{ chatId: string; action: string }> = [];
   readonly commands: TelegramCommand[][] = [];
   private queue: TelegramUpdate[][] = [];
@@ -75,8 +75,13 @@ class FakeClient implements TelegramClientLike {
     return this.queue.shift() ?? [];
   }
 
-  async sendMessage(chatId: string, text: string): Promise<void> {
-    this.sends.push({ chatId, text });
+  async sendMessage(
+    chatId: string,
+    text: string,
+    _signal?: AbortSignal,
+    options?: { parseMode?: "HTML" | "MarkdownV2" },
+  ): Promise<void> {
+    this.sends.push({ chatId, text, ...(options?.parseMode ? { parseMode: options.parseMode } : {}) });
   }
 
   async sendChatAction(chatId: string, action: string): Promise<void> {
@@ -326,6 +331,23 @@ describe("TelegramBridge", () => {
     await until(() => h.client.sends.some((s) => s.text === "balas:halo"));
     expect(h.sentPrompts).toContain("halo");
     expect(h.client.sends.find((s) => s.text === "balas:halo")?.chatId).toBe("42");
+    await h.bridge.stop();
+  });
+
+  it("merender markdown balasan model sebagai HTML Telegram", async () => {
+    const h = harness({
+      send: async () => {
+        h.emit({ type: "busy", on: true });
+        h.emit({ type: "text", chunk: "**tebal** dan `kode`" });
+        h.emit({ type: "textEnd" });
+        h.emit({ type: "busy", on: false });
+      },
+    });
+    h.client.push([message(1, 42, "halo")]);
+    await until(() => h.client.sends.some((s) => s.text.includes("<b>tebal</b>")));
+    const sent = h.client.sends.find((s) => s.text.includes("<b>tebal</b>"))!;
+    expect(sent.parseMode).toBe("HTML");
+    expect(sent.text).toContain("<code>kode</code>");
     await h.bridge.stop();
   });
 

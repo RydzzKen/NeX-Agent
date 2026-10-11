@@ -8,6 +8,12 @@ import type {
 import { configDir, type AgentConfig } from "../config/config.js";
 import { describeUpdate, runUpdate, type UpdateOutcome } from "../cli/update.js";
 import type { ServerMessage } from "./protocol.js";
+import {
+  TELEGRAM_MAX_ENTITIES,
+  countHtmlEntities,
+  htmlToPlainText,
+  renderTelegramChunks,
+} from "./telegram_markdown.js";
 
 /**
  * Jembatan Telegram memakai Bot API lewat `fetch` (tanpa dependensi baru) dan
@@ -177,11 +183,21 @@ export interface TelegramUpdate {
   };
 }
 
+/** Opsi pengiriman pesan (mis. mode parse HTML). */
+export interface TelegramSendOptions {
+  parseMode?: "HTML" | "MarkdownV2";
+}
+
 /** Bagian Bot API yang dipakai jembatan (memudahkan penggantian di tes). */
 export interface TelegramClientLike {
   getMe(signal?: AbortSignal): Promise<{ id?: number; username?: string }>;
   getUpdates(offset: number, timeoutSec: number, signal?: AbortSignal): Promise<TelegramUpdate[]>;
-  sendMessage(chatId: string, text: string, signal?: AbortSignal): Promise<void>;
+  sendMessage(
+    chatId: string,
+    text: string,
+    signal?: AbortSignal,
+    options?: TelegramSendOptions,
+  ): Promise<void>;
   sendChatAction(chatId: string, action: string, signal?: AbortSignal): Promise<void>;
   /** Daftarkan menu perintah (opsional; dipakai agar tombol "/" muncul). */
   setMyCommands?(commands: TelegramCommand[], signal?: AbortSignal): Promise<void>;
@@ -266,8 +282,22 @@ export class TelegramClient implements TelegramClientLike {
     return Array.isArray(result) ? (result as TelegramUpdate[]) : [];
   }
 
-  async sendMessage(chatId: string, text: string, signal?: AbortSignal): Promise<void> {
-    await this.call("sendMessage", { chat_id: chatId, text, disable_web_page_preview: true }, signal);
+  async sendMessage(
+    chatId: string,
+    text: string,
+    signal?: AbortSignal,
+    options?: TelegramSendOptions,
+  ): Promise<void> {
+    await this.call(
+      "sendMessage",
+      {
+        chat_id: chatId,
+        text,
+        disable_web_page_preview: true,
+        ...(options?.parseMode ? { parse_mode: options.parseMode } : {}),
+      },
+      signal,
+    );
   }
 
   async sendChatAction(chatId: string, action: string, signal?: AbortSignal): Promise<void> {
@@ -872,11 +902,39 @@ export class TelegramBridge {
   private flushText(chatId: string): void {
     const text = this.textBuffer;
     this.textBuffer = "";
-    if (text.trim()) void this.safeSend(chatId, text);
+    if (text.trim()) void this.safeSend(chatId, text, { markdown: true });
   }
 
-  private async safeSend(chatId: string, text: string): Promise<void> {
-    for (const chunk of chunkText(text, TELEGRAM_MESSAGE_LIMIT - 96)) {
+  /** Kirim teks polos; `markdown` mengaktifkan render Markdown → HTML Telegram. */
+  private async safeSend(
+    chatId: string,
+    text: string,
+    options: { markdown?: boolean } = {},
+  ): Promise<void> {
+    const limit = TELEGRAM_MESSAGE_LIMIT - 96;
+    if (options.markdown) {
+      for (const chunk of renderTelegramChunks(text, limit)) {
+        // Terlalu banyak entitas per pesan ditolak Telegram; kirim polos saja.
+        if (countHtmlEntities(chunk) > TELEGRAM_MAX_ENTITIES) {
+          await this.sendPlain(chatId, htmlToPlainText(chunk), limit);
+          continue;
+        }
+        try {
+          await this.client.sendMessage(chatId, chunk, this.abort.signal, { parseMode: "HTML" });
+        } catch (err) {
+          if (this.stopped) return;
+          this.deps.log?.(`send html error: ${(err as Error).message}`);
+          // Fallback: teks polos supaya pesan tidak hilang.
+          await this.sendPlain(chatId, htmlToPlainText(chunk), limit);
+        }
+      }
+      return;
+    }
+    await this.sendPlain(chatId, text, limit);
+  }
+
+  private async sendPlain(chatId: string, text: string, limit: number): Promise<void> {
+    for (const chunk of chunkText(text, limit)) {
       try {
         await this.client.sendMessage(chatId, chunk, this.abort.signal);
       } catch (err) {
