@@ -18,6 +18,7 @@ function wrap(code: string, close: string): (s: string) => string {
 export const color = {
   red: wrap("31", "39"),
   green: wrap("32", "39"),
+  brightGreen: wrap("92", "39"),
   yellow: wrap("33", "39"),
   blue: wrap("34", "39"),
   magenta: wrap("35", "39"),

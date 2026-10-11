@@ -116,6 +116,22 @@ async function readVersion(dir: string): Promise<string | undefined> {
   }
 }
 
+/** Versi `package.json` pada satu revisi git (mis. `FETCH_HEAD`). */
+async function readVersionAt(
+  runner: CommandRunner,
+  cwd: string,
+  rev: string,
+): Promise<string | undefined> {
+  try {
+    const res = await runner.run("git", ["show", `${rev}:package.json`], { cwd });
+    if (res.code !== 0) return undefined;
+    const parsed = JSON.parse(res.stdout) as { version?: unknown };
+    return typeof parsed.version === "string" ? parsed.version : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export type UpdateStatus = "updated" | "available" | "latest" | "no-git" | "dirty" | "not-ff" | "error";
 
 export interface UpdateOutcome {
@@ -123,7 +139,10 @@ export interface UpdateOutcome {
   branch?: string;
   from?: string;
   to?: string;
+  /** Versi aplikasi saat ini (dibaca dari package.json lokal). */
   version?: string;
+  /** Versi pada commit yang tersedia di remote (untuk status "available"). */
+  nextVersion?: string;
   message?: string;
 }
 
@@ -147,6 +166,26 @@ export function describeUpdate(outcome: UpdateOutcome): string {
     case "error":
       return `Gagal memperbarui: ${outcome.message ?? "kesalahan tak diketahui."}`;
   }
+}
+
+/**
+ * Ringkasan ringkas pembaruan yang tersedia, dipakai untuk prompt konfirmasi
+ * sebelum menerapkan update.
+ */
+export function describeUpdateAvailable(outcome: UpdateOutcome): string {
+  const now = outcome.version ? `v${outcome.version}` : shortRev(outcome.from);
+  const next = outcome.nextVersion ? `v${outcome.nextVersion}` : shortRev(outcome.to);
+  return `Versi Terbaru tersedia: sekarang ${now} → terbaru ${next}`;
+}
+
+/**
+ * Pesan sukses setelah update diterapkan. Dipakai chat & Telegram; penanda
+ * `[SUKSES]` diberi warna oleh pemanggil (terminal) sedangkan Telegram memakai
+ * teks polos.
+ */
+export function describeUpdateSuccess(outcome: UpdateOutcome): string {
+  const version = outcome.version ? `v${outcome.version}` : shortRev(outcome.to);
+  return `Ter-update ke ${version}. Jalankan '/restart' untuk menerapkan.`;
 }
 
 export interface UpdateOptions {
@@ -215,7 +254,14 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateOutc
   }
 
   if (options.check) {
-    return { status: "available", branch, from, to, version: await readVersion(cwd) };
+    return {
+      status: "available",
+      branch,
+      from,
+      to,
+      version: await readVersion(cwd),
+      nextVersion: await readVersionAt(runner, cwd, to),
+    };
   }
 
   const dirty = await runner.run("git", ["status", "--porcelain"], { cwd });

@@ -287,7 +287,7 @@ Sisanya diatur lewat `config.json`:
   `/new` · `/clear` · `/sessions` · `/resume <n|id>` · `/rename <judul>` ·
   `/delete` · `/plan` · `/build` · `/mode <plan|build>` · `/allow-all [on|off]` ·
   `/stop` (`/interrupt`) · `/status` · `/models [n|nama]` · `/skills` · `/todos` ·
-  `/usage [today|week|all]` · `/update` · `/help`.
+  `/usage [today|week|all]` · `/update` · `/restart` · `/help`.
   `/stop` menghentikan proses yang sedang berjalan (termasuk perintah shell) tanpa
   menghapus riwayat sesi — agent tetap ingat konteks dan bisa dilanjutkan.
   Bila sedang menunggu izin, `/allow-all` sekaligus menyetujui permintaan yang
@@ -304,13 +304,16 @@ Sisanya diatur lewat `config.json`:
 
 ## Perbarui & hapus
 
-**Update.** `nex-agent update` (atau `/update` di chat) menarik commit terbaru
-dari repo git asal, lalu menjalankan `pnpm install` dan `pnpm build`. Bila sudah
-sama dengan remote, ia berkata "sudah versi terbaru". Update dibatalkan bila ada
-perubahan lokal yang belum di-commit (agar tidak hilang) atau bila riwayat
-bercabang (fast-forward tidak memungkinkan); `nex-agent update --check` hanya
-memeriksa. Setelah update dari chat, **restart** NeX-Agent karena proses yang
-sedang berjalan masih memakai kode lama.
+**Update.** `nex-agent update` (atau `/update` di chat) menjelaskan pembaruan yang
+tersedia lalu **meminta konfirmasi** sebelum menarik commit terbaru dari repo git
+asal, menjalankan `pnpm install`, dan `pnpm build`. Bila sudah sama dengan remote,
+ia berkata "sudah versi terbaru". Update dibatalkan bila ada perubahan lokal yang
+belum di-commit (agar tidak hilang) atau bila riwayat bercabang (fast-forward tidak
+memungkinkan); `nex-agent update --check` hanya memeriksa.
+
+Setelah update selesai, jalankan **`/restart`**: di chat/terminal ia menjalankan
+ulang proses agar `dist/` terbaru dimuat; di Telegram ia menyalakan ulang worker,
+sehingga versi baru langsung terpakai.
 
 **Uninstall.** `nex-agent uninstall` menghapus launcher `nex-agent`/`agent` yang
 menunjuk ke sumber ini dan membersihkan entri PATH di rc shell. Config di

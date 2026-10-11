@@ -5,7 +5,7 @@ import { SessionStore } from "./sessions/store.js";
 import { UsageStore, type UsageRange } from "./usage/store.js";
 import { renderCrossSession } from "./cli/usage.js";
 import { ChatApp, ConfigError, type CliOptions } from "./cli/app.js";
-import { describeUpdate, runUninstall, runUpdate } from "./cli/update.js";
+import { describeUpdate, describeUpdateSuccess, runUninstall, runUpdate } from "./cli/update.js";
 import { createWebServer, isLoopbackHost, reachableUrl } from "./server/server.js";
 import { ServerConfigError } from "./server/webapp.js";
 import { TelegramError, startTelegramServer, type TelegramServerOptions } from "./server/telegram_server.js";
@@ -21,6 +21,7 @@ import {
   runTelegramSupervisor,
 } from "./server/telegram_daemon.js";
 import { qrLines } from "./util/qr.js";
+import { color } from "./util/color.js";
 import type { Mode } from "./core/types.js";
 
 function collect(value: string, previous: string[]): string[] {
@@ -336,10 +337,11 @@ async function main(): Promise<void> {
         ...(merged.check ? { check: true } : {}),
         log: (line: string) => process.stdout.write(`${line}\n`),
       });
-      process.stdout.write(`${describeUpdate(outcome)}\n`);
-      if (outcome.status === "updated") {
-        process.stdout.write("Versi baru dipakai pada perintah berikutnya (proses ini memakai kode lama).\n");
-      }
+      process.stdout.write(
+        outcome.status === "updated"
+          ? `${color.brightGreen("[SUKSES]")} ${describeUpdateSuccess(outcome)}\n`
+          : `${describeUpdate(outcome)}\n`,
+      );
       if (outcome.status === "error" || outcome.status === "dirty" || outcome.status === "not-ff" || outcome.status === "no-git") {
         process.exitCode = 1;
       }

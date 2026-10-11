@@ -111,7 +111,11 @@ function harness(options: {
   settings?: Partial<TelegramSettings>;
   send?: TelegramAgent["send"];
   busy?: boolean;
-  update?: (log: (line: string) => void) => Promise<UpdateOutcome>;
+  update?: (
+    log: (line: string) => void,
+    opts?: { check?: boolean },
+  ) => Promise<UpdateOutcome>;
+  restart?: () => void;
 } = {}): Harness {
   const client = new FakeClient();
   const sentPrompts: string[] = [];
@@ -191,6 +195,7 @@ function harness(options: {
       client,
       log: () => {},
       ...(options.update ? { update: options.update } : {}),
+      ...(options.restart ? { restart: options.restart } : {}),
     },
   );
 
@@ -503,19 +508,52 @@ describe("TelegramBridge", () => {
     await h.bridge.stop();
   });
 
-  it("/update menjalankan pembaruan lalu meminta restart saat ada versi baru", async () => {
-    let called = false;
+  it("/update memeriksa, minta konfirmasi (y/N), lalu menerapkan", async () => {
+    const calls: Array<{ check?: boolean } | undefined> = [];
     const h = harness({
-      update: async () => {
-        called = true;
-        return { status: "updated", version: "0.2.0", from: "aaaaaaa", to: "bbbbbbb" };
+      update: async (_log, options) => {
+        calls.push(options);
+        if (options?.check) {
+          return {
+            status: "available",
+            version: "1.0.5",
+            nextVersion: "1.0.6",
+            from: "aaaaaaa",
+            to: "bbbbbbb",
+          };
+        }
+        return { status: "updated", version: "1.0.6", from: "aaaaaaa", to: "bbbbbbb" };
       },
     });
     h.client.push([message(1, 5, "/update")]);
-    await until(() => h.client.sends.some((s) => s.text.includes("Berhasil diperbarui")));
-    expect(called).toBe(true);
-    expect(h.client.sends.some((s) => s.text.includes("telegram restart"))).toBe(true);
+    await until(() => h.client.sends.some((s) => s.text.includes("Versi Terbaru tersedia")));
+    const prompt = h.client.sends.find((s) => s.text.includes("Update Sekarang?"));
+    expect(prompt?.text).toContain("v1.0.5");
+    expect(prompt?.text).toContain("v1.0.6");
+    expect(calls).toEqual([{ check: true }]);
+
+    h.client.push([message(2, 5, "y")]);
+    await until(() => h.client.sends.some((s) => s.text.includes("[SUKSES]")));
+    expect(h.client.sends.some((s) => s.text.includes("/restart"))).toBe(true);
+    expect(calls).toEqual([{ check: true }, undefined]);
     expect(h.sentPrompts).toEqual([]);
+    await h.bridge.stop();
+  });
+
+  it("/update dibatalkan bila tidak dikonfirmasi", async () => {
+    let applied = false;
+    const h = harness({
+      update: async (_log, options) => {
+        if (options?.check) return { status: "available", version: "1.0.0", nextVersion: "1.0.1" };
+        applied = true;
+        return { status: "updated", version: "1.0.1" };
+      },
+    });
+    h.client.push([message(1, 5, "/update")]);
+    await until(() => h.client.sends.some((s) => s.text.includes("Update Sekarang?")));
+    h.client.push([message(2, 5, "n")]);
+    await until(() => h.client.sends.some((s) => s.text.includes("Update dibatalkan")));
+    expect(applied).toBe(false);
     await h.bridge.stop();
   });
 
@@ -524,6 +562,19 @@ describe("TelegramBridge", () => {
     h.client.push([message(1, 5, "/update")]);
     await until(() => h.client.sends.some((s) => s.text.includes("Sudah versi terbaru")));
     expect(h.client.sends.some((s) => s.text.includes("restart"))).toBe(false);
+    await h.bridge.stop();
+  });
+
+  it("/restart menjalankan ulang bot", async () => {
+    let restarted = false;
+    const h = harness({
+      restart: () => {
+        restarted = true;
+      },
+    });
+    h.client.push([message(1, 5, "/restart")]);
+    await until(() => restarted);
+    expect(h.client.sends.some((s) => s.text.includes("Menjalankan ulang"))).toBe(true);
     await h.bridge.stop();
   });
 

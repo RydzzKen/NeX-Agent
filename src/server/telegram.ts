@@ -6,7 +6,13 @@ import type {
   SensitiveAccessRequest,
 } from "../core/io.js";
 import { configDir, type AgentConfig } from "../config/config.js";
-import { describeUpdate, runUpdate, type UpdateOutcome } from "../cli/update.js";
+import {
+  describeUpdate,
+  describeUpdateAvailable,
+  describeUpdateSuccess,
+  runUpdate,
+  type UpdateOutcome,
+} from "../cli/update.js";
 import type { ServerMessage } from "./protocol.js";
 import {
   TELEGRAM_MAX_ENTITIES,
@@ -234,6 +240,7 @@ export const TELEGRAM_COMMANDS: TelegramCommand[] = [
   { command: "todos", description: "Daftar tugas" },
   { command: "usage", description: "Pemakaian token & biaya" },
   { command: "update", description: "Perbarui NeX-Agent dari repo git" },
+  { command: "restart", description: "Jalankan ulang bot untuk menerapkan versi baru" },
 ];
 
 
@@ -343,8 +350,10 @@ export interface TelegramBridgeDeps {
   log?: (message: string) => void;
   /** Klien kustom (untuk tes). */
   client?: TelegramClientLike;
-  /** Jalankan pembaruan mandiri; dapat diganti di tes. */
-  update?: (log: (line: string) => void) => Promise<UpdateOutcome>;
+  /** Jalankan pembaruan mandiri; dapat diganti di tes. `check` hanya memeriksa. */
+  update?: (log: (line: string) => void, options?: { check?: boolean }) => Promise<UpdateOutcome>;
+  /** Jalankan ulang proses bot agar versi baru terpakai (dipasok oleh worker). */
+  restart?: () => void;
 }
 
 /** Parse perintah Telegram dari teks pesan (murni). */
@@ -401,6 +410,7 @@ const HELP_TEXT = [
   "  /todos — daftar tugas",
   "  /usage [today|week|all] — pemakaian token & biaya",
   "  /update — perbarui NeX-Agent dari repo git",
+  "  /restart — jalankan ulang bot untuk menerapkan versi baru",
   "  /help — bantuan ini",
   "",
   "Saat agent meminta izin, balas y (setuju), n (tolak), atau a (setuju semua).",
@@ -428,6 +438,8 @@ export class TelegramBridge {
   private botUsername: string | undefined;
   private textBuffer = "";
   private pending: PendingApproval | undefined;
+  /** Chat yang sedang menunggu konfirmasi y/N sebelum menjalankan update. */
+  private updateAsk: string | undefined;
   private sessionCache: Array<{ id: string; title: string; updatedAt?: string }> = [];
   private modelCache: string[] = [];
   private readonly polling: Promise<void>;
@@ -521,7 +533,19 @@ export class TelegramBridge {
 
     const parsed = parseTelegramCommand(text, this.botUsername);
     if (parsed) {
+      this.updateAsk = undefined;
       await this.handleCommand(chatId, parsed);
+      return;
+    }
+
+    if (this.updateAsk === chatId) {
+      this.updateAsk = undefined;
+      const answer = text.trim().toLowerCase();
+      if (answer === "y" || answer === "ya" || answer === "yes") {
+        await this.performUpdate(chatId);
+      } else {
+        await this.safeSend(chatId, "Update dibatalkan.");
+      }
       return;
     }
 
@@ -619,7 +643,10 @@ export class TelegramBridge {
         await this.commandUsage(chatId, command.args);
         return;
       case "update":
-        await this.handleUpdateCommand(chatId);
+        await this.handleUpdateCommand(chatId, command.args);
+        return;
+      case "restart":
+        await this.commandRestart(chatId);
         return;
       default:
         await this.safeSend(chatId, `Perintah /${command.name} belum tersedia di Telegram. Ketik /help.`);
@@ -837,25 +864,72 @@ export class TelegramBridge {
   }
 
 
-  /** `/update`: tarik versi terbaru dari repo lalu minta restart agar terpakai. */
-  private async handleUpdateCommand(chatId: string): Promise<void> {
+  /**
+   * `/update [y]`: periksa pembaruan, minta konfirmasi `(y/N)`, lalu terapkan.
+   * Tanpa konfirmasi (mis. `/update y`) langsung menjalankan pembaruan.
+   */
+  private async handleUpdateCommand(chatId: string, args = ""): Promise<void> {
+    const arg = args.trim().toLowerCase();
+    if (arg === "y" || arg === "ya" || arg === "yes" || arg === "--yes") {
+      this.updateAsk = undefined;
+      await this.performUpdate(chatId);
+      return;
+    }
+
     await this.safeSend(chatId, "Memeriksa pembaruan dari repo git...");
-    const update = this.deps.update ?? ((log: (line: string) => void) => runUpdate({ log }));
+    let check: UpdateOutcome;
+    try {
+      check = await this.depsUpdate()(() => undefined, { check: true });
+    } catch (err) {
+      await this.safeSend(chatId, `Gagal memeriksa pembaruan: ${(err as Error).message}`);
+      return;
+    }
+    if (check.status !== "available") {
+      await this.safeSend(chatId, describeUpdate(check));
+      return;
+    }
+    this.updateAsk = chatId;
+    await this.safeSend(chatId, `${describeUpdateAvailable(check)}\n\nUpdate Sekarang? (y/N)`);
+  }
+
+  /** Tarik versi terbaru lalu bangun ulang; beri tahu bila perlu `/restart`. */
+  private async performUpdate(chatId: string): Promise<void> {
+    await this.safeSend(chatId, "Menerapkan pembaruan...");
     let outcome: UpdateOutcome;
     try {
-      outcome = await update(() => undefined);
+      outcome = await this.depsUpdate()(() => undefined);
     } catch (err) {
       await this.safeSend(chatId, `Gagal memperbarui: ${(err as Error).message}`);
       return;
     }
-    await this.safeSend(chatId, describeUpdate(outcome));
     if (outcome.status === "updated") {
+      await this.safeSend(chatId, `[SUKSES] ${describeUpdateSuccess(outcome)}`);
+      return;
+    }
+    await this.safeSend(chatId, describeUpdate(outcome));
+  }
+
+  private depsUpdate(): (
+    log: (line: string) => void,
+    options?: { check?: boolean },
+  ) => Promise<UpdateOutcome> {
+    return (
+      this.deps.update ??
+      ((log, options) => runUpdate({ log, ...(options?.check ? { check: true } : {}) }))
+    );
+  }
+
+  /** `/restart`: jalankan ulang proses bot agar versi baru terpakai. */
+  private async commandRestart(chatId: string): Promise<void> {
+    if (!this.deps.restart) {
       await this.safeSend(
         chatId,
-        "Bot ini masih menjalankan versi lama. Jalankan `nex-agent telegram restart` di terminal " +
-          "(atau `/telegram restart` dari sesi chat) agar versi baru terpakai.",
+        "Restart otomatis tidak tersedia di mode ini. Hentikan lalu jalankan lagi botnya.",
       );
+      return;
     }
+    await this.safeSend(chatId, "Menjalankan ulang bot untuk menerapkan versi baru...");
+    this.deps.restart();
   }
 
   private async resolvePending(text: string): Promise<boolean> {

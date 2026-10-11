@@ -57,6 +57,11 @@ export async function startTelegramServer(opts: TelegramServerOptions): Promise<
       };
     },
     ...(opts.log ? { log: opts.log } : {}),
+    // Keluar dengan kode 0; supervisor daemon akan menjalankan worker baru
+    // sehingga dist/ terbaru hasil update termuat.
+    restart: () => {
+      setTimeout(() => process.exit(0), 200);
+    },
   });
 
   let username: string | undefined;

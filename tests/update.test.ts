@@ -7,6 +7,8 @@ import {
   type CommandResult,
   type CommandRunner,
   describeUpdate,
+  describeUpdateAvailable,
+  describeUpdateSuccess,
   isOwnedLauncher,
   resolveSourceDir,
   runUninstall,
@@ -177,6 +179,7 @@ describe("runUpdate", () => {
           "git rev-parse HEAD": ok("aaaaaaa\n"),
           "git rev-parse FETCH_HEAD": ok("bbbbbbb\n"),
           "git rev-list --count HEAD..bbbbbbb": ok("1\n"),
+          "git show bbbbbbb:package.json": ok('{"version":"9.9.9"}'),
         };
         const handler = table[key];
         if (!handler) throw new Error(`perintah tak terduga: ${key}`);
@@ -185,6 +188,7 @@ describe("runUpdate", () => {
     };
     const outcome = await runUpdate({ cwd: dir, check: true, runner });
     expect(outcome.status).toBe("available");
+    expect(outcome.nextVersion).toBe("9.9.9");
     expect(merged).toBe(false);
   });
 
@@ -211,6 +215,24 @@ describe("runUpdate", () => {
     const outcome = await runUpdate({ cwd: dir, runner });
     expect(outcome.status).toBe("error");
     expect(outcome.message).toContain("tidak ada jaringan");
+  });
+});
+
+describe("formatter pesan update", () => {
+  it("menyusun prompt pembaruan dengan versi lama dan baru", () => {
+    const text = describeUpdateAvailable({
+      status: "available",
+      version: "1.0.5",
+      nextVersion: "1.0.6",
+      from: "aaaaaaa",
+      to: "bbbbbbb",
+    });
+    expect(text).toBe("Versi Terbaru tersedia: sekarang v1.0.5 → terbaru v1.0.6");
+  });
+
+  it("menyusun pesan sukses dengan versi baru dan saran restart", () => {
+    const text = describeUpdateSuccess({ status: "updated", version: "1.0.6" });
+    expect(text).toBe("Ter-update ke v1.0.6. Jalankan '/restart' untuk menerapkan.");
   });
 });
 
