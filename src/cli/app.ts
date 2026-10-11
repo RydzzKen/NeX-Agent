@@ -18,6 +18,8 @@ import { discoverSkills, type Skill } from "../memory/skills.js";
 import { buildSystemPrompt } from "../memory/system_prompt.js";
 import { CredentialStore } from "../config/credentials.js";
 import { McpManager } from "../plugins/manager.js";
+import { removeMcpServer } from "../plugins/config.js";
+import { addMcpPreset, listMcpPresets, type AddedMcpPreset } from "../plugins/presets.js";
 import {
   configDir,
   loadConfig,
@@ -112,7 +114,7 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/markdown [on|off]", "render markdown pada jawaban"],
   ["/skills", "daftar skill yang tersedia"],
   ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
-  ["/mcp [reload|key <nama>]", "status server MCP, muat ulang, atau atur API key"],
+  ["/mcp [add|remove|reload|key|presets]", "status server MCP; tambah preset, muat ulang, atau atur API key"],
   ["/todos", "tampilkan daftar tugas (checklist)"],
   ["/web [lan|stop]", "nyalakan server web (lan = buka ke jaringan) / hentikan"],
   ["/telegram [start|stop|restart|status|logs|token|allow]", "kelola bot Telegram (daemon latar belakang)"],
@@ -1439,8 +1441,20 @@ export class ChatApp {
       await this.commandMcpKey(second, third);
       return;
     }
+    if (sub === "add") {
+      await this.commandMcpAdd(second, third);
+      return;
+    }
+    if (sub === "remove" || sub === "rm") {
+      await this.commandMcpRemove(second);
+      return;
+    }
+    if (sub === "presets") {
+      this.commandMcpPresets();
+      return;
+    }
     this.io.warn(
-      `Argumen tidak dikenal: ${sub}. Pakai /mcp, /mcp reload, atau /mcp key <nama> [hapus].`,
+      `Argumen tidak dikenal: ${sub}. Pakai /mcp, /mcp add [preset] [nama], /mcp remove <nama>, /mcp reload, atau /mcp key <nama> [hapus].`,
     );
   }
 
@@ -1451,7 +1465,7 @@ export class ChatApp {
     if (status.length === 0) {
       if (!fileError) {
         this.io.info(
-          "Belum ada server MCP. Tambahkan entri di ~/.config/agent/plugins.json (lihat README, bagian MCP).",
+          "Belum ada server MCP. Tambah cepat: /mcp add context7 (atau edit ~/.config/agent/plugins.json — lihat README).",
         );
       }
       return;
@@ -1477,8 +1491,59 @@ export class ChatApp {
       }
     }
     process.stdout.write(
-      "\n  /mcp reload = muat ulang konfigurasi · /mcp key <nama> = simpan API key (tanpa echo)\n\n",
+      "\n  /mcp add <preset> = tambah server · /mcp remove <nama> · /mcp reload · /mcp key <nama> (tanpa echo)\n\n",
     );
+  }
+
+  private async commandMcpAdd(alias?: string, customName?: string): Promise<void> {
+    if (!alias) {
+      this.commandMcpPresets();
+      return;
+    }
+
+    let added: AddedMcpPreset;
+    try {
+      added = await addMcpPreset(alias, customName);
+    } catch (err) {
+      this.io.warn((err as Error).message);
+      return;
+    }
+
+    this.io.info(`Server MCP "${added.serverName}" ditambahkan (preset: ${added.preset.name}).`);
+    if (added.preset.note) this.io.info(added.preset.note);
+    await this.mcp.reload(this.registry);
+    this.printMcp();
+  }
+
+  private async commandMcpRemove(name?: string): Promise<void> {
+    if (!name) {
+      this.io.warn("Pakai: /mcp remove <nama>.");
+      return;
+    }
+
+    let removed: boolean;
+    try {
+      removed = await removeMcpServer(name);
+    } catch (err) {
+      this.io.warn((err as Error).message);
+      return;
+    }
+    if (!removed) {
+      this.io.info(`Tidak ada server MCP bernama "${name}".`);
+      return;
+    }
+
+    this.io.info(`Server MCP "${name}" dihapus dari plugins.json.`);
+    await this.mcp.reload(this.registry);
+    this.printMcp();
+  }
+
+  private commandMcpPresets(): void {
+    process.stdout.write("\nPreset server MCP (pakai: /mcp add <preset> [nama]):\n");
+    for (const preset of listMcpPresets()) {
+      process.stdout.write(`  ${preset.name.padEnd(12)} ${preset.description}\n`);
+    }
+    process.stdout.write("\n");
   }
 
   private async commandMcpKey(name?: string, action?: string): Promise<void> {

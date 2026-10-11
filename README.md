@@ -120,9 +120,9 @@ Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 `/plan` · `/build` · `/sessions [clear]` · `/resume <n>` · `/new` · `/clear` ·
 `/rename` · `/delete [all]` · `/undo [n]` ·
 `/usage` · `/permissions` · `/allow-all [on|off]` · `/thinking` · `/markdown` ·
-`/skills` · `/skill <nama>|off` · `/mcp [reload|key <nama>]` · `/todos` ·
+`/skills` · `/skill <nama>|off` · `/mcp [add|remove|reload|key|presets]` · `/todos` ·
 `/web [lan|stop]` · `/telegram [start|stop|restart|status|logs|token|allow]` ·
-`/update` · `/exit` · `/help`.
+`/update` · `/restart` · `/exit` · `/help`.
 
 Mengetik `/` menampilkan daftar perintah terkait secara langsung di atas baris
 input (di TTY). Tab melengkapi perintah slash, subperintah (`/provider <Tab>`),
@@ -337,7 +337,9 @@ menjadi sumber tool tambahan. Daftar server disimpan di
     "supabase": {
       "transport": "stdio",
       "command": "npx",
-      "args": ["-y", "@supabase/mcp-server-supabase", "--access-token", "${SUPABASE_ACCESS_TOKEN}"]
+      "args": ["-y", "@supabase/mcp-server-supabase@latest"],
+      "env": { "SUPABASE_ACCESS_TOKEN": "${apiKey}" },
+      "credential": "supabase"
     },
     "lokal": {
       "transport": "stdio",
@@ -348,6 +350,36 @@ menjadi sumber tool tambahan. Daftar server disimpan di
   }
 }
 ```
+
+### Preset cepat (`/mcp add`)
+
+Daripada menyunting JSON manual, tambah server yang sudah dikenal dengan satu
+perintah:
+
+```
+/mcp add context7     # dokumentasi library & API terbaru (HTTP, read-only)
+/mcp add playwright   # otomasi browser via Playwright MCP (headless, berat)
+/mcp add supabase     # kelola project Supabase (butuh Personal Access Token)
+/mcp presets          # daftar semua preset
+/mcp remove <nama>    # hapus server dari plugins.json
+```
+
+`/mcp add <preset> [nama]` bisa memakai nama kustom. Preset hanya menulis
+*referensi* rahasia (template `${apiKey}`), tidak pernah nilai token. Untuk
+server yang butuh kredensial, setel dulu mis. `/mcp key supabase`. Setelah
+ditambah, server langsung dimuat ulang tanpa keluar dari sesi.
+
+- **Context7** — tanpa API key tetap jalan (limit rendah). Untuk limit lebih
+  tinggi, dapatkan key gratis di <https://context7.com/dashboard>, jalankan
+  `/mcp key context7`, lalu tambahkan
+  `"headers": { "CONTEXT7_API_KEY": "${apiKey}" }` + `"credential": "context7"`.
+- **Playwright** — berat: butuh Node + Chromium (`npx playwright install chromium`)
+  dan kurang cocok untuk Termux. Semua aksi halaman diklasifikasikan `mutate`
+  (perlu persetujuan). Untuk agent pengkodean, Playwright juga punya CLI ringan
+  (`@playwright/cli`) yang bisa dipakai lewat `run_shell` — lebih hemat token
+  daripada MCP.
+- **Supabase** — butuh Personal Access Token dari dashboard Supabase; simpan
+  lewat `/mcp key supabase`.
 
 Tool dari server MCP didaftarkan ke provider dengan nama
 `mcp__<server>__<tool>` (karakter selain `A-Za-z0-9_-` disamakan). Opsi per
@@ -384,8 +416,9 @@ per tool:
   gagal dengan status error di `/mcp` (jangan kirim nilai kosong).
 - **Status & pengelolaan.** `/mcp` menampilkan status semua server (tersambung,
   jumlah tool terdaftar, error), `/mcp reload` memuat ulang `plugins.json`
-  tanpa keluar dari sesi. Server yang rusak atau gagal dijalankan tidak
-  menghentikan sesi — hanya tercatat di `/mcp`.
+  tanpa keluar dari sesi, dan `/mcp add`/`/mcp remove` mengubah daftar server.
+  Server yang rusak atau gagal dijalankan tidak menghentikan sesi — hanya
+  tercatat di `/mcp`.
 - Tool MCP aktif di sesi CLI. (Mode Web belum memuat tool MCP — mengikuti.)
 
 Contoh server sungguhan — **Cloudflare** (kelola Workers, DNS, dll.) dan
@@ -440,7 +473,7 @@ src/
   sessions/    # penyimpanan sesi
   usage/       # token, biaya, agregasi
   memory/      # loader AGENTS.md + skill (SKILL.md)
-  plugins/     # klien MCP (stdio/HTTP/SSE), plugins.json, registrasi tool MCP
+  plugins/     # klien MCP (stdio/HTTP/SSE), plugins.json, preset, registrasi tool MCP
   server/      # server web (HTTP + WS), terminal PTY, bot Telegram, protokol
   cli/         # renderer, prompt, slash command, app
   config/      # konfigurasi & kredensial

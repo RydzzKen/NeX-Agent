@@ -153,6 +153,93 @@ export async function loadPluginsConfig(dir: string = configDir()): Promise<Plug
   return result;
 }
 
+/** True bila `name` memenuhi aturan nama server MCP. */
+export function isValidMcpServerName(name: string): boolean {
+  return SERVER_NAME_RE.test(name);
+}
+
+/** Baca dokumen `plugins.json` mentah sebagai objek. Berkas hilang → `{}`. */
+async function readPluginsDoc(dir: string): Promise<Record<string, unknown>> {
+  const file = path.join(dir, "plugins.json");
+  let raw: string;
+  try {
+    raw = await fs.readFile(file, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw err;
+  }
+
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch (err) {
+    throw new McpConfigError(`plugins.json bukan JSON valid: ${(err as Error).message}`);
+  }
+  if (json === null || typeof json !== "object" || Array.isArray(json)) {
+    throw new McpConfigError("plugins.json harus berupa objek JSON.");
+  }
+  const doc = json as Record<string, unknown>;
+  if (doc.mcp !== undefined && (doc.mcp === null || typeof doc.mcp !== "object" || Array.isArray(doc.mcp))) {
+    throw new McpConfigError('plugins.json: kolom "mcp" harus berupa objek.');
+  }
+  return doc;
+}
+
+async function writePluginsDoc(dir: string, doc: Record<string, unknown>): Promise<void> {
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(path.join(dir, "plugins.json"), `${JSON.stringify(doc, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+}
+
+/** True bila `plugins.json` sudah memuat server bernama `name`. */
+export async function hasMcpServer(name: string, dir: string = configDir()): Promise<boolean> {
+  const doc = await readPluginsDoc(dir);
+  const mcp = doc.mcp as Record<string, unknown> | undefined;
+  return Boolean(mcp && Object.prototype.hasOwnProperty.call(mcp, name));
+}
+
+/**
+ * Simpan (buat/ganti) satu server ke `plugins.json` sambil mempertahankan entri
+ * lain dan kolom tingkat atas yang tidak dikenal. Konfigurasi divalidasi lebih
+ * dulu agar berkas tidak pernah ditulis dalam keadaan rusak. Hanya *referensi*
+ * rahasia (template `${apiKey}`) yang ditulis — nilai nyata tetap di
+ * `CredentialStore`.
+ */
+export async function saveMcpServer(
+  name: string,
+  server: RawMcpServer,
+  dir: string = configDir(),
+): Promise<void> {
+  if (!isValidMcpServerName(name)) {
+    throw new McpConfigError(`Nama server tidak valid: ${name} (${SERVER_NAME_RE.source}).`);
+  }
+  const parsed = mcpServerSchema.safeParse(server);
+  if (!parsed.success) {
+    throw new McpConfigError(`Konfigurasi server "${name}" tidak valid: ${formatZodIssues(parsed.error)}`);
+  }
+
+  const doc = await readPluginsDoc(dir);
+  const mcp = { ...((doc.mcp as Record<string, unknown> | undefined) ?? {}) };
+  mcp[name] = server;
+  doc.mcp = mcp;
+  await writePluginsDoc(dir, doc);
+}
+
+/** Hapus server bernama `name`. Mengembalikan `true` bila memang ada. */
+export async function removeMcpServer(name: string, dir: string = configDir()): Promise<boolean> {
+  const doc = await readPluginsDoc(dir);
+  const mcp = (doc.mcp as Record<string, unknown> | undefined) ?? {};
+  if (!Object.prototype.hasOwnProperty.call(mcp, name)) return false;
+
+  const next = { ...mcp };
+  delete next[name];
+  doc.mcp = next;
+  await writePluginsDoc(dir, doc);
+  return true;
+}
+
 const TEMPLATE_RE = /\$\{([A-Za-z0-9_]+)\}/g;
 
 function lookupSecret(

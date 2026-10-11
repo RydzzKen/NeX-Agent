@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: bot Telegram + update mandiri/`/restart` selesai.
+Terakhir diperbarui: preset MCP `/mcp add` (Context7/Playwright/Supabase) selesai.
 
 ## Selesai
 
@@ -79,17 +79,19 @@ walau sesi chat ditutup, dengan restart otomatis; token disimpan aman (`~/.confi
 - [x] `/mcp` (daftar/status server) dan `/mcp reload`
 - [x] Tes: server mock stdio + parsing tool schema
 
-### Tahap C — Integrasi spesifik (via konfigurasi, bukan kode khusus)
+### Tahap C — Integrasi spesifik (via konfigurasi + preset)
 
-- [ ] **Context7** (`@upstash/context7-mcp`) — dokumen library terbaru. Prioritas tertinggi, read-only, aman di Termux
-- [ ] **Supabase** (`@supabase/mcp-server-supabase`) — read-only default; mutasi DB lewat konfirmasi; token di CredentialStore
-- [ ] **Playwright** (`@playwright/mcp`) — E2E/inspeksi UI. Berat (unduh browser); kemungkinan **tidak jalan di Termux**
+- [x] **Preset `/mcp add`** (`context7`, `playwright`, `supabase`) + `/mcp remove` & `/mcp presets` — `src/plugins/presets.ts`
+- [x] **Context7** (`/mcp add context7`) — dokumen library terbaru, read-only, aman di Termux. Limit tinggi: `/mcp key context7`
+- [x] **Supabase** (`/mcp add supabase`) — read-only default; mutasi DB lewat konfirmasi; token di CredentialStore (`/mcp key supabase`)
+- [x] **Playwright** (`/mcp add playwright`) — MCP browser headless, semua aksi = `mutate`. Berat (unduh Chromium); **tidak untuk Termux**
+- [~] **Playwright CLI** (`@playwright/cli`) — alternatif lebih hemat token untuk agent pengkodean via `run_shell`; belum dibungkus tool khusus
 - [ ] **Strix** (skill + tool `run_strix` opsional) — butuh Docker, **default NONAKTIF**, hanya aktif lewat `plugins.json` (`enabled: true`) atau `--enable strix`; target harus disetujui. **Tidak untuk Termux**
 - [ ] **SkillUI** (`npx skillui`) — sudah didukung lewat Skill loader; tambah tool pembungkus opsional
 
 ### Lain-lain
 
-- [x] README: bagian MCP + contoh `plugins.json`
+- [x] README: bagian MCP + contoh `plugins.json` + preset `/mcp add`
 - [ ] (opsional) Dukungan OAuth (PKCE) di klien MCP — server hosted yang mewajibkannya, mis. sebagian endpoint Cloudflare
 - [ ] (opsional) Ekspos tool MCP ke mode Web (`server/webapp.ts` — saat ini hanya aktif di CLI)
 - [ ] (opsional) Simpan skill yang dipaksa lewat `/skill` agar ikut saat `--resume`

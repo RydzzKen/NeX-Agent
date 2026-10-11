@@ -13,7 +13,7 @@ import path from "node:path";
 
 /** Subperintah yang bisa dilengkapi untuk sebuah perintah. */
 export const SUBCOMMANDS: Record<string, string[]> = {
-  "/mcp": ["reload", "key"],
+  "/mcp": ["add", "remove", "reload", "key", "presets"],
   "/provider": ["use", "edit", "hapus"],
   "/sessions": ["clear"],
   "/delete": ["all"],
