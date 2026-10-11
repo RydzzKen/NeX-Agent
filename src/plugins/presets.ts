@@ -1,5 +1,4 @@
-import { configDir } from "../config/config.js";
-import { hasMcpServer, isValidMcpServerName, McpConfigError, saveMcpServer, type RawMcpServer } from "./config.js";
+import type { RawMcpServer } from "./config.js";
 
 /**
  * Preset server MCP siap pakai untuk `/mcp add <preset>`.
@@ -7,6 +6,9 @@ import { hasMcpServer, isValidMcpServerName, McpConfigError, saveMcpServer, type
  * Preset hanya menulis *referensi* rahasia (template `${apiKey}`), bukan
  * nilainya: token tetap tersimpan di `CredentialStore` lewat `/mcp key <nama>`.
  * Ini menjaga janji "kredensial tidak pernah ditulis ke `plugins.json`".
+ *
+ * Logika penambahan (parsing token + menulis berkas) ada di `mcp_add.ts` agar
+ * file ini murni berisi data preset.
  */
 
 export interface McpPreset {
@@ -68,40 +70,4 @@ export function findMcpPreset(alias: string): McpPreset | undefined {
 /** Semua preset, terurut berdasarkan nama. */
 export function listMcpPresets(): McpPreset[] {
   return Object.values(MCP_PRESETS).sort((a, b) => a.name.localeCompare(b.name));
-}
-
-export interface AddedMcpPreset {
-  serverName: string;
-  preset: McpPreset;
-}
-
-/**
- * Tulis preset ke `plugins.json`. Gagal bila alias tidak dikenal, nama tidak
- * valid, atau nama sudah dipakai (agar tidak menimpa konfigurasi pengguna).
- */
-export async function addMcpPreset(
-  alias: string,
-  name?: string,
-  dir: string = configDir(),
-): Promise<AddedMcpPreset> {
-  const preset = findMcpPreset(alias);
-  if (!preset) {
-    const known = listMcpPresets()
-      .map((item) => item.name)
-      .join(", ");
-    throw new McpConfigError(`Preset tidak dikenal: ${alias}. Tersedia: ${known}.`);
-  }
-
-  const serverName = name?.trim() || preset.name;
-  if (!isValidMcpServerName(serverName)) {
-    throw new McpConfigError(`Nama server tidak valid: ${serverName}.`);
-  }
-  if (await hasMcpServer(serverName, dir)) {
-    throw new McpConfigError(
-      `Server "${serverName}" sudah ada di plugins.json. Hapus dulu: /mcp remove ${serverName}.`,
-    );
-  }
-
-  await saveMcpServer(serverName, preset.config, dir);
-  return { serverName, preset };
 }

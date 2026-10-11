@@ -10,7 +10,7 @@ import {
   removeMcpServer,
   saveMcpServer,
 } from "../src/plugins/config.js";
-import { addMcpPreset, findMcpPreset, listMcpPresets } from "../src/plugins/presets.js";
+import { findMcpPreset, listMcpPresets } from "../src/plugins/presets.js";
 
 let dir: string;
 
@@ -105,39 +105,5 @@ describe("preset MCP", () => {
   it("findMcpPreset tidak peduli huruf besar-kecil dan spasi", () => {
     expect(findMcpPreset("  Context7 ")?.name).toBe("context7");
     expect(findMcpPreset("tidak-ada")).toBeUndefined();
-  });
-
-  it("addMcpPreset menulis konfigurasi yang valid dan bisa dimuat", async () => {
-    const added = await addMcpPreset("context7", undefined, dir);
-    expect(added.serverName).toBe("context7");
-
-    const config = await loadPluginsConfig(dir);
-    expect(config.servers.context7).toMatchObject({
-      transport: "http",
-      url: "https://mcp.context7.com/mcp",
-      risk: "read",
-    });
-  });
-
-  it("menulis referensi rahasia, bukan nilai (supabase)", async () => {
-    await addMcpPreset("supabase", undefined, dir);
-    const doc = await readJson();
-    const entry = (doc.mcp as Record<string, Record<string, unknown>>).supabase!;
-    expect(entry.credential).toBe("supabase");
-    expect(entry.env).toEqual({ SUPABASE_ACCESS_TOKEN: "${apiKey}" });
-  });
-
-  it("mendukung nama kustom untuk server", async () => {
-    const added = await addMcpPreset("context7", "c7", dir);
-    expect(added.serverName).toBe("c7");
-    expect(await hasMcpServer("c7", dir)).toBe(true);
-    expect(await hasMcpServer("context7", dir)).toBe(false);
-  });
-
-  it("menolak preset tak dikenal / nama yang sudah dipakai", async () => {
-    await expect(addMcpPreset("nope", undefined, dir)).rejects.toThrow(/Tersedia/);
-
-    await addMcpPreset("playwright", undefined, dir);
-    await expect(addMcpPreset("playwright", undefined, dir)).rejects.toThrow(/sudah ada/);
   });
 });

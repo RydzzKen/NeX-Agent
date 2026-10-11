@@ -19,7 +19,8 @@ import { buildSystemPrompt } from "../memory/system_prompt.js";
 import { CredentialStore } from "../config/credentials.js";
 import { McpManager } from "../plugins/manager.js";
 import { removeMcpServer } from "../plugins/config.js";
-import { addMcpPreset, listMcpPresets, type AddedMcpPreset } from "../plugins/presets.js";
+import { listMcpPresets } from "../plugins/presets.js";
+import { applyMcpAdd, planMcpAdd, type McpAddPlan } from "../plugins/mcp_add.js";
 import {
   configDir,
   loadConfig,
@@ -1442,7 +1443,7 @@ export class ChatApp {
       return;
     }
     if (sub === "add") {
-      await this.commandMcpAdd(second, third);
+      await this.commandMcpAdd(args.slice(1));
       return;
     }
     if (sub === "remove" || sub === "rm") {
@@ -1454,7 +1455,7 @@ export class ChatApp {
       return;
     }
     this.io.warn(
-      `Argumen tidak dikenal: ${sub}. Pakai /mcp, /mcp add [preset] [nama], /mcp remove <nama>, /mcp reload, atau /mcp key <nama> [hapus].`,
+      `Argumen tidak dikenal: ${sub}. Pakai /mcp, /mcp add <preset|command>, /mcp remove <nama>, /mcp reload, atau /mcp key <nama> [hapus].`,
     );
   }
 
@@ -1491,26 +1492,29 @@ export class ChatApp {
       }
     }
     process.stdout.write(
-      "\n  /mcp add <preset> = tambah server · /mcp remove <nama> · /mcp reload · /mcp key <nama> (tanpa echo)\n\n",
+      "\n  /mcp add <preset|command...> = tambah server · /mcp remove <nama> · /mcp reload · /mcp key <nama>\n\n",
     );
   }
 
-  private async commandMcpAdd(alias?: string, customName?: string): Promise<void> {
-    if (!alias) {
+  private async commandMcpAdd(tokens: string[]): Promise<void> {
+    if (tokens.length === 0) {
       this.commandMcpPresets();
       return;
     }
 
-    let added: AddedMcpPreset;
+    let plan: McpAddPlan;
+    let serverName: string;
     try {
-      added = await addMcpPreset(alias, customName);
+      plan = planMcpAdd(tokens);
+      serverName = await applyMcpAdd(plan);
     } catch (err) {
       this.io.warn((err as Error).message);
       return;
     }
 
-    this.io.info(`Server MCP "${added.serverName}" ditambahkan (preset: ${added.preset.name}).`);
-    if (added.preset.note) this.io.info(added.preset.note);
+    const label = plan.kind === "preset" ? `preset: ${plan.presetAlias}` : plan.server.transport;
+    this.io.info(`Server MCP "${serverName}" ditambahkan (${label}).`);
+    if (plan.presetNote) this.io.info(plan.presetNote);
     await this.mcp.reload(this.registry);
     this.printMcp();
   }
@@ -1543,7 +1547,9 @@ export class ChatApp {
     for (const preset of listMcpPresets()) {
       process.stdout.write(`  ${preset.name.padEnd(12)} ${preset.description}\n`);
     }
-    process.stdout.write("\n");
+    process.stdout.write(
+      "\n  Kustom: /mcp add [--name <nama>] <command> [args...]  ·  /mcp add --url <url> [--name <nama>]\n\n",
+    );
   }
 
   private async commandMcpKey(name?: string, action?: string): Promise<void> {

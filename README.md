@@ -369,6 +369,19 @@ perintah:
 server yang butuh kredensial, setel dulu mis. `/mcp key supabase`. Setelah
 ditambah, server langsung dimuat ulang tanpa keluar dari sesi.
 
+Selain preset, `/mcp add` menerima server kustom langsung (nama ditebak
+otomatis dari paket/host, atau dipaksa dengan `--name`):
+
+```
+/mcp add npx @playwright/mcp@latest --headless   # command stdio
+/mcp add --name pw npx @playwright/mcp@latest    # paksa nama server
+/mcp add --url https://mcp.context7.com/mcp      # server HTTP jarak jauh
+/mcp add --url https://contoh/sse --transport sse
+```
+
+Nama hasil tebakan boleh bentrok (otomatis diberi akhiran `-2`), sedangkan nama
+eksplisit (`--name`) menolak menimpa server yang sudah ada.
+
 - **Context7** — tanpa API key tetap jalan (limit rendah). Untuk limit lebih
   tinggi, dapatkan key gratis di <https://context7.com/dashboard>, jalankan
   `/mcp key context7`, lalu tambahkan

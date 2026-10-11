@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: preset MCP `/mcp add` (Context7/Playwright/Supabase) selesai.
+Terakhir diperbarui: `/mcp add` (preset + command/URL mentah) selesai.
 
 ## Selesai
 
@@ -81,7 +81,7 @@ walau sesi chat ditutup, dengan restart otomatis; token disimpan aman (`~/.confi
 
 ### Tahap C — Integrasi spesifik (via konfigurasi + preset)
 
-- [x] **Preset `/mcp add`** (`context7`, `playwright`, `supabase`) + `/mcp remove` & `/mcp presets` — `src/plugins/presets.ts`
+- [x] **`/mcp add`** — preset (`context7`, `playwright`, `supabase`) + command mentah (`/mcp add npx @pkg@latest`) & URL (`--url`, `--transport`, `--name`), plus `/mcp remove` & `/mcp presets` — `src/plugins/presets.ts`, `src/plugins/mcp_add.ts`
 - [x] **Context7** (`/mcp add context7`) — dokumen library terbaru, read-only, aman di Termux. Limit tinggi: `/mcp key context7`
 - [x] **Supabase** (`/mcp add supabase`) — read-only default; mutasi DB lewat konfirmasi; token di CredentialStore (`/mcp key supabase`)
 - [x] **Playwright** (`/mcp add playwright`) — MCP browser headless, semua aksi = `mutate`. Berat (unduh Chromium); **tidak untuk Termux**
