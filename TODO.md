@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: Tahap B (MCP client) selesai.
+Terakhir diperbarui: bot Telegram + update mandiri/`/restart` selesai.
 
 ## Selesai
 
@@ -42,6 +42,31 @@ frontend vanilla JS + `xterm.js` (aset di-`copy` ke `dist/web`, tanpa bundler); 
 - [x] `nex-agent serve` + config `webHost`/`webPort` + README
 - [~] `node-pty` sebagai backend PTY opsional (fallback `script` sudah memadai)
 
+## Telegram (bot chat jarak jauh)  ← selesai
+
+Keputusan: bot dijalankan sebagai **daemon terpisah** (supervisor + worker) supaya tetap hidup
+walau sesi chat ditutup, dengan restart otomatis; token disimpan aman (`~/.config/agent/telegram.json`, mode 600).
+
+- [x] `src/server/telegram.ts` (klien Bot API + `TelegramBridge`) dan `telegram_server.ts` (server mandiri headless)
+- [x] Daemon: supervisor + auto-restart (backoff, berhenti pada error konfigurasi), pidfile, log — `nex-agent telegram start|stop|restart|status|logs`
+- [x] Kelola dari sesi chat: `/telegram [start|stop|restart|status|logs|token|allow|deny|on|off]`
+- [x] Allowlist chat-id + mode terbuka; token via `resolveTelegramSettings`/`CredentialStore`, tak pernah dicetak
+- [x] Teruskan prompt persetujuan (tulis/shell/path/sensitive) ke Telegram; balas `y`/`n`/`a`
+- [x] Menu perintah otomatis (`setMyCommands`), dukungan `/perintah@BotName`, normalisasi `-`→`_` (mis. `/allow-all`)
+- [x] Perintah lengkap: `/new` `/clear` `/sessions` `/resume` `/rename` `/delete` `/plan` `/build` `/mode` `/allow-all` `/stop` `/status` `/models` `/skills` `/todos` `/usage` `/update` `/restart` `/help`
+- [x] Render Markdown jawaban model sebagai **HTML Telegram** (`parse_mode: HTML`, chunk seimbang tag, batas entity, fallback teks polos) — `src/server/telegram_markdown.ts`
+- [x] `/stop` (alias `/interrupt`): hentikan tugas berjalan **tanpa** hapus sesi; interrupt membatalkan approval yang menggantung; `/new` & `/resume` otomatis menghentikan tugas lama dulu
+- [x] `/allow-all` sekaligus menyetujui izin yang menggantung (file sensitif tetap manual)
+- [x] `/restart`: jalankan ulang worker agar versi baru terpakai
+
+## Update mandiri & uninstall  ← selesai
+
+- [x] `nex-agent update` / `/update`: fetch → fast-forward → `pnpm install` → `pnpm build`; dibatalkan bila ada perubahan lokal atau riwayat bercabang (non-ff)
+- [x] Konfirmasi sebelum update: `Versi Terbaru tersedia: sekarang v… → terbaru v…` + `Update Sekarang? (y/N)` (headline cyan)
+- [x] Pesan sukses `[SUKSES] Ter-update ke v…. Jalankan '/restart' untuk menerapkan.` (`[SUKSES]` ijo terang)
+- [x] `/restart` untuk menerapkan: re-exec di chat CLI, respawn worker di Telegram
+- [x] `nex-agent update --check` (hanya periksa) dan `nex-agent uninstall [--purge --yes]`
+
 ## Rencana plugin
 
 ### Tahap B — MCP client (fondasi plugin)  ← selesai
@@ -74,6 +99,7 @@ frontend vanilla JS + `xterm.js` (aset di-`copy` ke `dist/web`, tanpa bundler); 
 - Termux aman: Context7, Supabase (HTTP/JS murni). Playwright & Strix kemungkinan besar tidak.
 - Aturan arsitektur: `core/` tidak mengimpor `cli/`/SDK provider. Tool lewat registri. Input tervalidasi Zod.
 - File sensitif tetap wajib konfirmasi walau `--allow-all`.
+- Jangan pernah menulis kredensial (termasuk token Telegram) ke file/log/layar.
 
 ## Verifikasi tiap selesai
 
