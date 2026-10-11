@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   program
     .name("agent")
     .description("AI Agent CLI — loop agentik, mode Plan/Build, multi-provider")
-    .version("1.0.6", "-v, --version", "tampilkan versi")
+    .version("1.0.7", "-v, --version", "tampilkan versi")
     .argument("[goal]", "tujuan tugas; kosong untuk mode chat interaktif")
     .option("--mode <mode>", "mode awal: plan atau build")
     .option("--model <model>", "model yang dipakai")
@@ -331,10 +331,12 @@ async function main(): Promise<void> {
     .command("update")
     .description("perbarui NeX-Agent dari repo git lalu bangun ulang")
     .option("--check", "hanya periksa, jangan ubah apa pun")
+    .option("--stash", "simpan perubahan lokal sementara (stash) sebelum update, pulihkan setelahnya")
     .action(async (_options: Record<string, unknown>, command: Command) => {
       const merged = command.optsWithGlobals() as Record<string, unknown>;
       const outcome = await runUpdate({
         ...(merged.check ? { check: true } : {}),
+        ...(merged.stash ? { stash: true } : {}),
         log: (line: string) => process.stdout.write(`${line}\n`),
       });
       process.stdout.write(
@@ -342,6 +344,11 @@ async function main(): Promise<void> {
           ? `${color.brightGreen("[SUKSES]")} ${describeUpdateSuccess(outcome)}\n`
           : `${describeUpdate(outcome)}\n`,
       );
+      if (outcome.stashConflict) {
+        process.stderr.write(
+          "Perubahan lokal bentrok saat dipulihkan; selesaikan konflik lalu commit (git status).\n",
+        );
+      }
       if (outcome.status === "error" || outcome.status === "dirty" || outcome.status === "not-ff" || outcome.status === "no-git") {
         process.exitCode = 1;
       }

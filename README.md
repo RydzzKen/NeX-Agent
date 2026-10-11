@@ -84,6 +84,7 @@ nex-agent telegram            # bot Telegram sebagai daemon latar belakang
 nex-agent telegram stop       # hentikan bot (status/restart/logs juga ada)
 nex-agent update              # tarik versi terbaru dari repo lalu bangun ulang
 nex-agent update --check      # hanya periksa, tanpa mengubah
+nex-agent update --stash      # simpan perubahan lokal sementara saat update
 nex-agent uninstall           # lepas perintah nex-agent/agent dari PATH
 nex-agent uninstall --purge --yes  # hapus juga config & sumber terpasang
 ```
@@ -309,7 +310,10 @@ tersedia lalu **meminta konfirmasi** sebelum menarik commit terbaru dari repo gi
 asal, menjalankan `pnpm install`, dan `pnpm build`. Bila sudah sama dengan remote,
 ia berkata "sudah versi terbaru". Update dibatalkan bila ada perubahan lokal yang
 belum di-commit (agar tidak hilang) atau bila riwayat bercabang (fast-forward tidak
-memungkinkan); `nex-agent update --check` hanya memeriksa.
+memungkinkan); `nex-agent update --check` hanya memeriksa. Bila ada perubahan
+lokal, tambahkan **`--stash`** (`/update --stash`): perubahan disimpan sementara
+ke `git stash` (termasuk file baru), update dijalankan, lalu dipulihkan; kalau
+bentrok, konfliknya diberitahukan untuk diselesaikan manual.
 
 Setelah update selesai, jalankan **`/restart`**: di chat/terminal ia menjalankan
 ulang proses agar `dist/` terbaru dimuat; di Telegram ia menyalakan ulang worker,

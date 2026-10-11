@@ -120,7 +120,7 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/todos", "tampilkan daftar tugas (checklist)"],
   ["/web [lan|stop]", "nyalakan server web (lan = buka ke jaringan) / hentikan"],
   ["/telegram [start|stop|restart|status|logs|token|allow]", "kelola bot Telegram (daemon latar belakang)"],
-  ["/update", "perbarui NeX-Agent dari repo git lalu bangun ulang"],
+  ["/update [--stash]", "perbarui NeX-Agent dari repo git (--stash: simpan perubahan lokal sementara)"],
   ["/restart", "jalankan ulang NeX-Agent untuk menerapkan versi baru"],
   ["/exit", "keluar dari sesi chat (atau Ctrl+D)"],
   ["/help", "bantuan"],
@@ -646,7 +646,7 @@ export class ChatApp {
         await this.commandTelegram(args);
         return "continue";
       case "/update":
-        await this.commandUpdate();
+        await this.commandUpdate(args);
         return "continue";
       case "/restart":
         await this.commandRestart();
@@ -1215,7 +1215,8 @@ export class ChatApp {
    * dan membangun ulang. Karena proses chat ini masih memakai kode lama di memori,
    * pengguna diminta menjalankan `/restart` agar versi baru terpakai.
    */
-  private async commandUpdate(): Promise<void> {
+  private async commandUpdate(flags: string[] = []): Promise<void> {
+    const stash = flags.includes("--stash") || flags.includes("-s");
     this.io.info("Memeriksa pembaruan dari repo git...");
     const check = await runUpdate({
       check: true,
@@ -1242,10 +1243,16 @@ export class ChatApp {
     }
 
     const outcome = await runUpdate({
+      stash,
       log: (line: string) => process.stdout.write(`  ${line}\n`),
     });
     if (outcome.status === "updated") {
       this.io.info(`${color.brightGreen("[SUKSES]")} ${describeUpdateSuccess(outcome)}`);
+      if (outcome.stashConflict) {
+        this.io.warn(
+          "Perubahan lokal bentrok saat dipulihkan; selesaikan konflik lalu commit (git status).",
+        );
+      }
       return;
     }
     if (outcome.status === "error") {

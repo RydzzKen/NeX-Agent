@@ -1,6 +1,6 @@
 {
   "name": "nex-agent",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "AI Agent CLI — agentic terminal loop, Plan/Build modes, multi-provider",
   "type": "module",
   "bin": {

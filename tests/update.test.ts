@@ -204,6 +204,63 @@ describe("runUpdate", () => {
     });
     const outcome = await runUpdate({ cwd: dir, runner });
     expect(outcome.status).toBe("dirty");
+    expect(outcome.message).toContain("--stash");
+  });
+
+  it("dengan --stash: menyimpan perubahan lokal, update, lalu memulihkannya", async () => {
+    const dir = await makeSource("2.2.0");
+    const seen: string[] = [];
+    const runner: CommandRunner = {
+      async run(cmd, args) {
+        const key = [cmd, ...args].join(" ");
+        seen.push(key);
+        const table: Record<string, CommandResult> = {
+          "git rev-parse --abbrev-ref HEAD": ok("main\n"),
+          "git fetch origin main": ok(),
+          "git rev-parse HEAD": ok("aaaaaaa\n"),
+          "git rev-parse FETCH_HEAD": ok("bbbbbbb\n"),
+          "git rev-list --count HEAD..bbbbbbb": ok("1\n"),
+          "git status --porcelain": ok(" M src/index.ts\n?? catatan.md\n"),
+          "git stash push --include-untracked -m nex-agent auto-stash sebelum update": ok(),
+          "git merge --ff-only bbbbbbb": ok(),
+          "pnpm -v": ok("10.0.0\n"),
+          "pnpm install --frozen-lockfile": ok(),
+          "pnpm build": ok(),
+          "git stash pop": ok(),
+        };
+        const handler = table[key];
+        if (!handler) throw new Error(`perintah tak terduga: ${key}`);
+        return handler;
+      },
+    };
+    const outcome = await runUpdate({ cwd: dir, runner, stash: true });
+    expect(outcome.status).toBe("updated");
+    expect(outcome.stashed).toBe(true);
+    expect(outcome.stashConflict).toBeUndefined();
+    expect(seen).toContain("git stash push --include-untracked -m nex-agent auto-stash sebelum update");
+    expect(seen.indexOf("git stash pop")).toBeGreaterThan(seen.indexOf("pnpm build"));
+  });
+
+  it("melaporkan konflik bila perubahan lokal bentrok saat dipulihkan", async () => {
+    const dir = await makeSource();
+    const runner = fakeRunner({
+      "git rev-parse --abbrev-ref HEAD": ok("main\n"),
+      "git fetch origin main": ok(),
+      "git rev-parse HEAD": ok("aaaaaaa\n"),
+      "git rev-parse FETCH_HEAD": ok("bbbbbbb\n"),
+      "git rev-list --count HEAD..bbbbbbb": ok("1\n"),
+      "git status --porcelain": ok(" M src/index.ts\n"),
+      "git stash push --include-untracked -m nex-agent auto-stash sebelum update": ok(),
+      "git merge --ff-only bbbbbbb": ok(),
+      "pnpm -v": ok("10.0.0\n"),
+      "pnpm install --frozen-lockfile": ok(),
+      "pnpm build": ok(),
+      "git stash pop": { code: 1, stdout: "", stderr: "CONFLICT (content)\n" },
+    });
+    const outcome = await runUpdate({ cwd: dir, runner, stash: true });
+    expect(outcome.status).toBe("updated");
+    expect(outcome.stashConflict).toBe(true);
+    expect(outcome.message).toContain("bentrok");
   });
 
   it("gagal dengan pesan bila git fetch error", async () => {

@@ -144,6 +144,10 @@ export interface UpdateOutcome {
   /** Versi pada commit yang tersedia di remote (untuk status "available"). */
   nextVersion?: string;
   message?: string;
+  /** Update memakai stash untuk menyimpan perubahan lokal sementara. */
+  stashed?: boolean;
+  /** Perubahan lokal bentrok saat dipulihkan dari stash (perlu diselesaikan manual). */
+  stashConflict?: boolean;
 }
 
 function shortRev(rev?: string): string {
@@ -193,6 +197,8 @@ export interface UpdateOptions {
   cwd?: string;
   /** Hanya periksa, jangan ubah apa pun. */
   check?: boolean;
+  /** Saat ada perubahan lokal, simpan sementara ke stash lalu pulihkan setelahnya. */
+  stash?: boolean;
   runner?: CommandRunner;
   log?: (line: string) => void;
 }
@@ -265,26 +271,67 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateOutc
   }
 
   const dirty = await runner.run("git", ["status", "--porcelain"], { cwd });
-  if (dirty.stdout.trim()) {
+  const isDirty = dirty.stdout.trim().length > 0;
+  if (isDirty && !options.stash) {
     return {
       status: "dirty",
       branch,
       from,
       to,
-      message: "Ada perubahan lokal yang belum di-commit; update dibatalkan agar tidak hilang.",
+      message:
+        "Ada perubahan lokal yang belum di-commit; update dibatalkan agar tidak hilang. " +
+        "Commit dulu, atau jalankan '/update --stash' untuk menyimpannya sementara.",
     };
   }
+
+  let stashed = false;
+  if (isDirty) {
+    log("Menyimpan perubahan lokal ke stash...");
+    const stash = await runner.run(
+      "git",
+      ["stash", "push", "--include-untracked", "-m", "nex-agent auto-stash sebelum update"],
+      { cwd },
+    );
+    if (stash.code !== 0) {
+      return {
+        status: "dirty",
+        branch,
+        from,
+        to,
+        message: stash.stderr.trim() || "Gagal menyimpan perubahan lokal ke stash.",
+      };
+    }
+    stashed = true;
+  }
+
+  /** Pulihkan stash (bila dipakai) dan tandai konflik pada hasil. */
+  const finish = async (outcome: UpdateOutcome): Promise<UpdateOutcome> => {
+    if (!stashed) return outcome;
+    log("Memulihkan perubahan lokal dari stash...");
+    const pop = await runner.run("git", ["stash", "pop"], { cwd });
+    if (pop.code !== 0) {
+      return {
+        ...outcome,
+        stashed: true,
+        stashConflict: true,
+        message:
+          (outcome.message ? `${outcome.message} ` : "") +
+          "Perubahan lokal bentrok saat dipulihkan (git stash pop); selesaikan konflik lalu commit.",
+      };
+    }
+    return { ...outcome, stashed: true };
+  };
 
   log("Menerapkan pembaruan (fast-forward)...");
   const merge = await runner.run("git", ["merge", "--ff-only", to], { cwd });
   if (merge.code !== 0) {
-    return {
+    return finish({
       status: "not-ff",
       branch,
       from,
       to,
       message: merge.stderr.trim() || "Tidak bisa fast-forward (riwayat bercabang).",
-    };
+    });
   }
 
   const major = await pnpmMajor(runner, cwd);
@@ -294,16 +341,16 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateOutc
     install = await runner.run("pnpm", pnpmInstallArgs(major, false), { cwd, onLine: log });
   }
   if (install.code !== 0) {
-    return { status: "error", branch, from, to, message: "pnpm install gagal." };
+    return finish({ status: "error", branch, from, to, message: "pnpm install gagal." });
   }
 
   log("Membangun...");
   const build = await runner.run("pnpm", ["build"], { cwd, onLine: log });
   if (build.code !== 0) {
-    return { status: "error", branch, from, to, message: "pnpm build gagal." };
+    return finish({ status: "error", branch, from, to, message: "pnpm build gagal." });
   }
 
-  return { status: "updated", branch, from, to, version: await readVersion(cwd) };
+  return finish({ status: "updated", branch, from, to, version: await readVersion(cwd) });
 }
 
 /** Baris pembuka penanda PATH yang ditulis install.sh. */
