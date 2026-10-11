@@ -90,6 +90,14 @@ interface Harness {
   sentPrompts: string[];
   resolutions: Array<{ id: string; value: unknown }>;
   newSessions: () => number;
+  state: {
+    mode: string;
+    allowAll: boolean;
+    title: string;
+    model: string;
+    cleared: number;
+    deleted: number;
+  };
   emit(message: ServerMessage): void;
 }
 
@@ -104,6 +112,7 @@ function harness(options: {
   const resolutions: Array<{ id: string; value: unknown }> = [];
   let sessionCount = 0;
   let sink: ((message: ServerMessage) => void) | undefined;
+  const state = { mode: "build", allowAll: false, title: "awal", model: "model-a", cleared: 0, deleted: 0 };
 
   const defaultSend: TelegramAgent["send"] = async (text) => {
     sentPrompts.push(text);
@@ -124,6 +133,38 @@ function harness(options: {
       resolutions.push({ id, value });
       return true;
     },
+    clearHistory: async () => {
+      state.cleared += 1;
+    },
+    setMode: (mode) => {
+      state.mode = mode;
+    },
+    allowAll: () => state.allowAll,
+    setAllowAll: (value) => {
+      state.allowAll = value;
+    },
+    describeStatus: () => `mode=${state.mode} allow-all=${state.allowAll ? "ON" : "off"}`,
+    listSessions: async () => [
+      { id: "s1", title: "pertama", updatedAt: "2026-01-01T10:00:00Z" },
+      { id: "s2", title: "kedua", updatedAt: "2026-01-02T10:00:00Z" },
+    ],
+    openSession: async (id) => (id === "s1" || id === "s2" ? { id } : undefined),
+    renameCurrent: async (title) => {
+      state.title = title;
+    },
+    deleteCurrent: async () => {
+      state.deleted += 1;
+    },
+    listSkills: () => [{ name: "alpha", description: "skill contoh" }],
+    listTodos: () => [
+      { content: "cuci tangan", status: "completed" },
+      { content: "masak", status: "pending" },
+    ],
+    listModels: async () => ["model-a", "model-b"],
+    setModel: async (name) => {
+      state.model = name;
+    },
+    usageSummary: async (range) => `rekap ${range}`,
   };
 
   const bridge = new TelegramBridge(
@@ -148,6 +189,7 @@ function harness(options: {
     sentPrompts,
     resolutions,
     newSessions: () => sessionCount,
+    state,
     emit: (message) => sink?.(message),
   };
 }
@@ -382,7 +424,7 @@ describe("TelegramBridge", () => {
   it("membalas petunjuk untuk perintah tak dikenal tanpa memanggil model", async () => {
     const h = harness();
     h.client.push([message(1, 5, "/apalah")]);
-    await until(() => h.client.sends.some((s) => s.text.includes("Perintah tidak dikenal")));
+    await until(() => h.client.sends.some((s) => s.text.includes("belum tersedia di Telegram")));
     expect(h.sentPrompts).toEqual([]);
     await h.bridge.stop();
   });
@@ -418,12 +460,72 @@ describe("TelegramBridge", () => {
     expect(h.client.sends.some((s) => s.text.includes("restart"))).toBe(false);
     await h.bridge.stop();
   });
+
+  async function runCommand(h: Harness, text: string, expectText: string): Promise<void> {
+    h.client.push([message(1, 5, text)]);
+    await until(() => h.client.sends.some((s) => s.text.includes(expectText)));
+  }
+
+  it("/allow-all membalik status dan menerima on/off", async () => {
+    const h = harness();
+    await runCommand(h, "/allow-all", "AKTIF");
+    expect(h.state.allowAll).toBe(true);
+    await runCommand(h, "/allow-all off", "nonaktif");
+    expect(h.state.allowAll).toBe(false);
+    await h.bridge.stop();
+  });
+
+  it("/plan dan /mode mengganti mode", async () => {
+    const h = harness();
+    await runCommand(h, "/plan", "Mode: plan");
+    expect(h.state.mode).toBe("plan");
+    await runCommand(h, "/mode build", "Mode: build");
+    expect(h.state.mode).toBe("build");
+    await h.bridge.stop();
+  });
+
+  it("/status mengirim ringkasan dari app", async () => {
+    const h = harness();
+    await runCommand(h, "/status", "allow-all=off");
+    await h.bridge.stop();
+  });
+
+  it("/sessions lalu /resume <nomor> membuka sesi", async () => {
+    const h = harness();
+    await runCommand(h, "/sessions", "kedua");
+    await runCommand(h, "/resume 2", "Sesi dilanjutkan");
+    await h.bridge.stop();
+  });
+
+  it("/models tanpa argumen menampilkan daftar, dengan nomor mengganti model", async () => {
+    const h = harness();
+    await runCommand(h, "/models", "model-b");
+    await runCommand(h, "/models 2", "Model: model-b");
+    expect(h.state.model).toBe("model-b");
+    await h.bridge.stop();
+  });
+
+  it("/skills, /todos, /usage, /clear, /rename, /delete bekerja", async () => {
+    const h = harness();
+    await runCommand(h, "/skills", "alpha");
+    await runCommand(h, "/todos", "masak");
+    await runCommand(h, "/usage week", "rekap week");
+    await runCommand(h, "/clear", "Riwayat sesi dikosongkan");
+    expect(h.state.cleared).toBe(1);
+    await runCommand(h, "/rename Judul Baru", "Judul Baru");
+    expect(h.state.title).toBe("Judul Baru");
+    await runCommand(h, "/delete", "Sesi dihapus");
+    expect(h.state.deleted).toBe(1);
+    await h.bridge.stop();
+  });
 });
 
 describe("parseTelegramCommand", () => {
   it("mengenali perintah dasar dan argumen", () => {
     expect(parseTelegramCommand("/new")).toEqual({ name: "new", args: "" });
     expect(parseTelegramCommand("  /Update --check ")).toEqual({ name: "update", args: "--check" });
+    expect(parseTelegramCommand("/allow-all")).toEqual({ name: "allow_all", args: "" });
+    expect(parseTelegramCommand("/allow_all off")).toEqual({ name: "allow_all", args: "off" });
   });
 
   it("menghormati sufiks @botname", () => {

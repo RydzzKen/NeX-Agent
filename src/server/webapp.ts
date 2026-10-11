@@ -20,7 +20,8 @@ import {
 import { JsonlLogger, type Logger } from "../logging/logger.js";
 import { SessionStore, deriveTitle, newSessionId, type SessionRecord } from "../sessions/store.js";
 import { UsageTracker } from "../usage/tracker.js";
-import { UsageStore } from "../usage/store.js";
+import { UsageStore, type UsageRange } from "../usage/store.js";
+import { renderCrossSession } from "../cli/usage.js";
 import { createWebSearch } from "../util/websearch.js";
 import { createProvider } from "../providers/factory.js";
 import { ToolRegistry } from "../tools/registry.js";
@@ -355,6 +356,70 @@ export class WebApp {
 
   skillsList(): Array<{ name: string; description: string }> {
     return this.skills.map((s) => ({ name: s.name, description: s.description }));
+  }
+
+  /** Kosongkan riwayat sesi aktif (tanpa membuat sesi baru). */
+  async clearHistory(): Promise<void> {
+    this.session.clearHistory();
+    await this.saveRecord();
+    this.notifySession();
+  }
+
+  /** Ringkasan satu blok untuk perintah /status di Telegram. */
+  describeStatus(): string {
+    return [
+      `📂 workspace : ${this.workspace.root}`,
+      `🧭 mode      : ${this.session.getMode()}`,
+      `🤖 model     : ${this.session.getModel()}`,
+      `🔌 provider  : ${this.providerKey}`,
+      `🔓 allow-all : ${this.approvals.allowAll() ? "ON" : "off"}`,
+      `⏳ status    : ${this.running ? "sibuk" : "siap"}`,
+    ].join("\n");
+  }
+
+  /** Daftar tugas (todo) sesi aktif. */
+  listTodos(): Array<{ content: string; status: string }> {
+    return this.session.getTodos().map((t) => ({ content: t.content, status: t.status }));
+  }
+
+  /** Daftar id model dari provider aktif (untuk /models). */
+  async listModels(): Promise<string[]> {
+    try {
+      return (await this.provider.listModels()).map((m) => m.id);
+    } catch (err) {
+      this.logger.warn("provider.list_models_failed", { error: (err as Error).message });
+      return [];
+    }
+  }
+
+  /** Ganti model sesi aktif (untuk /models di Telegram). */
+  async setModel(name: string): Promise<void> {
+    const models = await this.provider.listModels().catch(() => []);
+    const info = models.find((m) => m.id === name);
+    this.session.setModel(name, info);
+    this.record.model = name;
+    this.record.providerId = this.providerKey;
+    await rememberModel(this.workspace.root, name);
+    await this.saveRecord();
+    await this.notifyState();
+  }
+
+  /** Rekap pemakaian lintas sesi sebagai teks (untuk /usage di Telegram). */
+  async usageSummary(range: string): Promise<string> {
+    const summary = await this.usageStore.aggregate(range as UsageRange);
+    return renderCrossSession(summary, range as UsageRange);
+  }
+
+  /** Ganti judul sesi aktif (untuk /rename di Telegram). */
+  async renameCurrent(title: string): Promise<void> {
+    this.record.title = title;
+    await this.saveRecord();
+    await this.notifyState();
+  }
+
+  /** Hapus sesi aktif lalu buat sesi baru (untuk /delete di Telegram). */
+  async deleteCurrent(): Promise<void> {
+    await this.deleteSession(this.record.id);
   }
 
   async listSessions(): Promise<SessionSummary[]> {

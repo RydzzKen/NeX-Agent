@@ -199,10 +199,24 @@ export interface TelegramCommand {
  */
 export const TELEGRAM_COMMANDS: TelegramCommand[] = [
   { command: "start", description: "Mulai bot" },
-  { command: "new", description: "Mulai sesi baru" },
-  { command: "update", description: "Perbarui NeX-Agent dari repo git" },
-  { command: "interrupt", description: "Hentikan tugas yang berjalan" },
   { command: "help", description: "Tampilkan bantuan" },
+  { command: "new", description: "Mulai sesi baru" },
+  { command: "clear", description: "Kosongkan riwayat sesi" },
+  { command: "sessions", description: "Daftar sesi" },
+  { command: "resume", description: "Lanjutkan sesi (nomor/id)" },
+  { command: "rename", description: "Ganti judul sesi" },
+  { command: "delete", description: "Hapus sesi ini" },
+  { command: "plan", description: "Mode Plan (read-only)" },
+  { command: "build", description: "Mode Build (eksekusi)" },
+  { command: "mode", description: "Pindah mode (plan/build)" },
+  { command: "allow_all", description: "Izinkan semua izin (on/off)" },
+  { command: "interrupt", description: "Hentikan tugas yang berjalan" },
+  { command: "status", description: "Status sesi & konfigurasi" },
+  { command: "models", description: "Lihat/ganti model" },
+  { command: "skills", description: "Daftar skill" },
+  { command: "todos", description: "Daftar tugas" },
+  { command: "usage", description: "Pemakaian token & biaya" },
+  { command: "update", description: "Perbarui NeX-Agent dari repo git" },
 ];
 
 
@@ -273,6 +287,20 @@ export interface TelegramAgent {
   newSession?(): Promise<void> | void;
   isBusy?(): boolean;
   resolveApproval(id: string, value: unknown): boolean;
+  clearHistory?(): Promise<void> | void;
+  setMode?(mode: "plan" | "build"): Promise<void> | void;
+  allowAll?(): boolean;
+  setAllowAll?(value: boolean): void;
+  describeStatus?(): string;
+  listSessions?(): Promise<Array<{ id: string; title: string; updatedAt?: string }>>;
+  openSession?(id: string): Promise<{ id: string } | undefined>;
+  renameCurrent?(title: string): Promise<void> | void;
+  deleteCurrent?(): Promise<void> | void;
+  listSkills?(): Array<{ name: string; description: string }>;
+  listTodos?(): Array<{ content: string; status: string }>;
+  listModels?(): Promise<string[]>;
+  setModel?(name: string): Promise<void> | void;
+  usageSummary?(range: string): Promise<string>;
 }
 
 export interface TelegramBridgeDeps {
@@ -293,7 +321,14 @@ export interface ParsedCommand {
   mention?: string;
 }
 
-const COMMAND_RE = /^\/([A-Za-z0-9_]+)(?:@(\S+))?(?:\s+([\s\S]*))?$/;
+const COMMAND_RE = /^\/([A-Za-z0-9_-]+)(?:@(\S+))?(?:\s+([\s\S]*))?$/;
+
+/** Normalisasi alias perintah (mis. `allow-all`/`allowall` → `allow_all`). */
+export function normalizeCommandName(name: string): string {
+  const lower = name.toLowerCase().replace(/-/g, "_");
+  if (lower === "allowall") return "allow_all";
+  return lower;
+}
 
 /**
  * Kenali `/perintah [argumen]` (dengan dukungan `/perintah@BotName`). Mengembalikan
@@ -303,7 +338,7 @@ const COMMAND_RE = /^\/([A-Za-z0-9_]+)(?:@(\S+))?(?:\s+([\s\S]*))?$/;
 export function parseTelegramCommand(text: string, botUsername?: string): ParsedCommand | undefined {
   const match = COMMAND_RE.exec(text.trim());
   if (!match) return undefined;
-  const name = (match[1] ?? "").toLowerCase();
+  const name = normalizeCommandName(match[1] ?? "");
   if (!name) return undefined;
   const mention = match[2];
   if (mention && botUsername && mention.toLowerCase() !== botUsername.toLowerCase()) return undefined;
@@ -311,15 +346,32 @@ export function parseTelegramCommand(text: string, botUsername?: string): Parsed
 }
 
 const HELP_TEXT = [
-  "NeX-Agent bot siap. Kirim pesan untuk memulai percakapan.",
+  "NeX-Agent bot siap. Kirim pesan biasa untuk memulai percakapan.",
   "",
-  "Perintah:",
+  "Sesi:",
   "  /new — mulai sesi baru",
-  "  /update — perbarui NeX-Agent dari repo git",
+  "  /clear — kosongkan riwayat sesi ini",
+  "  /sessions — daftar sesi (lalu /resume <nomor>)",
+  "  /resume <nomor|id> — lanjutkan sesi",
+  "  /rename <judul> — ganti judul sesi",
+  "  /delete — hapus sesi ini",
+  "",
+  "Kontrol:",
+  "  /plan · /build — pindah mode (read-only / eksekusi)",
+  "  /allow-all [on|off] — izinkan semua izin (tanpa argumen = balik)",
   "  /interrupt — hentikan tugas yang berjalan",
+  "  /status — workspace, mode, model, provider",
+  "",
+  "Info lain:",
+  "  /models [nomor|nama] — lihat/ganti model",
+  "  /skills — skill yang tersedia",
+  "  /todos — daftar tugas",
+  "  /usage [today|week|all] — pemakaian token & biaya",
+  "  /update — perbarui NeX-Agent dari repo git",
   "  /help — bantuan ini",
   "",
   "Saat agent meminta izin, balas y (setuju), n (tolak), atau a (setuju semua).",
+  "Catatan: /connect, /provider, /mcp, /permissions, /skill, dan /undo hanya di chat/terminal.",
 ].join("\n");
 
 interface PendingApproval {
@@ -343,6 +395,8 @@ export class TelegramBridge {
   private botUsername: string | undefined;
   private textBuffer = "";
   private pending: PendingApproval | undefined;
+  private sessionCache: Array<{ id: string; title: string; updatedAt?: string }> = [];
+  private modelCache: string[] = [];
   private readonly polling: Promise<void>;
 
   constructor(
@@ -457,31 +511,272 @@ export class TelegramBridge {
   }
 
   private async handleCommand(chatId: string, command: ParsedCommand): Promise<void> {
+    const app = this.deps.app;
     switch (command.name) {
       case "start":
       case "help":
         await this.safeSend(chatId, HELP_TEXT);
         return;
       case "new":
-        try {
-          await this.deps.app.newSession?.();
-          await this.safeSend(chatId, "Sesi baru dibuat.");
-        } catch (err) {
-          await this.safeSend(chatId, `Gagal membuat sesi: ${(err as Error).message}`);
-        }
+        await this.run(chatId, "Membuat sesi baru...", async () => {
+          await app.newSession?.();
+          return "Sesi baru dibuat.";
+        });
+        return;
+      case "clear":
+        await this.run(chatId, "Mengosongkan riwayat...", async () => {
+          if (!app.clearHistory) return "Fitur clear tidak tersedia.";
+          await app.clearHistory();
+          return "Riwayat sesi dikosongkan.";
+        });
         return;
       case "interrupt":
       case "stop":
-        this.deps.app.interrupt?.();
+        app.interrupt?.();
         await this.safeSend(chatId, "Permintaan henti dikirim.");
+        return;
+      case "plan":
+      case "build":
+        await app.setMode?.(command.name === "plan" ? "plan" : "build");
+        await this.safeSend(chatId, `Mode: ${command.name}.`);
+        return;
+      case "mode":
+        await this.commandMode(chatId, command.args);
+        return;
+      case "allow_all":
+        await this.commandAllowAll(chatId, command.args);
+        return;
+      case "status":
+        await this.safeSend(chatId, app.describeStatus?.() ?? "Status tidak tersedia.");
+        return;
+      case "sessions":
+        await this.commandSessions(chatId);
+        return;
+      case "resume":
+        await this.commandResume(chatId, command.args);
+        return;
+      case "rename":
+        await this.commandRename(chatId, command.args);
+        return;
+      case "delete":
+        await this.commandDelete(chatId);
+        return;
+      case "skills":
+        await this.commandSkills(chatId);
+        return;
+      case "todos":
+        await this.commandTodos(chatId);
+        return;
+      case "models":
+        await this.commandModels(chatId, command.args);
+        return;
+      case "usage":
+        await this.commandUsage(chatId, command.args);
         return;
       case "update":
         await this.handleUpdateCommand(chatId);
         return;
       default:
-        await this.safeSend(chatId, `Perintah tidak dikenal: /${command.name}. Ketik /help.`);
+        await this.safeSend(chatId, `Perintah /${command.name} belum tersedia di Telegram. Ketik /help.`);
     }
   }
+
+  /** Jalankan aksi dengan pesan "sedang..." lalu kirim hasilnya (tangani error). */
+  private async run(
+    chatId: string,
+    pending: string,
+    action: () => Promise<string | undefined>,
+  ): Promise<void> {
+    await this.safeSend(chatId, pending);
+    try {
+      const message = await action();
+      if (message) await this.safeSend(chatId, message);
+    } catch (err) {
+      await this.safeSend(chatId, `Gagal: ${(err as Error).message}`);
+    }
+  }
+
+  private async commandMode(chatId: string, args: string): Promise<void> {
+    const mode = args.trim().toLowerCase();
+    if (mode !== "plan" && mode !== "build") {
+      await this.safeSend(chatId, "Pakai: /mode plan atau /mode build.");
+      return;
+    }
+    await this.deps.app.setMode?.(mode);
+    await this.safeSend(chatId, `Mode: ${mode}.`);
+  }
+
+  private async commandAllowAll(chatId: string, args: string): Promise<void> {
+    const app = this.deps.app;
+    if (!app.setAllowAll) {
+      await this.safeSend(chatId, "Fitur allow-all tidak tersedia.");
+      return;
+    }
+    const arg = args.trim().toLowerCase();
+    const current = app.allowAll?.() ?? false;
+    const on = arg === "" ? !current : arg === "on" || arg === "ya" || arg === "true";
+    app.setAllowAll(on);
+    await this.safeSend(
+      chatId,
+      on
+        ? "Allow-all AKTIF untuk sesi ini (mode Plan tetap read-only)."
+        : "Allow-all nonaktif.",
+    );
+  }
+
+  private async commandSessions(chatId: string): Promise<void> {
+    const sessions = (await this.deps.app.listSessions?.()) ?? [];
+    this.sessionCache = sessions;
+    if (sessions.length === 0) {
+      await this.safeSend(chatId, "Belum ada sesi tersimpan.");
+      return;
+    }
+    const lines = ["Sesi tersimpan:", ""];
+    sessions.forEach((s, i) => {
+      const when = s.updatedAt ? s.updatedAt.slice(0, 16).replace("T", " ") : "-";
+      lines.push(`  ${String(i + 1).padStart(2)}. ${s.title}  (${when})`);
+    });
+    lines.push("", "Lanjutkan dengan /resume <nomor>.");
+    await this.safeSend(chatId, lines.join("\n"));
+  }
+
+  private async commandResume(chatId: string, args: string): Promise<void> {
+    const arg = args.trim();
+    if (!arg) {
+      await this.commandSessions(chatId);
+      return;
+    }
+    const app = this.deps.app;
+    if (!app.openSession) {
+      await this.safeSend(chatId, "Fitur resume tidak tersedia.");
+      return;
+    }
+    let id = arg;
+    const index = Number.parseInt(arg, 10);
+    if (Number.isInteger(index) && String(index) === arg && index >= 1) {
+      if (this.sessionCache.length === 0) this.sessionCache = (await app.listSessions?.()) ?? [];
+      const target = this.sessionCache[index - 1];
+      if (!target) {
+        await this.safeSend(chatId, `Nomor sesi tidak ada (1–${this.sessionCache.length}). Ketik /sessions.`);
+        return;
+      }
+      id = target.id;
+    }
+    await this.run(chatId, "Membuka sesi...", async () => {
+      const ok = await app.openSession?.(id);
+      return ok ? "Sesi dilanjutkan." : `Sesi tidak ditemukan: ${arg}`;
+    });
+  }
+
+  private async commandRename(chatId: string, args: string): Promise<void> {
+    const title = args.trim();
+    if (!title) {
+      await this.safeSend(chatId, "Pakai: /rename <judul baru>.");
+      return;
+    }
+    if (!this.deps.app.renameCurrent) {
+      await this.safeSend(chatId, "Fitur rename tidak tersedia.");
+      return;
+    }
+    await this.run(chatId, "Mengganti judul...", async () => {
+      await this.deps.app.renameCurrent?.(title);
+      return `Judul sesi: ${title}`;
+    });
+  }
+
+  private async commandDelete(chatId: string): Promise<void> {
+    if (!this.deps.app.deleteCurrent) {
+      await this.safeSend(chatId, "Fitur delete tidak tersedia.");
+      return;
+    }
+    await this.run(chatId, "Menghapus sesi ini...", async () => {
+      await this.deps.app.deleteCurrent?.();
+      return "Sesi dihapus.";
+    });
+  }
+
+  private async commandSkills(chatId: string): Promise<void> {
+    const skills = this.deps.app.listSkills?.() ?? [];
+    if (skills.length === 0) {
+      await this.safeSend(chatId, "Tidak ada skill yang dimuat.");
+      return;
+    }
+    const lines = ["Skill tersedia:", ""];
+    for (const s of skills) lines.push(`  • ${s.name}${s.description ? ` — ${s.description}` : ""}`);
+    await this.safeSend(chatId, lines.join("\n"));
+  }
+
+  private async commandTodos(chatId: string): Promise<void> {
+    const todos = this.deps.app.listTodos?.() ?? [];
+    if (todos.length === 0) {
+      await this.safeSend(chatId, "Belum ada tugas (todo).");
+      return;
+    }
+    const mark: Record<string, string> = {
+      pending: "•",
+      in_progress: "▸",
+      completed: "✔",
+      cancelled: "✘",
+    };
+    const lines = ["Daftar tugas:", ""];
+    for (const t of todos) lines.push(`  ${mark[t.status] ?? "•"} ${t.content}`);
+    await this.safeSend(chatId, lines.join("\n"));
+  }
+
+  private async commandModels(chatId: string, args: string): Promise<void> {
+    const app = this.deps.app;
+    if (!app.listModels) {
+      await this.safeSend(chatId, "Fitur models tidak tersedia.");
+      return;
+    }
+    const arg = args.trim();
+    if (arg && app.setModel) {
+      let name = arg;
+      const index = Number.parseInt(arg, 10);
+      if (Number.isInteger(index) && String(index) === arg && index >= 1) {
+        if (this.modelCache.length === 0) this.modelCache = await app.listModels();
+        const target = this.modelCache[index - 1];
+        if (!target) {
+          await this.safeSend(chatId, `Nomor model tidak ada. Ketik /models untuk melihat daftar.`);
+          return;
+        }
+        name = target;
+      }
+      await this.run(chatId, "Mengganti model...", async () => {
+        await app.setModel?.(name);
+        return `Model: ${name}`;
+      });
+      return;
+    }
+    if (arg) {
+      await this.safeSend(chatId, "Fitur ganti model tidak tersedia.");
+      return;
+    }
+    const models = await app.listModels();
+    this.modelCache = models;
+    if (models.length === 0) {
+      await this.safeSend(chatId, "Provider tidak mengembalikan model.");
+      return;
+    }
+    const lines = ["Model tersedia:", ""];
+    models.forEach((m, i) => lines.push(`  ${String(i + 1).padStart(3)}. ${m}`));
+    lines.push("", "Ganti dengan /models <nomor> atau /models <nama>.");
+    await this.safeSend(chatId, lines.join("\n"));
+  }
+
+  private async commandUsage(chatId: string, args: string): Promise<void> {
+    const app = this.deps.app;
+    if (!app.usageSummary) {
+      await this.safeSend(chatId, "Fitur usage tidak tersedia.");
+      return;
+    }
+    const range = ["today", "week", "all"].includes(args.trim()) ? args.trim() : "today";
+    await this.run(chatId, "Menghitung pemakaian...", async () => {
+      const summary = await app.usageSummary?.(range);
+      return summary ? stripAnsi(summary) : "Tidak ada data pemakaian.";
+    });
+  }
+
 
   /** `/update`: tarik versi terbaru dari repo lalu minta restart agar terpakai. */
   private async handleUpdateCommand(chatId: string): Promise<void> {
