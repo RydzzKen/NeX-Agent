@@ -79,7 +79,9 @@ nex-agent --resume <id>       # lanjutkan sesi
 nex-agent --continue          # lanjutkan sesi terakhir di workspace ini
 nex-agent usage today         # rekap pemakaian lintas sesi
 nex-agent logs <id>           # jejak satu sesi
-nex-agent serve               # buka chat + terminal di browser
+nex-agent web                 # buka chat + terminal di browser
+nex-agent telegram            # bot Telegram sebagai daemon latar belakang
+nex-agent telegram stop       # hentikan bot (status/restart/logs juga ada)
 ```
 
 `nex-agent` dan `agent` adalah perintah yang sama.
@@ -115,7 +117,8 @@ Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 `/rename` · `/delete [all]` · `/undo [n]` ·
 `/usage` · `/permissions` · `/allow-all [on|off]` · `/thinking` · `/markdown` ·
 `/skills` · `/skill <nama>|off` · `/mcp [reload|key <nama>]` · `/todos` ·
-`/serve [stop]` · `/exit` · `/help`.
+`/web [lan|stop]` · `/telegram [start|stop|restart|status|logs|token|allow]` ·
+`/exit` · `/help`.
 
 Mengetik `/` menampilkan daftar perintah terkait secara langsung di atas baris
 input (di TTY). Tab melengkapi perintah slash, subperintah (`/provider <Tab>`),
@@ -127,9 +130,10 @@ bisa dipakai ulang tanpa mengetik ulang.
 
 `/sessions` menampilkan sesi bernomor (judul diambil otomatis dari pesan
 pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/allow-all` menyalakan
-mode izinkan-semua tanpa keluar dari sesi. `/serve` menyalakan server web
+mode izinkan-semua tanpa keluar dari sesi. `/web` menyalakan server web
 (chat + terminal) di dalam sesi yang sedang berjalan, memakai workspace, model,
-provider, dan mode aktif; `/serve stop` mematikannya. `/exit` (atau Ctrl+D)
+provider, dan mode aktif; `/web stop` mematikannya. `/telegram` menyalakan bot
+Telegram mandiri (lihat bagian Bot Telegram). `/exit` (atau Ctrl+D)
 keluar dari chat (server web ikut berhenti).
 
 `/models` menampilkan daftar model bernomor dengan opsi `0) Custom model`.
@@ -143,23 +147,24 @@ Kode keluar: `0` sukses, `1` gagal tugas, `2` error konfigurasi,
 ## Mode Web (chat + terminal di browser)
 
 ```bash
-nex-agent serve                 # buka http://127.0.0.1:<port>/#t=<token>
-nex-agent serve --port 8080     # port tetap
-nex-agent serve --lan           # bind ke 0.0.0.0 + tampilkan URL LAN & QR
-nex-agent serve --host 0.0.0.0  # sama seperti --lan (lihat peringatan)
-nex-agent serve --no-qr         # sembunyikan kode QR
+nex-agent web                   # buka http://127.0.0.1:<port>/#t=<token>
+nex-agent web --port 8080       # port tetap
+nex-agent web --lan             # bind ke 0.0.0.0 + tampilkan URL LAN & QR
+nex-agent web --host 0.0.0.0    # sama seperti --lan (lihat peringatan)
+nex-agent web --no-qr           # sembunyikan kode QR
 ```
 
-`serve` menjalankan server HTTP + WebSocket yang menyajikan antarmuka web:
+`serve` adalah alias lama untuk `web`. Perintah ini menjalankan server HTTP +
+WebSocket yang menyajikan antarmuka web:
 **tab Chat** (streaming jawaban, thinking, langkah tool, diff, todo, tombol
 persetujuan) dan **tab Terminal** (shell interaktif nyata lewat `xterm.js`).
 
-Bisa juga dinyalakan **dari dalam sesi chat** tanpa keluar: ketik `/serve`
-(memakai workspace/model/provider/mode aktif), `/serve lan` untuk mengekspos ke
-jaringan, dan `/serve stop` (atau `/exit`) untuk mematikannya. Server web ikut
+Bisa juga dinyalakan **dari dalam sesi chat** tanpa keluar: ketik `/web`
+(memakai workspace/model/provider/mode aktif), `/web lan` untuk mengekspos ke
+jaringan, dan `/web stop` (atau `/exit`) untuk mematikannya. Server web ikut
 mati saat sesi chat ditutup.
 
-- **LAN & QR** — dengan `--lan` (atau `/serve lan`) server mendengarkan semua
+- **LAN & QR** — dengan `--lan` (atau `/web lan`) server mendengarkan semua
   antarmuka, mencetak URL loopback **dan** setiap alamat IPv4 LAN, lalu menampilkan
   **kode QR** dari URL LAN agar bisa langsung dipindai dari ponsel.
 - **Keamanan** — secara default server hanya mendengarkan `127.0.0.1` dan
@@ -181,12 +186,104 @@ mati saat sesi chat ditutup.
   zoom iOS), dan terminal otomatis menyesuaikan ukuran saat keyboard muncul.
   Aman untuk notch (`viewport-fit=cover` + `safe-area-inset`).
 - **Persetujuan** — konfirmasi tool muncul di percakapan (Ya / Tidak / Selalu).
-  `--allow-all`/`--yes` di `serve` menyetujui otomatis; file sensitif tetap
+  `--allow-all`/`--yes` di `web` menyetujui otomatis; file sensitif tetap
   minta konfirmasi eksplisit.
 - Port/host default bisa disetel di `config.json` lewat `webHost` dan `webPort`
   (kosong/`0` = port acak).
-- Tanpa argumen model/provider, `serve` memakai pilihan yang sama seperti CLI
+- Tanpa argumen model/provider, `web` memakai pilihan yang sama seperti CLI
   (tersimpan per workspace), jadi tidak perlu menyetel ulang setiap kali.
+
+## Bot Telegram
+
+NeX-Agent bisa dihubungkan ke **Telegram** sebagai **daemon mandiri** — tidak
+menempel pada server web maupun sesi chat. Bot memakai Bot API lewat long polling
+(`getUpdates`), jadi tidak perlu URL publik maupun dependensi tambahan.
+
+Atur token bot (dari [@BotFather](https://t.me/BotFather)) lewat salah satu cara:
+
+```bash
+# 1) dari dalam sesi chat — disimpan aman di ~/.config/agent/telegram.json (izin 600)
+/telegram token 123456:ABC-DEF...
+
+# 2) lewat environment (menimpa semuanya)
+export TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
+```
+
+Token **tidak pernah** ditulis ke `config.json` biasa atau log; berkasnya
+terpisah dan berizin `600`. Bisa juga dihapus dengan `/telegram token hapus`.
+
+Nyalakan bot (otomatis berjalan di **latar belakang**):
+
+```bash
+nex-agent telegram            # = nex-agent telegram start
+nex-agent telegram status     # cek apakah berjalan (pid)
+nex-agent telegram logs       # lihat log terakhir
+nex-agent telegram restart    # jalankan ulang
+nex-agent telegram stop       # hentikan
+nex-agent telegram run        # mode foreground (untuk systemd/debug)
+```
+
+Dari dalam sesi chat cukup ketik `/telegram` — bot dijalankan sebagai proses
+terpisah, jadi **tetap hidup walau kamu menutup chat dengan Ctrl+C**. Bot memakai
+**sesi sendiri** (percakapan terpisah dari chat/web), sehingga aman dipakai dari
+ponsel.
+
+- **Selalu hidup (auto-restart)** — bot dijalankan oleh *supervisor* yang otomatis
+  me-restart worker-nya dengan backoff bila berhenti tak terduga. Supervisor
+  berhenti hanya bila worker keluar karena error konfigurasi (mis. token tidak
+  valid) agar tidak restart tanpa henti.
+- **Ikut hidup saat server/mesin restart** — jalankan sebagai service. Contoh
+  systemd **user** unit (`~/.config/systemd/user/nex-agent-telegram.service`):
+
+  ```ini
+  [Unit]
+  Description=NeX-Agent Telegram bot
+  After=network-online.target
+  Wants=network-online.target
+
+  [Service]
+  Type=simple
+  ExecStart=%h/.local/bin/nex-agent telegram run
+  Restart=always
+  RestartSec=5
+
+  [Install]
+  WantedBy=default.target
+  ```
+
+  Lalu `systemctl --user daemon-reload && systemctl --user enable --now nex-agent-telegram`
+  (tambahkan `loginctl enable-linger $USER` agar tetap jalan tanpa login).
+  Sesuaikan `ExecStart` dengan lokasi `nex-agent`/`agent` di mesinmu
+  (`command -v agent`).
+- **Berkas** — pid di `~/.config/agent/telegram.pid`, log di
+  `~/.config/agent/telegram.log`.
+
+Sisanya diatur lewat `config.json`:
+
+```jsonc
+// ~/.config/agent/config.json
+{
+  "telegram": {
+    "allowedChatIds": [123456789],   // kosong = TERBUKA untuk siapa pun
+    "enabled": true,                  // false = jangan nyalakan
+    "apiBase": "https://api.telegram.org"  // opsional
+  }
+}
+```
+
+- **Keamanan** — isi `allowedChatIds` untuk membatasi siapa yang boleh memakai
+  bot. Bila kosong, bot **terbuka** untuk siapa pun yang menemukannya (berbahaya:
+  bot bisa menjalankan shell). Chat tak dikenal ditolak sambil diberi tahu
+  chat-id-nya untuk didaftarkan (`/telegram allow <chatId>`).
+- **Persetujuan** — prompt konfirmasi (tulis file, shell, akses luar workspace,
+  file sensitif) diteruskan ke Telegram; balas `y` (setuju), `n` (tolak), atau
+  `a` (setuju semua).
+- **Perintah chat** — `/new` (sesi baru), `/interrupt` (hentikan), `/help`.
+- **Kelola** — `/telegram` (nyalakan) · `/telegram stop` ·
+  `/telegram restart` · `/telegram status` · `/telegram logs` ·
+  `/telegram token <TOKEN>|hapus` · `/telegram allow <chatId...|clear>` ·
+  `/telegram deny <chatId...>` · `/telegram on|off`.
+- Token **tidak pernah** dicetak (disamarkan `1234…WXYZ`).
 
 ## Plugin MCP (Model Context Protocol)
 
@@ -302,20 +399,20 @@ Disimpan di `~/.config/agent/` (bisa diubah lewat `AGENT_CONFIG_DIR`):
 src/
   core/        # loop agentik, approvals, checkpoint, context, repetition
   providers/   # ModelProvider + adapter (OpenAI-compatible, Anthropic)
-  tools/       # read_file, write_file, edit_file, list_dir, run_shell, web_search, todo_write, skill
+  tools/       # read_file, write_file, edit_file, list_dir, run_shell, web_search, todo_write, skill, skill_write
   safety/      # workspace, permissions, classifier, policy
   sessions/    # penyimpanan sesi
   usage/       # token, biaya, agregasi
   memory/      # loader AGENTS.md + skill (SKILL.md)
   plugins/     # klien MCP (stdio/HTTP/SSE), plugins.json, registrasi tool MCP
-  server/      # server web (HTTP + WS), terminal PTY, protokol
+  server/      # server web (HTTP + WS), terminal PTY, bot Telegram, protokol
   cli/         # renderer, prompt, slash command, app
   config/      # konfigurasi & kredensial
   logging/     # logger JSONL + redaksi
 ```
 
 `web/` (di root) berisi aset antarmuka web (HTML/CSS/JS); saat `pnpm build`,
-aset itu bersama `xterm.js` disalin ke `dist/web/` dan disajikan oleh `serve`.
+aset itu bersama `xterm.js` disalin ke `dist/web/` dan disajikan oleh `web`.
 
 Aturan: `core/` tidak mengimpor `cli/` maupun SDK provider. Interaksi pengguna
 lewat interface `AgentIO`; model lewat `ModelProvider`; tool lewat registri.
@@ -371,8 +468,10 @@ Cara kerjanya **progressive disclosure**:
 
 ### Agent bisa membuat & memasang skill sendiri
 
-- **Membuat skill baru** — minta agent menyimpan sebuah prosedur, lalu ia menulis
-  `skills/<nama>/SKILL.md` via `write_file` (tetap butuh konfirmasi + diff).
+- **Membuat skill baru** — minta agent menyimpan sebuah prosedur; ia memakai tool
+  `skill_write` (name/description/body tervalidasi Zod) untuk menulis
+  `skills/<nama>/SKILL.md` (tetap butuh konfirmasi + diff). Skill yang baru dibuat
+  **langsung aktif** untuk sesi berjalan — tanpa restart — berkat hot-reload.
 - **Memasang skill eksternal** — minta agent menjalankan, mis.:
   ```bash
   git clone <repo-skill>   # lalu letakkan foldernya di skills/

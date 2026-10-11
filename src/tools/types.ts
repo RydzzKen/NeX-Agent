@@ -44,6 +44,11 @@ export interface ToolContext {
   search?: WebSearchFn;
   /** Skill yang tersedia untuk sesi ini. */
   skills?: Skill[];
+  /**
+   * Daftarkan skill yang baru dibuat (mis. oleh tool skill_write) agar langsung
+   * dipakai di sesi berjalan tanpa perlu memulai ulang.
+   */
+  registerSkill?(skill: Skill): void | Promise<void>;
   /** Selesaikan dan cek izin akses path; melempar ToolDeniedError bila ditolak. */
   resolvePath(raw: string, access: AccessKind): Promise<ResolvedPath>;
   /** Minta persetujuan; `allowAll` mengizinkan opsi "setujui semua". */

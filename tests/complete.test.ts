@@ -11,8 +11,14 @@ describe("formatHint", () => {
     const many = Array.from({ length: 9 }, (_, i) => `/c${i}`);
     const line = formatHint(many, 6);
     expect(line).toContain("/c0");
-    expect(line).toContain("…(+3)");
+    expect(line).toContain("…(+3 lainnya)");
     expect(line).not.toContain("/c6");
+  });
+
+  it("menyusun kandidat ke beberapa baris (bukan satu baris)", () => {
+    const many = Array.from({ length: 9 }, (_, i) => `/c${i}`);
+    const line = formatHint(many, 9);
+    expect(line.split("\n").length).toBeGreaterThan(1);
   });
 
   it("menggabungkan beberapa kandidat dalam satu baris", () => {

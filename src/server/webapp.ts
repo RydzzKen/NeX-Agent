@@ -194,12 +194,8 @@ export class WebApp {
     todos: SessionRecord["todos"] = [],
     info?: ModelInfo,
   ): Promise<void> {
-    this.baseSystemPrompt = await buildSystemPrompt({
-      workspaceRoot: this.workspace.root,
-      globalConfigDir: configDir(),
-      skills: this.skills,
-      skillsEnabled: this.skillsEnabled,
-    });
+    await this.refreshSkills();
+    await this.rebuildSystemPrompt();
     const checkpoints = await CheckpointManager.load(
       path.join(sessionsDir(), this.record.id),
       this.logger,
@@ -226,6 +222,7 @@ export class WebApp {
         tracker: this.tracker,
         search: createWebSearch(this.config.searchUrl),
         skills: this.skills,
+        registerSkill: (skill) => this.registerSkill(skill),
         onUsage: (event) => this.usageStore.append(event),
         sessionId: this.record.id,
       },
@@ -240,6 +237,51 @@ export class WebApp {
       },
     );
     this.session.setProvider(this.provider, this.providerKey);
+  }
+
+  /** Muat ulang skill dari disk; kembalikan true bila daftarnya berubah. */
+  private async refreshSkills(): Promise<boolean> {
+    if (!this.skillsEnabled) return false;
+    const before = this.skillSignature();
+    this.skills = await discoverSkills({
+      workspaceRoot: this.workspace.root,
+      globalConfigDir: configDir(),
+    });
+    return this.skillSignature() !== before;
+  }
+
+  private skillSignature(): string {
+    return this.skills.map((s) => `${s.name}\u0000${s.description}\u0000${s.body.length}`).join("\u0001");
+  }
+
+  private async rebuildSystemPrompt(): Promise<void> {
+    this.baseSystemPrompt = await buildSystemPrompt({
+      workspaceRoot: this.workspace.root,
+      globalConfigDir: configDir(),
+      skills: this.skills,
+      skillsEnabled: this.skillsEnabled,
+    });
+  }
+
+  /** Terapkan skill terbaru ke sesi aktif (prompt + konteks tool). */
+  private async applySkills(): Promise<void> {
+    await this.rebuildSystemPrompt();
+    this.session.setSystemPrompt(this.baseSystemPrompt);
+    this.session.setSkills(this.skills);
+  }
+
+  private async reloadSkills(): Promise<void> {
+    const changed = await this.refreshSkills();
+    this.session.setSkills(this.skills);
+    if (changed) await this.applySkills();
+  }
+
+  /** Dipanggil tool `skill_write`: daftarkan skill baru agar langsung aktif. */
+  private async registerSkill(skill: Skill): Promise<void> {
+    const index = this.skills.findIndex((s) => s.name === skill.name);
+    if (index >= 0) this.skills[index] = skill;
+    else this.skills.push(skill);
+    await this.applySkills();
   }
 
   private async saveRecord(): Promise<void> {
@@ -280,6 +322,7 @@ export class WebApp {
     this.controller = new AbortController();
     this.io.emit({ type: "busy", on: true });
     try {
+      await this.reloadSkills();
       await this.session.run(text, this.controller.signal);
     } catch (err) {
       this.io.error(`Terjadi kesalahan: ${(err as Error).message}`);

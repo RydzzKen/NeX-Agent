@@ -14,6 +14,18 @@ export function logsDir(): string {
   return path.join(configDir(), "logs");
 }
 
+/** Pengaturan jembatan Telegram (bot). */
+export interface TelegramConfig {
+  /** Token bot dari BotFather. Tidak pernah dicetak (disamarkan sebagai ***). */
+  token?: string;
+  /** Base URL Bot API; default https://api.telegram.org (bisa diarahkan ke proxy lokal). */
+  apiBase?: string;
+  /** Daftar chat id yang boleh memakai bot. Kosong = terbuka untuk siapa pun. */
+  allowedChatIds?: Array<string | number>;
+  /** Aktifkan jembatan saat server berjalan (default true bila token tersedia). */
+  enabled?: boolean;
+}
+
 export interface AgentConfig {
   /** Batas langkah default bila tidak diberikan lewat flag. */
   maxSteps?: number;
@@ -35,6 +47,8 @@ export interface AgentConfig {
   webHost?: string;
   /** Port server web. Kosong/0 = port acak. */
   webPort?: number;
+  /** Jembatan Telegram yang aktif otomatis saat server web berjalan. */
+  telegram?: TelegramConfig;
 }
 
 async function readConfig(): Promise<AgentConfig> {

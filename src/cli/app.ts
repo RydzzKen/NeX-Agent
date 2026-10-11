@@ -40,8 +40,19 @@ import { runConnect, describeProvider, defaultBaseURL } from "./connect.js";
 import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice } from "./models.js";
 import { TerminalIO } from "./render.js";
 import { Prompter, PROMPT_EOF } from "./prompt.js";
+import { formatResumePreview } from "./resume_preview.js";
 import { createWebServer, isLoopbackHost, reachableUrl, type WebServerHandle } from "../server/server.js";
 import { ServerConfigError } from "../server/webapp.js";
+import {
+  TelegramDaemonError,
+  startTelegramDaemon,
+  stopTelegramDaemon,
+  restartTelegramDaemon,
+  telegramDaemonStatus,
+  tailTelegramLog,
+  telegramLogPath,
+} from "../server/telegram_daemon.js";
+import { maskToken, resolveTelegramSettings, loadTelegramToken, saveTelegramToken, clearTelegramToken } from "../server/telegram.js";
 import { qrLines } from "../util/qr.js";
 
 export class ConfigError extends Error {
@@ -101,7 +112,8 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
   ["/mcp [reload|key <nama>]", "status server MCP, muat ulang, atau atur API key"],
   ["/todos", "tampilkan daftar tugas (checklist)"],
-  ["/serve [lan|stop]", "nyalakan web (lan = buka ke jaringan) / hentikan"],
+  ["/web [lan|stop]", "nyalakan server web (lan = buka ke jaringan) / hentikan"],
+  ["/telegram [start|stop|restart|status|logs|token|allow]", "kelola bot Telegram (daemon latar belakang)"],
   ["/exit", "keluar dari sesi chat (atau Ctrl+D)"],
   ["/help", "bantuan"],
 ];
@@ -140,7 +152,7 @@ export class ChatApp {
   private activeSkills: Skill[] = [];
   private skillsEnabled = false;
   private baseSystemPrompt = "";
-  /** Server web (dinyalakan lewat `/serve`) selama proses chat ini hidup. */
+  /** Server web (dinyalakan lewat `/web`) selama proses chat ini hidup. */
   private webServer?: WebServerHandle;
 
   private constructor(
@@ -222,12 +234,6 @@ export class ChatApp {
     this.checkpoints = await CheckpointManager.load(sessionDir, this.logger);
 
     this.skillsEnabled = this.opts.skills ?? this.config.skills ?? true;
-    if (this.skillsEnabled) {
-      this.skills = await discoverSkills({
-        workspaceRoot: this.workspace.root,
-        globalConfigDir: configDir(),
-      });
-    }
 
     // Klien MCP: muat plugins.json, hubungkan server aktif, daftarkan tool-nya.
     // Kegagalan satu server hanya menjadi status `/mcp`, tidak menggagalkan sesi.
@@ -337,6 +343,47 @@ export class ChatApp {
     return this.baseSystemPrompt;
   }
 
+  /** Muat ulang daftar skill dari disk; kembalikan true bila berubah. */
+  private async refreshSkills(): Promise<boolean> {
+    if (!this.skillsEnabled) return false;
+    const before = this.skillSignature();
+    const fresh = await discoverSkills({
+      workspaceRoot: this.workspace.root,
+      globalConfigDir: configDir(),
+    });
+    this.skills = fresh;
+    this.activeSkills = this.activeSkills
+      .map((active) => fresh.find((s) => s.name === active.name))
+      .filter((s): s is Skill => Boolean(s));
+    return this.skillSignature() !== before;
+  }
+
+  private skillSignature(): string {
+    return this.skills.map((s) => `${s.name}\u0000${s.description}\u0000${s.body.length}`).join("\u0001");
+  }
+
+  /** Segarkan skill ke sesi aktif (prompt + konteks tool) setelah perubahan. */
+  private async applySkills(): Promise<void> {
+    await this.buildSystemPrompt();
+    this.session.setSystemPrompt(this.composeSystemPrompt());
+    this.session.setSkills(this.skills);
+  }
+
+  /** Hot-reload: muat ulang skill dari disk dan terapkan bila ada perubahan. */
+  private async reloadSkills(): Promise<void> {
+    const changed = await this.refreshSkills();
+    this.session.setSkills(this.skills);
+    if (changed) await this.applySkills();
+  }
+
+  /** Dipanggil tool `skill_write`: daftarkan skill baru agar langsung aktif. */
+  private async registerSkill(skill: Skill): Promise<void> {
+    const index = this.skills.findIndex((s) => s.name === skill.name);
+    if (index >= 0) this.skills[index] = skill;
+    else this.skills.push(skill);
+    await this.applySkills();
+  }
+
   /** System prompt dasar + skill yang diaktifkan manual lewat `/skill`. */
   private composeSystemPrompt(): string {
     let prompt = this.baseSystemPrompt;
@@ -352,6 +399,7 @@ export class ChatApp {
     history: SessionRecord["history"],
     todos: SessionRecord["todos"] = [],
   ): Promise<void> {
+    await this.refreshSkills();
     await this.buildSystemPrompt();
     const systemPrompt = this.composeSystemPrompt();
     const resolvePath = createPathResolver({
@@ -376,6 +424,7 @@ export class ChatApp {
         tracker: this.tracker,
         search: createWebSearch(this.config.searchUrl),
         skills: this.skills,
+        registerSkill: (skill) => this.registerSkill(skill),
         onUsage: (event) => this.usageStore.append(event),
         sessionId: this.record.id,
       },
@@ -445,7 +494,7 @@ export class ChatApp {
     this.io.info("Ketik /help untuk daftar perintah. Ctrl+C dua kali untuk keluar.");
     for (;;) {
       const prompt = `${color.gray("[")}${this.session.getMode()}${color.gray("]")} › `;
-      const line = (await this.prompter.question(`\n${prompt}`, { suggest: true })).trim();
+      const line = (await this.prompter.question(`\n${prompt}`)).trim();
       if (line === PROMPT_EOF) break;
       if (line === "") continue;
       if (line.startsWith("/")) {
@@ -459,6 +508,7 @@ export class ChatApp {
       this.prompter.pause?.();
       this.io.busy(true);
       try {
+        await this.reloadSkills();
         await this.session.run(line, controller.signal);
       } finally {
         this.io.busy(false);
@@ -569,10 +619,10 @@ export class ChatApp {
         return "continue";
       }
       case "/skills":
-        this.commandSkills();
+        await this.commandSkills();
         return "continue";
       case "/skill":
-        this.commandSkill(args[0]);
+        await this.commandSkill(args[0]);
         return "continue";
       case "/todos":
         this.commandTodos();
@@ -580,8 +630,12 @@ export class ChatApp {
       case "/mcp":
         await this.commandMcp(args);
         return "continue";
+      case "/web":
       case "/serve":
-        await this.commandServe(args[0]);
+        await this.commandWeb(args[0]);
+        return "continue";
+      case "/telegram":
+        await this.commandTelegram(args);
         return "continue";
       default:
         this.io.warn(`Perintah tidak dikenal: ${cmd}. Ketik /help.`);
@@ -858,6 +912,10 @@ export class ChatApp {
     await this.saveRecord();
     await this.activateRecord(target);
     this.io.info(`Melanjutkan sesi: ${target.title} (${target.id})`);
+    if (!this.opts.json) {
+      const preview = formatResumePreview(target.history, { mode: target.mode });
+      if (preview) process.stdout.write(`${preview}\n\n`);
+    }
   }
 
   /** Pasang sebuah record sebagai sesi aktif (resume). */
@@ -993,7 +1051,8 @@ export class ChatApp {
     process.stdout.write("\n");
   }
 
-  private commandSkills(): void {
+  private async commandSkills(): Promise<void> {
+    await this.reloadSkills();
     if (this.skills.length === 0) {
       this.io.info(
         "Belum ada skill. Letakkan folder berisi SKILL.md di ./skills, ./.nex-agent/skills, atau ~/.config/agent/skills.",
@@ -1010,17 +1069,18 @@ export class ChatApp {
     process.stdout.write("\n  Paksa aktif: /skill <nama>  ·  lepas semua: /skill off\n\n");
   }
 
-  private commandSkill(name?: string): void {
+  private async commandSkill(name?: string): Promise<void> {
     if (!name || name === "off") {
       this.activeSkills = [];
       this.session.setSystemPrompt(this.composeSystemPrompt());
       if (!name) {
-        this.commandSkills();
+        await this.commandSkills();
         return;
       }
       this.io.info("Skill yang dipaksa aktif dilepas.");
       return;
     }
+    await this.reloadSkills();
     const skill = this.skills.find((s) => s.name === name);
     if (!skill) {
       this.io.warn(`Skill tidak ditemukan: ${name}. Lihat /skills.`);
@@ -1038,9 +1098,9 @@ export class ChatApp {
   /**
    * Nyalakan server web (chat + terminal di browser) tanpa keluar dari sesi
    * chat CLI. Memakai workspace, model, provider, dan mode yang sedang aktif.
-   * Perintah `nex-agent serve` tetap tersedia untuk mode standalone.
+   * Perintah `nex-agent web` (alias `serve`) tersedia untuk mode standalone.
    */
-  private async commandServe(arg?: string): Promise<void> {
+  private async commandWeb(arg?: string): Promise<void> {
     if (arg === "stop" || arg === "off") {
       if (!this.webServer) {
         this.io.info("Server web belum berjalan.");
@@ -1052,7 +1112,7 @@ export class ChatApp {
       return;
     }
     if (arg && arg !== "lan") {
-      this.io.warn(`Argumen tidak dikenal: ${arg}. Gunakan /serve, /serve lan, atau /serve stop.`);
+      this.io.warn(`Argumen tidak dikenal: ${arg}. Gunakan /web, /web lan, atau /web stop.`);
       return;
     }
     if (this.webServer) {
@@ -1060,7 +1120,7 @@ export class ChatApp {
       return;
     }
 
-    // `/serve lan` mengekspos ke jaringan (0.0.0.0); selain itu ikuti config.
+    // `/web lan` mengekspos ke jaringan (0.0.0.0); selain itu ikuti config.
     const host = arg === "lan" ? "0.0.0.0" : (this.config.webHost ?? "127.0.0.1");
     const port = this.config.webPort ?? 0;
     try {
@@ -1096,9 +1156,184 @@ export class ChatApp {
       process.stdout.write("\n  Pindai kode QR untuk membuka di perangkat lain:\n\n");
       process.stdout.write(qrLines(target).map((line) => `  ${line}`).join("\n") + "\n");
     } else {
-      process.stdout.write("  (hanya loopback — ketik /serve lan untuk akses dari HP/LAN + kode QR)\n");
+      process.stdout.write("  (hanya loopback — ketik /web lan untuk akses dari HP/LAN + kode QR)\n");
     }
-    process.stdout.write("  Buka di browser. Hentikan dengan /serve stop.\n");
+    process.stdout.write("  Buka di browser. Hentikan dengan /web stop.\n");
+  }
+
+  /**
+   * Kelola bot Telegram sebagai **daemon** terpisah. `/telegram` (atau `start`)
+   * menyalakan bot di latar belakang (tetap hidup walau sesi chat ini ditutup),
+   * `/telegram stop` menghentikannya, `/telegram restart` menjalankan ulang,
+   * `/telegram logs` menampilkan log, dan subperintah `token`/`allow`/`deny`/
+   * `on`/`off` mengatur konfigurasi.
+   */
+  private async commandTelegram(args: string[]): Promise<void> {
+    const [sub, ...rest] = args;
+    const telegram = this.config.telegram ?? {};
+    const allowed = telegram.allowedChatIds ?? [];
+    const envToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    const secureToken = await loadTelegramToken();
+
+    if (sub === undefined || sub === "start" || sub === "restart") {
+      const settings = resolveTelegramSettings(this.config, process.env, secureToken);
+      if (!settings) {
+        this.io.warn(
+          "Token bot Telegram belum diatur. Jalankan /telegram token <TOKEN> atau set TELEGRAM_BOT_TOKEN.",
+        );
+        return;
+      }
+      if (settings.open) {
+        this.io.warn("Peringatan: allowlist kosong — bot TERBUKA untuk siapa pun yang menemukannya.");
+      }
+      const workerArgs = this.telegramWorkerArgs();
+      try {
+        if (sub === "restart") await restartTelegramDaemon(workerArgs);
+        else await startTelegramDaemon(workerArgs);
+      } catch (err) {
+        if (err instanceof TelegramDaemonError) {
+          this.io.warn(err.message);
+          return;
+        }
+        this.io.error(`Gagal menjalankan bot Telegram: ${(err as Error).message}`);
+        return;
+      }
+      const status = await telegramDaemonStatus();
+      this.io.info(
+        `Bot Telegram ${sub === "restart" ? "dijalankan ulang" : "aktif"} di latar belakang (pid ${status.pid ?? "?"}).`,
+      );
+      this.io.info("Bot tetap hidup walau sesi chat ini ditutup. Hentikan dengan /telegram stop.");
+      process.stdout.write(`  log: ${telegramLogPath()}\n`);
+      if (!settings.open && allowed.length) {
+        process.stdout.write(`  allowlist: ${allowed.join(", ")}\n`);
+      }
+      return;
+    }
+
+    if (sub === "stop") {
+      const stopped = await stopTelegramDaemon();
+      this.io.info(stopped ? "Bot Telegram dihentikan." : "Bot Telegram tidak sedang berjalan.");
+      return;
+    }
+
+    if (sub === "status") {
+      await this.printTelegramStatus(telegram, allowed, envToken, secureToken);
+      return;
+    }
+
+    if (sub === "logs") {
+      const lines = await tailTelegramLog(30);
+      if (lines.length === 0) {
+        this.io.info(`Belum ada log. (${telegramLogPath()})`);
+      } else {
+        process.stdout.write(`\nLog Telegram terakhir (${telegramLogPath()}):\n`);
+        for (const line of lines) process.stdout.write(`  ${line}\n`);
+        process.stdout.write("\n");
+      }
+      return;
+    }
+
+    if (sub === "token") {
+      const value = rest.join(" ").trim();
+      if (value === "hapus" || value === "clear" || value === "off") {
+        await clearTelegramToken();
+        this.io.info("Token bot dihapus dari telegram.json.");
+        return;
+      }
+      if (!value) {
+        this.io.warn("Pakai: /telegram token <TOKEN> (atau /telegram token hapus)");
+        return;
+      }
+      await saveTelegramToken(value);
+      this.io.info(`Token bot disimpan aman (${maskToken(value)}). Jalankan /telegram untuk menyalakan.`);
+      return;
+    }
+
+    if (sub === "allow") {
+      if (rest.length === 0) {
+        this.io.info(
+          allowed.length ? `Allowlist: ${allowed.join(", ")}` : "Allowlist kosong — bot terbuka untuk siapa pun.",
+        );
+        return;
+      }
+      if (rest[0] === "clear" || rest[0] === "off" || rest[0] === "none") {
+        this.config = await saveConfig({ telegram: { ...telegram, allowedChatIds: [] } });
+        this.io.warn("Allowlist dikosongkan — bot TERBUKA untuk siapa pun yang menemukannya.");
+        return;
+      }
+      const ids = rest.map((id) => id.trim()).filter(Boolean);
+      const merged = [...new Set([...allowed, ...ids])];
+      this.config = await saveConfig({ telegram: { ...telegram, allowedChatIds: merged } });
+      this.io.info(`Allowlist diperbarui: ${merged.join(", ")}`);
+      return;
+    }
+
+    if (sub === "deny" || sub === "remove") {
+      const ids = new Set(rest.map((id) => id.trim()));
+      const merged = allowed.filter((id) => !ids.has(String(id)));
+      this.config = await saveConfig({ telegram: { ...telegram, allowedChatIds: merged } });
+      this.io.info(merged.length ? `Allowlist: ${merged.join(", ")}` : "Allowlist kosong — bot terbuka.");
+      return;
+    }
+
+    if (sub === "on" || sub === "enable" || sub === "off" || sub === "disable") {
+      const on = sub === "on" || sub === "enable";
+      this.config = await saveConfig({ telegram: { ...telegram, enabled: on } });
+      this.io.info(`Bot Telegram ${on ? "diaktifkan" : "dinonaktifkan"} di config.json.`);
+      return;
+    }
+
+    this.io.warn(
+      `Argumen tidak dikenal: ${sub}. Pakai /telegram [start|stop|restart|status|logs], /telegram token <t>, /telegram allow <id...>.`,
+    );
+  }
+
+  /** Argumen CLI untuk worker bot agar memakai pengaturan sesi ini. */
+  private telegramWorkerArgs(): string[] {
+    const args = ["--cwd", this.workspace.root, "--mode", this.session.getMode()];
+    const model = this.session.getModel();
+    if (model) args.push("--model", model);
+    if (this.providerKey) args.push("--provider", this.providerKey);
+    if (this.opts.maxSteps !== undefined) args.push("--max-steps", String(this.opts.maxSteps));
+    if (this.opts.maxCost !== undefined) args.push("--max-cost", String(this.opts.maxCost));
+    if (this.approvals.allowAll()) args.push("--allow-all");
+    if (!this.skillsEnabled) args.push("--no-skills");
+    if (this.opts.debug) args.push("--debug");
+    return args;
+  }
+
+  private async printTelegramStatus(
+    telegram: AgentConfig["telegram"],
+    allowed: Array<string | number>,
+    envToken: string | undefined,
+    secureToken: string | undefined,
+  ): Promise<void> {
+    const settings = resolveTelegramSettings(this.config, process.env, secureToken);
+    const daemon = await telegramDaemonStatus();
+    const tokenDisplay = envToken
+      ? `${maskToken(envToken)} (env)`
+      : secureToken
+        ? `${maskToken(secureToken)} (telegram.json)`
+        : telegram?.token
+          ? `${maskToken(telegram.token)} (config.json)`
+          : "(belum diatur)";
+    process.stdout.write("\nBot Telegram:\n");
+    process.stdout.write(`  token     : ${tokenDisplay}\n`);
+    process.stdout.write(
+      `  allowlist : ${allowed.length ? allowed.join(", ") : "(kosong — TERBUKA untuk siapa pun)"}\n`,
+    );
+    process.stdout.write(`  enabled   : ${telegram?.enabled === false ? "nonaktif" : "aktif"}\n`);
+    process.stdout.write(
+      `  berjalan  : ${daemon.running ? `ya (pid ${daemon.pid})` : "tidak"}\n`,
+    );
+    process.stdout.write(
+      `  siap      : ${settings ? "ya — /telegram untuk menyalakan" : "belum (token belum ada)"}\n`,
+    );
+    process.stdout.write(`  log       : ${telegramLogPath()}\n`);
+    process.stdout.write(
+      "\n  /telegram (nyalakan)  ·  /telegram stop  ·  /telegram restart  ·  /telegram logs\n" +
+        "  /telegram token <TOKEN>  ·  /telegram allow <chatId...|clear>  ·  /telegram on|off\n\n",
+    );
   }
 
   private commandTodos(): void {
@@ -1200,6 +1435,8 @@ export class ChatApp {
   }
 
   private async close(): Promise<void> {
+    // Catatan: bot Telegram dijalankan sebagai daemon terpisah, jadi sengaja
+    // TIDAK dihentikan di sini — ia tetap hidup setelah sesi chat ditutup.
     if (this.webServer) {
       await this.webServer.close();
       this.webServer = undefined;

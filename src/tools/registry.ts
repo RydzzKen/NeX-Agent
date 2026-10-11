@@ -11,6 +11,7 @@ import { runShellTool } from "./run_shell.js";
 import { webSearchTool } from "./web_search.js";
 import { todoWriteTool } from "./todo_write.js";
 import { skillTool } from "./skill.js";
+import { skillWriteTool } from "./skill_write.js";
 
 /** Tool dengan skema yang sudah di-type-erase untuk penyimpanan generik. */
 export type AnyTool = ToolDefinition<z.ZodTypeAny>;
@@ -24,6 +25,7 @@ export const allTools: AnyTool[] = [
   webSearchTool,
   todoWriteTool,
   skillTool,
+  skillWriteTool,
 ];
 
 export class ToolRegistry {

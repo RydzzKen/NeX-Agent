@@ -106,7 +106,12 @@ beforeEach(async () => {
   previousConfigDir = process.env.AGENT_CONFIG_DIR;
   process.env.AGENT_CONFIG_DIR = configHome;
 
-  handle = await createWebServer({ host: "127.0.0.1", port: 0, cwd: workspace, allowAll: true });
+  handle = await createWebServer({
+    host: "127.0.0.1",
+    port: 0,
+    cwd: workspace,
+    allowAll: true,
+  });
 });
 
 afterEach(async () => {

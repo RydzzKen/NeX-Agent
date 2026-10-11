@@ -3,7 +3,7 @@ import path from "node:path";
 
 /**
  * Logika autocomplete untuk REPL (Tab):
- * - token pertama → lengkapi perintah slash (`/se` → `/sessions`, `/serve`);
+ * - token pertama → lengkapi perintah slash (`/se` → `/sessions`, `/web`);
  * - token kedua untuk perintah yang punya subperintah (`/mcp re` → `reload`);
  * - selain itu → lengkapi path berkas/direktori relatif terhadap `cwd`.
  *
@@ -18,6 +18,8 @@ export const SUBCOMMANDS: Record<string, string[]> = {
   "/sessions": ["clear"],
   "/delete": ["all"],
   "/skill": ["off"],
+  "/telegram": ["start", "stop", "restart", "status", "logs", "token", "allow", "deny", "on", "off"],
+  "/web": ["lan", "stop"],
 };
 
 function completePath(token: string, cwd: string): [string[], string] {
@@ -46,10 +48,23 @@ function completePath(token: string, cwd: string): [string[], string] {
  * Format satu baris petunjuk "dropdown" dari kandidat, dibatasi `max` agar
  * tidak memenuhi layar. Murni agar mudah diuji.
  */
-export function formatHint(hits: string[], max = 6): string {
+/**
+ * Format petunjuk "dropdown" vertikal / kotak ke bawah dengan tema gelap (mirip Z-Agent/Hermes).
+ * Menyusun kandidat dalam beberapa baris agar tampil seperti popup menu ke bawah.
+ */
+export function formatHint(hits: string[], max = 12): string {
   const shown = hits.slice(0, max);
-  const more = hits.length > max ? `  …(+${hits.length - max})` : "";
-  return `  ${shown.join("   ")}${more}`;
+  const rows: string[] = [];
+  const cols = 3; // 3 kolom per baris
+  for (let i = 0; i < shown.length; i += cols) {
+    const chunk = shown.slice(i, i + cols);
+    const padded = chunk.map((h) => h.padEnd(16)).join(" ");
+    rows.push(`  \u001b[40m\u001b[97m ${padded} \u001b[0m`);
+  }
+  if (hits.length > max) {
+    rows.push(`  \u001b[40m\u001b[90m …(+${hits.length - max} lainnya) \u001b[0m`);
+  }
+  return "\n" + rows.join("\n");
 }
 
 /**

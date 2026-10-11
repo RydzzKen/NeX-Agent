@@ -36,6 +36,11 @@ export interface SessionDeps {
   tracker: UsageTracker;
   search?: WebSearchFn;
   skills?: Skill[];
+  /**
+   * Daftarkan skill yang baru dibuat agar langsung aktif di sesi ini (dipakai
+   * tool `skill_write`). Diinjeksi oleh CLI/web; core hanya memanggil.
+   */
+  registerSkill?: (skill: Skill) => void | Promise<void>;
   onUsage?: (event: UsageEvent) => void | Promise<void>;
   sleep?: (ms: number) => Promise<void>;
   sessionId?: string;
@@ -163,6 +168,11 @@ export class AgentSession {
     this.deps.systemPrompt = text;
   }
 
+  /** Ganti daftar skill yang terlihat oleh tool `skill` (hot-reload). */
+  setSkills(skills: Skill[]): void {
+    this.deps.skills = skills;
+  }
+
   appendUserMessage(text: string): void {
     this.history.push({ role: "user", content: text });
   }
@@ -181,6 +191,7 @@ export class AgentSession {
       todos: this.todos,
       search: this.deps.search,
       skills: this.deps.skills,
+      ...(this.deps.registerSkill ? { registerSkill: this.deps.registerSkill } : {}),
       resolvePath: this.deps.resolvePath,
       confirm: (req, opts) => this.deps.approvals.confirm(req, opts),
       confirmSensitive: (req) => this.deps.approvals.requestSensitiveAccess(req),

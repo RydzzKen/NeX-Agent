@@ -7,6 +7,18 @@ import { renderCrossSession } from "./cli/usage.js";
 import { ChatApp, ConfigError, type CliOptions } from "./cli/app.js";
 import { createWebServer, isLoopbackHost, reachableUrl } from "./server/server.js";
 import { ServerConfigError } from "./server/webapp.js";
+import { TelegramError, startTelegramServer, type TelegramServerOptions } from "./server/telegram_server.js";
+import { loadTelegramToken, resolveTelegramSettings } from "./server/telegram.js";
+import {
+  TelegramDaemonError,
+  startTelegramDaemon,
+  stopTelegramDaemon,
+  restartTelegramDaemon,
+  telegramDaemonStatus,
+  tailTelegramLog,
+  telegramLogPath,
+  runTelegramSupervisor,
+} from "./server/telegram_daemon.js";
 import { qrLines } from "./util/qr.js";
 import type { Mode } from "./core/types.js";
 
@@ -19,6 +31,42 @@ function parseMode(value: string): Mode {
     throw new Error(`Mode tidak valid: ${value} (gunakan plan atau build)`);
   }
   return value;
+}
+
+/** Argumen CLI yang diteruskan ke worker bot Telegram (daemon/supervisor). */
+function telegramWorkerArgs(merged: Record<string, unknown>): string[] {
+  const args: string[] = [];
+  if (merged.cwd) args.push("--cwd", String(merged.cwd));
+  if (merged.mode) {
+    parseMode(String(merged.mode));
+    args.push("--mode", String(merged.mode));
+  }
+  if (merged.model) args.push("--model", String(merged.model));
+  if (merged.provider) args.push("--provider", String(merged.provider));
+  if (merged.maxSteps !== undefined) args.push("--max-steps", String(merged.maxSteps));
+  if (merged.maxCost !== undefined) args.push("--max-cost", String(merged.maxCost));
+  if (merged.yes) args.push("--yes");
+  if (merged.allowAll) args.push("--allow-all");
+  if (merged.skills === false) args.push("--no-skills");
+  if (merged.debug) args.push("--debug");
+  return args;
+}
+
+/** Opsi `startTelegramServer` dari opsi CLI (mode `telegram run`). */
+function telegramServerOptions(merged: Record<string, unknown>): TelegramServerOptions {
+  return {
+    ...(merged.cwd ? { cwd: merged.cwd as string } : {}),
+    ...(merged.mode ? { mode: parseMode(merged.mode as string) } : {}),
+    ...(merged.model ? { model: merged.model as string } : {}),
+    ...(merged.provider ? { provider: merged.provider as string } : {}),
+    ...(merged.maxSteps !== undefined ? { maxSteps: merged.maxSteps as number } : {}),
+    ...(merged.maxCost !== undefined ? { maxCost: merged.maxCost as number } : {}),
+    ...(merged.yes ? { yes: true } : {}),
+    ...(merged.allowAll ? { allowAll: true } : {}),
+    ...(merged.skills === false ? { skills: false } : {}),
+    ...(merged.debug ? { debug: true } : {}),
+    log: (message: string) => process.stderr.write(`[telegram] ${message}\n`),
+  };
 }
 
 async function main(): Promise<void> {
@@ -116,7 +164,8 @@ async function main(): Promise<void> {
     });
 
   program
-    .command("serve")
+    .command("web")
+    .alias("serve")
     .description("jalankan server web (chat + terminal di browser)")
     .option("--host <host>", "alamat bind (default: config atau 127.0.0.1)")
     .option("--lan", "bind ke 0.0.0.0 agar bisa dibuka dari LAN + tampilkan QR")
@@ -186,11 +235,106 @@ async function main(): Promise<void> {
       process.on("SIGTERM", shutdown);
     });
 
+  program
+    .command("telegram [action]")
+    .description("jalankan/kelola bot Telegram (daemon latar belakang)")
+    .option("--cwd <path>", "direktori kerja")
+    .option("--mode <mode>", "mode awal: plan atau build")
+    .option("--model <model>", "model yang dipakai")
+    .option("--provider <provider>", "provider yang dipakai")
+    .option("--max-steps <n>", "batas langkah", (v) => Number.parseInt(v, 10))
+    .option("--max-cost <n>", "anggaran biaya (USD)", (v) => Number.parseFloat(v))
+    .option("--yes", "setujui semua kategori konfirmasi")
+    .option("--allow-all", "izinkan semua permintaan izin untuk sesi ini")
+    .option("--no-skills", "jangan muat skill dari SKILL.md")
+    .option("--debug", "log debug")
+    .action(async (action: string | undefined, _options: Record<string, unknown>, command: Command) => {
+      const merged = command.optsWithGlobals() as Record<string, unknown>;
+      const act = action ?? "start";
+
+      if (act === "start" || act === "stop" || act === "restart" || act === "status" || act === "logs") {
+        if (act === "start" || act === "restart") {
+          // Cek token lebih dulu agar tidak men-spawn supervisor yang langsung mati.
+          const settings = resolveTelegramSettings(await loadConfig(), process.env, await loadTelegramToken());
+          if (!settings) {
+            throw new TelegramError(
+              "Token bot Telegram belum diatur. Jalankan /telegram token <TOKEN> atau set TELEGRAM_BOT_TOKEN.",
+            );
+          }
+        }
+        if (act === "start") {
+          const started = await startTelegramDaemon(telegramWorkerArgs(merged));
+          process.stdout.write(`Bot Telegram aktif di latar belakang (pid ${started.pid}).\n`);
+          process.stdout.write(`  log: ${started.logFile}\n`);
+          process.stdout.write("  Hentikan dengan: agent telegram stop\n");
+        } else if (act === "stop") {
+          const stopped = await stopTelegramDaemon();
+          process.stdout.write(stopped ? "Bot Telegram dihentikan.\n" : "Bot Telegram tidak sedang berjalan.\n");
+        } else if (act === "restart") {
+          const started = await restartTelegramDaemon(telegramWorkerArgs(merged));
+          process.stdout.write(`Bot Telegram dijalankan ulang (pid ${started.pid}).\n  log: ${started.logFile}\n`);
+        } else if (act === "status") {
+          const status = await telegramDaemonStatus();
+          process.stdout.write(
+            status.running ? `Bot Telegram berjalan (pid ${status.pid}).\n` : "Bot Telegram tidak berjalan.\n",
+          );
+          process.stdout.write(`  log: ${telegramLogPath()}\n`);
+        } else {
+          const lines = await tailTelegramLog(30);
+          if (lines.length === 0) {
+            process.stdout.write(`Belum ada log. (${telegramLogPath()})\n`);
+          } else {
+            process.stdout.write(`Log Telegram terakhir (${telegramLogPath()}):\n`);
+            for (const line of lines) process.stdout.write(`  ${line}\n`);
+          }
+        }
+        return;
+      }
+
+      if (act === "supervise") {
+        // Mode internal: dipanggil daemon. Menjaga worker tetap hidup & restart otomatis.
+        const supervisor = runTelegramSupervisor({
+          execPath: process.execPath,
+          entry: process.argv[1] ?? "",
+          args: ["telegram", "run", ...process.argv.slice(4)],
+          log: (message: string) => process.stderr.write(`[telegram] ${message}\n`),
+        });
+        process.exitCode = await supervisor.done;
+        return;
+      }
+
+      if (act === "run") {
+        // Mode foreground (dipakai oleh supervisor/systemd), berhenti saat Ctrl+C.
+        const handle = await startTelegramServer(telegramServerOptions(merged));
+        process.stdout.write("NeX-Agent Telegram berjalan (foreground):\n");
+        process.stdout.write(`  bot    : @${handle.username ?? "?"}\n`);
+        process.stdout.write(
+          `  akses  : ${handle.open ? "TERBUKA untuk siapa pun" : handle.allowedChatIds.join(", ")}\n`,
+        );
+        process.stdout.write("  Tekan Ctrl+C untuk berhenti.\n");
+        const shutdown = (): void => {
+          void handle.close().then(() => process.exit(0));
+        };
+        process.on("SIGINT", shutdown);
+        process.on("SIGTERM", shutdown);
+        return;
+      }
+
+      throw new TelegramDaemonError(
+        `Aksi tidak dikenal: ${act}. Pakai start|stop|restart|status|logs|run.`,
+      );
+    });
+
   await program.parseAsync(process.argv);
 }
 
 main().catch((err: unknown) => {
-  if (err instanceof ConfigError || err instanceof ServerConfigError) {
+  if (
+    err instanceof ConfigError ||
+    err instanceof ServerConfigError ||
+    err instanceof TelegramError ||
+    err instanceof TelegramDaemonError
+  ) {
     process.stderr.write(`Error konfigurasi: ${err.message}\n`);
     process.exitCode = 2;
     return;
