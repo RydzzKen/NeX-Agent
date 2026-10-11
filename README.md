@@ -290,6 +290,8 @@ Sisanya diatur lewat `config.json`:
   `/usage [today|week|all]` · `/update` · `/help`.
   `/stop` menghentikan proses yang sedang berjalan (termasuk perintah shell) tanpa
   menghapus riwayat sesi — agent tetap ingat konteks dan bisa dilanjutkan.
+  Bila sedang menunggu izin, `/allow-all` sekaligus menyetujui permintaan yang
+  menggantung; `/new` dan `/resume` otomatis menghentikan tugas lama lebih dulu.
   Perintah tak dikenal dibalas petunjuk (tidak diteruskan ke agen).
   Beberapa perintah CLI tidak tersedia di Telegram karena butuh prompt interaktif
   atau akses lokal: `/connect`, `/provider`, `/mcp`, `/permissions`, `/skill`,

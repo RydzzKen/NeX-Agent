@@ -315,6 +315,8 @@ export class TelegramClient implements TelegramClientLike {
 export interface TelegramAgent {
   send(text: string): Promise<void> | void;
   interrupt?(): void;
+  /** Hentikan tugas berjalan dan tunggu sampai benar-benar selesai (opsional). */
+  stopRunning?(): Promise<void>;
   newSession?(): Promise<void> | void;
   isBusy?(): boolean;
   resolveApproval(id: string, value: unknown): boolean;
@@ -528,7 +530,10 @@ export class TelegramBridge {
     }
 
     if (this.deps.app.isBusy?.()) {
-      await this.safeSend(chatId, "Sesi sedang menjalankan tugas lain; coba lagi setelah selesai.");
+      await this.safeSend(
+        chatId,
+        "Sesi sedang menjalankan tugas lain. Ketik /stop untuk menghentikannya, atau tunggu sampai selesai.",
+      );
       return;
     }
 
@@ -567,7 +572,9 @@ export class TelegramBridge {
           await this.safeSend(chatId, "Tidak ada proses yang sedang berjalan.");
           return;
         }
-        app.interrupt?.();
+        this.pending = undefined;
+        if (app.stopRunning) await app.stopRunning();
+        else app.interrupt?.();
         await this.safeSend(
           chatId,
           "Proses dihentikan. Sesi & konteks tetap tersimpan — lanjutkan kapan saja dengan pesan berikutnya.",
@@ -654,10 +661,24 @@ export class TelegramBridge {
     const current = app.allowAll?.() ?? false;
     const on = arg === "" ? !current : arg === "on" || arg === "ya" || arg === "true";
     app.setAllowAll(on);
+
+    // Bila sedang menunggu izin, sekalian jawab agar loop tidak macet menunggu.
+    let note = "";
+    const pending = this.pending;
+    if (on && pending && pending.chatId === chatId) {
+      if (pending.kind === "sensitive") {
+        note = " Untuk file sensitif, jawab manual y/n.";
+      } else {
+        this.pending = undefined;
+        app.resolveApproval(pending.id, pending.kind === "confirm" ? "all" : true);
+        note = " Izin yang menggantung disetujui; tugas dilanjutkan.";
+      }
+    }
+
     await this.safeSend(
       chatId,
       on
-        ? "Allow-all AKTIF untuk sesi ini (mode Plan tetap read-only)."
+        ? `Allow-all AKTIF untuk sesi ini (mode Plan tetap read-only).${note}`
         : "Allow-all nonaktif.",
     );
   }

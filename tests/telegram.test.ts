@@ -136,6 +136,9 @@ function harness(options: {
     interrupt: () => {
       state.interrupted += 1;
     },
+    stopRunning: async () => {
+      state.interrupted += 1;
+    },
     isBusy: () => Boolean(options.busy),
     resolveApproval: (id, value) => {
       resolutions.push({ id, value });
@@ -382,6 +385,26 @@ describe("TelegramBridge", () => {
     await until(() => h.resolutions.length > 0);
     expect(h.resolutions[0]).toEqual({ id: "req_1", value: "yes" });
     expect(h.sentPrompts).toEqual([]);
+    await h.bridge.stop();
+  });
+
+  it("/allow-all menjawab izin yang menggantung agar tugas tidak macet", async () => {
+    const h = harness({
+      send: async () => {
+        h.emit({ type: "busy", on: true });
+        h.emit({
+          type: "confirm",
+          id: "req_9",
+          request: { kind: "shell", title: "Jalankan ls", detail: "ls -la" },
+        });
+      },
+    });
+    h.client.push([message(1, 42, "kerjakan")]);
+    await until(() => h.client.sends.some((s) => s.text.includes("Butuh konfirmasi")));
+    h.client.push([message(2, 42, "/allow-all")]);
+    await until(() => h.resolutions.length > 0);
+    expect(h.resolutions[0]).toEqual({ id: "req_9", value: "all" });
+    expect(h.state.allowAll).toBe(true);
     await h.bridge.stop();
   });
 

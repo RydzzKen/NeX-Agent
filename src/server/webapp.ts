@@ -93,6 +93,7 @@ export class WebApp {
   private readonly usageStore = new UsageStore(path.join(configDir(), "usage.jsonl"));
   private running = false;
   private controller: AbortController | undefined;
+  private runPromise: Promise<void> | undefined;
 
   private constructor(
     private readonly opts: WebAppOptions,
@@ -320,24 +321,45 @@ export class WebApp {
       return;
     }
     this.running = true;
-    this.controller = new AbortController();
+    const controller = new AbortController();
+    this.controller = controller;
     this.io.emit({ type: "busy", on: true });
-    try {
-      await this.reloadSkills();
-      await this.session.run(text, this.controller.signal);
-    } catch (err) {
-      this.io.error(`Terjadi kesalahan: ${(err as Error).message}`);
-    } finally {
-      this.running = false;
-      this.controller = undefined;
-      await this.saveRecord();
-      this.io.emit({ type: "busy", on: false });
-      await this.notifyState();
-    }
+    const run = (async () => {
+      try {
+        await this.reloadSkills();
+        await this.session.run(text, controller.signal);
+      } catch (err) {
+        this.io.error(`Terjadi kesalahan: ${(err as Error).message}`);
+      } finally {
+        this.running = false;
+        this.controller = undefined;
+        await this.saveRecord();
+        this.io.emit({ type: "busy", on: false });
+        await this.notifyState();
+      }
+    })();
+    this.runPromise = run;
+    await run;
   }
 
+  /**
+   * Hentikan tugas yang berjalan: batalkan sinyal **dan** tolak semua
+   * persetujuan yang menggantung supaya loop tidak macet menunggu jawaban.
+   */
   interrupt(): void {
     this.controller?.abort();
+    this.io.cancelAll();
+  }
+
+  /** Hentikan tugas berjalan (bila ada) lalu tunggu sampai benar-benar selesai. */
+  async stopRunning(): Promise<void> {
+    if (!this.running) return;
+    this.interrupt();
+    try {
+      await this.runPromise;
+    } catch {
+      // error sudah dilaporkan di dalam run()
+    }
   }
 
   setMode(mode: Mode): void {
@@ -360,6 +382,7 @@ export class WebApp {
 
   /** Kosongkan riwayat sesi aktif (tanpa membuat sesi baru). */
   async clearHistory(): Promise<void> {
+    await this.stopRunning();
     this.session.clearHistory();
     await this.saveRecord();
     this.notifySession();
@@ -463,6 +486,7 @@ export class WebApp {
 
   /** Buat sesi baru (menyimpan sesi aktif lebih dulu). */
   async newSession(): Promise<void> {
+    await this.stopRunning();
     await this.saveRecord();
     const info = this.session.getModelInfo();
     this.record = {
@@ -490,6 +514,7 @@ export class WebApp {
 
   /** Buka sesi berdasarkan id. Mengembalikan undefined bila tidak ada. */
   async openSession(id: string): Promise<SessionRecord | undefined> {
+    await this.stopRunning();
     const target = await this.store.load(id);
     if (!target) return undefined;
     await this.saveRecord();

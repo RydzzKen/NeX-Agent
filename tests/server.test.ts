@@ -7,6 +7,7 @@ import { parseClientMessage } from "../src/server/protocol.js";
 import { extractToken, generateToken, tokenMatches } from "../src/server/auth.js";
 import { WebIO } from "../src/server/webio.js";
 import { buildSpawnSpec, TerminalManager } from "../src/server/terminal.js";
+import { Approvals } from "../src/core/approvals.js";
 
 describe("protokol", () => {
   it("menerima pesan valid", () => {
@@ -204,5 +205,18 @@ describe("WebIO", () => {
     io.cancelAll();
     await expect(pathPromise).resolves.toBe(false);
     await expect(sensitivePromise).resolves.toBe(false);
+  });
+
+  it("membatalkan confirm yang menggantung (loop tidak macet saat stop)", async () => {
+    const sent: ServerMessage[] = [];
+    const io = new WebIO((m) => sent.push(m));
+    const approvals = new Approvals(io, { yes: false, interactive: true, allowAll: false });
+    const pending = approvals.confirm({ kind: "shell", title: "t", detail: "d" });
+    // confirm() masuk antrean serialisasi, jadi tunggu satu putaran event loop.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(sent[0]!.type).toBe("confirm");
+    // Inilah yang dilakukan interrupt(): batalkan sinyal + tolak approval.
+    io.cancelAll();
+    await expect(pending).resolves.toBe("no");
   });
 });
