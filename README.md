@@ -286,8 +286,10 @@ Sisanya diatur lewat `config.json`:
   muncul di menu tombol **"/"**. Yang didukung:
   `/new` · `/clear` · `/sessions` · `/resume <n|id>` · `/rename <judul>` ·
   `/delete` · `/plan` · `/build` · `/mode <plan|build>` · `/allow-all [on|off]` ·
-  `/interrupt` · `/status` · `/models [n|nama]` · `/skills` · `/todos` ·
+  `/stop` (`/interrupt`) · `/status` · `/models [n|nama]` · `/skills` · `/todos` ·
   `/usage [today|week|all]` · `/update` · `/help`.
+  `/stop` menghentikan proses yang sedang berjalan (termasuk perintah shell) tanpa
+  menghapus riwayat sesi — agent tetap ingat konteks dan bisa dilanjutkan.
   Perintah tak dikenal dibalas petunjuk (tidak diteruskan ke agen).
   Beberapa perintah CLI tidak tersedia di Telegram karena butuh prompt interaktif
   atau akses lokal: `/connect`, `/provider`, `/mcp`, `/permissions`, `/skill`,

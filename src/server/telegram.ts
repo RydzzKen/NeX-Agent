@@ -226,7 +226,8 @@ export const TELEGRAM_COMMANDS: TelegramCommand[] = [
   { command: "build", description: "Mode Build (eksekusi)" },
   { command: "mode", description: "Pindah mode (plan/build)" },
   { command: "allow_all", description: "Izinkan semua izin (on/off)" },
-  { command: "interrupt", description: "Hentikan tugas yang berjalan" },
+  { command: "stop", description: "Hentikan proses berjalan (sesi tetap tersimpan)" },
+  { command: "interrupt", description: "Alias dari /stop" },
   { command: "status", description: "Status sesi & konfigurasi" },
   { command: "models", description: "Lihat/ganti model" },
   { command: "skills", description: "Daftar skill" },
@@ -389,7 +390,7 @@ const HELP_TEXT = [
   "Kontrol:",
   "  /plan · /build — pindah mode (read-only / eksekusi)",
   "  /allow-all [on|off] — izinkan semua izin (tanpa argumen = balik)",
-  "  /interrupt — hentikan tugas yang berjalan",
+  "  /stop — hentikan proses yang berjalan (sesi tetap tersimpan)",
   "  /status — workspace, mode, model, provider",
   "",
   "Info lain:",
@@ -560,10 +561,17 @@ export class TelegramBridge {
           return "Riwayat sesi dikosongkan.";
         });
         return;
-      case "interrupt":
       case "stop":
+      case "interrupt":
+        if (app.isBusy && !app.isBusy()) {
+          await this.safeSend(chatId, "Tidak ada proses yang sedang berjalan.");
+          return;
+        }
         app.interrupt?.();
-        await this.safeSend(chatId, "Permintaan henti dikirim.");
+        await this.safeSend(
+          chatId,
+          "Proses dihentikan. Sesi & konteks tetap tersimpan — lanjutkan kapan saja dengan pesan berikutnya.",
+        );
         return;
       case "plan":
       case "build":

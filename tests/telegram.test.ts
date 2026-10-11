@@ -102,6 +102,7 @@ interface Harness {
     model: string;
     cleared: number;
     deleted: number;
+    interrupted: number;
   };
   emit(message: ServerMessage): void;
 }
@@ -117,7 +118,7 @@ function harness(options: {
   const resolutions: Array<{ id: string; value: unknown }> = [];
   let sessionCount = 0;
   let sink: ((message: ServerMessage) => void) | undefined;
-  const state = { mode: "build", allowAll: false, title: "awal", model: "model-a", cleared: 0, deleted: 0 };
+  const state = { mode: "build", allowAll: false, title: "awal", model: "model-a", cleared: 0, deleted: 0, interrupted: 0 };
 
   const defaultSend: TelegramAgent["send"] = async (text) => {
     sentPrompts.push(text);
@@ -132,7 +133,9 @@ function harness(options: {
     newSession: async () => {
       sessionCount += 1;
     },
-    interrupt: () => {},
+    interrupt: () => {
+      state.interrupted += 1;
+    },
     isBusy: () => Boolean(options.busy),
     resolveApproval: (id, value) => {
       resolutions.push({ id, value });
@@ -424,6 +427,23 @@ describe("TelegramBridge", () => {
     await h.bridge.stop();
   });
 
+  it("/stop menghentikan proses yang berjalan tanpa menghapus sesi", async () => {
+    const h = harness({ busy: true });
+    h.client.push([message(1, 42, "/stop")]);
+    await until(() => h.client.sends.some((s) => s.text.includes("tetap tersimpan")));
+    expect(h.state.interrupted).toBe(1);
+    expect(h.sentPrompts).toEqual([]);
+    await h.bridge.stop();
+  });
+
+  it("/stop memberi tahu bila tidak ada proses berjalan", async () => {
+    const h = harness({ busy: false });
+    h.client.push([message(1, 42, "/stop")]);
+    await until(() => h.client.sends.some((s) => s.text.includes("Tidak ada proses")));
+    expect(h.state.interrupted).toBe(0);
+    await h.bridge.stop();
+  });
+
   it("mendaftarkan menu perintah lewat setMyCommands saat verify", async () => {
     const h = harness();
     await h.bridge.verify();
@@ -432,6 +452,7 @@ describe("TelegramBridge", () => {
     expect(names).toContain("update");
     expect(names).toContain("new");
     expect(names).toContain("interrupt");
+    expect(names).toContain("stop");
     await h.bridge.stop();
   });
 
