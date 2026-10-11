@@ -82,6 +82,10 @@ nex-agent logs <id>           # jejak satu sesi
 nex-agent web                 # buka chat + terminal di browser
 nex-agent telegram            # bot Telegram sebagai daemon latar belakang
 nex-agent telegram stop       # hentikan bot (status/restart/logs juga ada)
+nex-agent update              # tarik versi terbaru dari repo lalu bangun ulang
+nex-agent update --check      # hanya periksa, tanpa mengubah
+nex-agent uninstall           # lepas perintah nex-agent/agent dari PATH
+nex-agent uninstall --purge --yes  # hapus juga config & sumber terpasang
 ```
 
 `nex-agent` dan `agent` adalah perintah yang sama.
@@ -118,7 +122,7 @@ Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 `/usage` · `/permissions` · `/allow-all [on|off]` · `/thinking` · `/markdown` ·
 `/skills` · `/skill <nama>|off` · `/mcp [reload|key <nama>]` · `/todos` ·
 `/web [lan|stop]` · `/telegram [start|stop|restart|status|logs|token|allow]` ·
-`/exit` · `/help`.
+`/update` · `/exit` · `/help`.
 
 Mengetik `/` menampilkan daftar perintah terkait secara langsung di atas baris
 input (di TTY). Tab melengkapi perintah slash, subperintah (`/provider <Tab>`),
@@ -284,6 +288,22 @@ Sisanya diatur lewat `config.json`:
   `/telegram token <TOKEN>|hapus` · `/telegram allow <chatId...|clear>` ·
   `/telegram deny <chatId...>` · `/telegram on|off`.
 - Token **tidak pernah** dicetak (disamarkan `1234…WXYZ`).
+
+## Perbarui & hapus
+
+**Update.** `nex-agent update` (atau `/update` di chat) menarik commit terbaru
+dari repo git asal, lalu menjalankan `pnpm install` dan `pnpm build`. Bila sudah
+sama dengan remote, ia berkata "sudah versi terbaru". Update dibatalkan bila ada
+perubahan lokal yang belum di-commit (agar tidak hilang) atau bila riwayat
+bercabang (fast-forward tidak memungkinkan); `nex-agent update --check` hanya
+memeriksa. Setelah update dari chat, **restart** NeX-Agent karena proses yang
+sedang berjalan masih memakai kode lama.
+
+**Uninstall.** `nex-agent uninstall` menghapus launcher `nex-agent`/`agent` yang
+menunjuk ke sumber ini dan membersihkan entri PATH di rc shell. Config di
+`~/.config/agent` tetap disimpan; tambahkan `--purge --yes` untuk juga
+menghapusnya beserta sumber terpasang (`~/.local/share/nex-agent`). Checkout
+pengembangan yang sedang dipakai tidak pernah dihapus.
 
 ## Plugin MCP (Model Context Protocol)
 

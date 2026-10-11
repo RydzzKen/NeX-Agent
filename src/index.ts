@@ -5,6 +5,7 @@ import { SessionStore } from "./sessions/store.js";
 import { UsageStore, type UsageRange } from "./usage/store.js";
 import { renderCrossSession } from "./cli/usage.js";
 import { ChatApp, ConfigError, type CliOptions } from "./cli/app.js";
+import { describeUpdate, runUninstall, runUpdate } from "./cli/update.js";
 import { createWebServer, isLoopbackHost, reachableUrl } from "./server/server.js";
 import { ServerConfigError } from "./server/webapp.js";
 import { TelegramError, startTelegramServer, type TelegramServerOptions } from "./server/telegram_server.js";
@@ -323,6 +324,59 @@ async function main(): Promise<void> {
       throw new TelegramDaemonError(
         `Aksi tidak dikenal: ${act}. Pakai start|stop|restart|status|logs|run.`,
       );
+    });
+
+  program
+    .command("update")
+    .description("perbarui NeX-Agent dari repo git lalu bangun ulang")
+    .option("--check", "hanya periksa, jangan ubah apa pun")
+    .action(async (_options: Record<string, unknown>, command: Command) => {
+      const merged = command.optsWithGlobals() as Record<string, unknown>;
+      const outcome = await runUpdate({
+        ...(merged.check ? { check: true } : {}),
+        log: (line: string) => process.stdout.write(`${line}\n`),
+      });
+      process.stdout.write(`${describeUpdate(outcome)}\n`);
+      if (outcome.status === "updated") {
+        process.stdout.write("Versi baru dipakai pada perintah berikutnya (proses ini memakai kode lama).\n");
+      }
+      if (outcome.status === "error" || outcome.status === "dirty" || outcome.status === "not-ff" || outcome.status === "no-git") {
+        process.exitCode = 1;
+      }
+    });
+
+  program
+    .command("uninstall")
+    .description("lepas NeX-Agent (hapus perintah nex-agent/agent dari PATH)")
+    .option("--purge", "hapus juga config dan sumber terpasang")
+    .option("--yes", "konfirmasi tindakan destruktif (wajib untuk --purge)")
+    .action(async (_options: Record<string, unknown>, command: Command) => {
+      const merged = command.optsWithGlobals() as Record<string, unknown>;
+      const purge = Boolean(merged.purge);
+      if (purge && !merged.yes) {
+        process.stderr.write(
+          "--purge menghapus config (~/.config/agent) dan sumber terpasang. Tambahkan --yes untuk konfirmasi.\n",
+        );
+        process.exitCode = 1;
+        return;
+      }
+      const result = await runUninstall({
+        purge,
+        log: (line: string) => process.stdout.write(`${line}\n`),
+      });
+      if (result.removedCommands.length === 0) {
+        process.stdout.write("Tidak menemukan perintah nex-agent/agent yang terpasang.\n");
+      } else {
+        process.stdout.write(`Selesai. ${result.removedCommands.length} perintah dihapus.\n`);
+      }
+      if (result.removedRcMarkers.length > 0) {
+        process.stdout.write(`Entri PATH dibersihkan di: ${result.removedRcMarkers.join(", ")}\n`);
+      }
+      if (purge) {
+        process.stdout.write("Config dan sumber terpasang (bila ada) sudah dihapus.\n");
+      } else {
+        process.stdout.write("Config (~/.config/agent) tidak dihapus; pakai `uninstall --purge --yes` untuk itu.\n");
+      }
     });
 
   await program.parseAsync(process.argv);

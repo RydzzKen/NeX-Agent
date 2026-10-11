@@ -41,6 +41,7 @@ import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice } from "./models
 import { TerminalIO } from "./render.js";
 import { Prompter, PROMPT_EOF } from "./prompt.js";
 import { formatResumePreview } from "./resume_preview.js";
+import { describeUpdate, runUpdate } from "./update.js";
 import { createWebServer, isLoopbackHost, reachableUrl, type WebServerHandle } from "../server/server.js";
 import { ServerConfigError } from "../server/webapp.js";
 import {
@@ -114,6 +115,7 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/todos", "tampilkan daftar tugas (checklist)"],
   ["/web [lan|stop]", "nyalakan server web (lan = buka ke jaringan) / hentikan"],
   ["/telegram [start|stop|restart|status|logs|token|allow]", "kelola bot Telegram (daemon latar belakang)"],
+  ["/update", "perbarui NeX-Agent dari repo git lalu bangun ulang"],
   ["/exit", "keluar dari sesi chat (atau Ctrl+D)"],
   ["/help", "bantuan"],
 ];
@@ -637,6 +639,9 @@ export class ChatApp {
       case "/telegram":
         await this.commandTelegram(args);
         return "continue";
+      case "/update":
+        await this.commandUpdate();
+        return "continue";
       default:
         this.io.warn(`Perintah tidak dikenal: ${cmd}. Ketik /help.`);
         return "continue";
@@ -1159,6 +1164,26 @@ export class ChatApp {
       process.stdout.write("  (hanya loopback — ketik /web lan untuk akses dari HP/LAN + kode QR)\n");
     }
     process.stdout.write("  Buka di browser. Hentikan dengan /web stop.\n");
+  }
+
+  /**
+   * Perbarui NeX-Agent dari repo git (`/update`). Menarik commit terbaru lalu
+   * memasang dependensi dan membangun ulang. Karena proses chat ini masih memakai
+   * kode lama di memori, pengguna diminta restart agar versi baru terpakai.
+   */
+  private async commandUpdate(): Promise<void> {
+    this.io.info("Memeriksa pembaruan dari repo git...");
+    const outcome = await runUpdate({
+      log: (line: string) => process.stdout.write(`  ${line}\n`),
+    });
+    if (outcome.status === "error") {
+      this.io.error(describeUpdate(outcome));
+      return;
+    }
+    this.io.info(describeUpdate(outcome));
+    if (outcome.status === "updated") {
+      this.io.warn("Restart NeX-Agent (keluar lalu jalankan lagi) untuk memakai versi baru.");
+    }
   }
 
   /**
