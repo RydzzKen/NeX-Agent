@@ -386,6 +386,8 @@ otomatis dari paket/host, atau dipaksa dengan `--name`):
 Nama hasil tebakan boleh bentrok (otomatis diberi akhiran `-2`), sedangkan nama
 eksplisit (`--name`) menolak menimpa server yang sudah ada.
 
+> Ringkasan semua perintah `/mcp add` & `/skills install`: lihat [`COMMANDS.md`](COMMANDS.md).
+
 - **Context7** — tanpa API key tetap jalan (limit rendah). Untuk limit lebih
   tinggi, dapatkan key gratis di <https://context7.com/dashboard>, jalankan
   `/mcp key context7`, lalu tambahkan
