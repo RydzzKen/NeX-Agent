@@ -214,8 +214,9 @@ dan path berkas.
 membocorkan nilainya); `use` mengaktifkannya, `edit` mengubah base URL/API key
 (kosongkan API key untuk mempertahankan yang lama), `hapus` menghapusnya. Argumennya
 berupa **id** (`anthropic`, `openai`, `custom:<nama>`); untuk custom, awalan
-`custom:` boleh dilewat (mis. `/provider hapus 9router`). `/connect` juga
-menampilkan provider custom tersimpan agar bisa dipakai ulang tanpa mengetik ulang.
+`custom:` boleh dilewat (mis. `/provider hapus 9router`), dan nama boleh
+mengandung spasi (`/provider hapus 9router local`, boleh juga dikutip). `/connect`
+juga menampilkan provider custom tersimpan agar bisa dipakai ulang tanpa mengetik ulang.
 
 `/sessions` menampilkan sesi bernomor (judul diambil otomatis dari pesan
 pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/allow-all` menyalakan

@@ -6,6 +6,7 @@ import {
   buildConnectMenu,
   defaultBaseURL,
   describeProvider,
+  providerRefFromArgs,
   resolveProviderKey,
 } from "../src/cli/connect.js";
 import { CredentialStore } from "../src/config/credentials.js";
@@ -84,6 +85,26 @@ describe("resolveProviderKey", () => {
     expect(resolveProviderKey("tidak-ada", saved)).toBeUndefined();
     expect(resolveProviderKey("custom:tidak-ada", saved)).toBeUndefined();
     expect(resolveProviderKey("   ", saved)).toBeUndefined();
+  });
+
+  it("mencocokkan nama custom yang mengandung spasi", () => {
+    expect(resolveProviderKey("9router local", ["custom:9router local"])).toBe("custom:9router local");
+  });
+});
+
+describe("providerRefFromArgs", () => {
+  it("menggabungkan nama provider berspasi", () => {
+    expect(providerRefFromArgs(["9router", "local"])).toBe("9router local");
+  });
+
+  it("membuang kutip tepi (ganda atau tunggal)", () => {
+    expect(providerRefFromArgs(['"9router', 'local"'])).toBe("9router local");
+    expect(providerRefFromArgs(["'9router", "local'"])).toBe("9router local");
+  });
+
+  it("merapikan spasi tepi dan aman untuk input kosong", () => {
+    expect(providerRefFromArgs(["  x  "])).toBe("x");
+    expect(providerRefFromArgs([])).toBe("");
   });
 });
 

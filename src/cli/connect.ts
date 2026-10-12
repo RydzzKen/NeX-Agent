@@ -49,6 +49,17 @@ export function resolveProviderKey(input: string, saved: string[]): string | und
   return undefined;
 }
 
+/**
+ * Gabungkan argumen nama provider dari baris slash menjadi satu string.
+ * Nama boleh mengandung spasi (mis. `9router local`), dan boleh dikutip
+ * (`"9router local"` / `'9router local'`) — kutip tepinya dibuang.
+ */
+export function providerRefFromArgs(args: string[]): string {
+  const raw = args.join(" ").trim();
+  const quoted = /^(['"])([\s\S]*)\1$/.exec(raw);
+  return (quoted ? quoted[2]! : raw).trim();
+}
+
 export interface ProviderView {
   key: string;
   baseURL: string;

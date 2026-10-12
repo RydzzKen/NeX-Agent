@@ -50,7 +50,7 @@ import { isPrivateHost } from "../util/network.js";
 import { firstNonEmpty } from "../util/strings.js";
 import { todoHeader, todoLines } from "../util/todos.js";
 import { renderCrossSession, renderUsage } from "./usage.js";
-import { runConnect, describeProvider, defaultBaseURL, resolveProviderKey } from "./connect.js";
+import { runConnect, describeProvider, defaultBaseURL, resolveProviderKey, providerRefFromArgs } from "./connect.js";
 import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice } from "./models.js";
 import { TerminalIO } from "./render.js";
 import { Prompter, PROMPT_EOF } from "./prompt.js";
@@ -755,7 +755,7 @@ export class ChatApp {
    */
   private async commandProvider(args: string[]): Promise<void> {
     const sub = args[0];
-    const name = args[1];
+    const name = providerRefFromArgs(args.slice(1));
 
     if (!sub) {
       await this.listProviders();
