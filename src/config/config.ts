@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { WebSearchProvider } from "../util/websearch.js";
 
 export function configDir(): string {
   return process.env.AGENT_CONFIG_DIR ?? path.join(os.homedir(), ".config", "agent");
@@ -43,6 +44,8 @@ export interface AgentConfig {
   models?: Record<string, string>;
   /** URL layanan pencarian web opsional. */
   searchUrl?: string;
+  /** Backend pencarian: "duckduckgo" (default), "searxng", atau "brave". */
+  searchProvider?: WebSearchProvider;
   /** Host bind server web (`nex-agent serve`). Default 127.0.0.1. */
   webHost?: string;
   /** Port server web. Kosong/0 = port acak. */

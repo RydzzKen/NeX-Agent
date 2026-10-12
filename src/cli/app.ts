@@ -38,6 +38,7 @@ import { UsageStore, type UsageRange } from "../usage/store.js";
 import { createWebSearch } from "../util/websearch.js";
 import { renderDiff } from "../util/diff.js";
 import { color } from "../util/color.js";
+import { isPrivateHost } from "../util/network.js";
 import { firstNonEmpty } from "../util/strings.js";
 import { todoHeader, todoLines } from "../util/todos.js";
 import { renderCrossSession, renderUsage } from "./usage.js";
@@ -160,6 +161,8 @@ export class ChatApp {
   private activeSkills: Skill[] = [];
   private skillsEnabled = false;
   private baseSystemPrompt = "";
+  /** Base URL provider aktif (untuk banner + peringatan alamat lokal). */
+  private providerBaseURL?: string;
   /** Server web (dinyalakan lewat `/web`) selama proses chat ini hidup. */
   private webServer?: WebServerHandle;
 
@@ -307,6 +310,8 @@ export class ChatApp {
     }
     if (!this.providerKey) this.providerKey = key ?? provider.id;
     this.provider = provider;
+    const creds = await this.credentials.get(this.providerKey);
+    this.providerBaseURL = creds?.baseURL ?? defaultBaseURL(this.providerKey);
   }
 
   private async resolveModel(provider: ModelProvider, preferred?: string): Promise<ResolvedModel | undefined> {
@@ -430,7 +435,7 @@ export class ChatApp {
         systemPrompt,
         resolvePath,
         tracker: this.tracker,
-        search: createWebSearch(this.config.searchUrl),
+        search: createWebSearch({ provider: this.config.searchProvider, url: this.config.searchUrl }),
         skills: this.skills,
         registerSkill: (skill) => this.registerSkill(skill),
         onUsage: (event) => this.usageStore.append(event),
@@ -469,11 +474,20 @@ export class ChatApp {
   private banner(): void {
     if (this.opts.json) return;
     const markers = this.workspace.markers.length ? `  (${this.workspace.markers.slice(0, 2).join(", ")})` : "";
-    process.stdout.write(
-      `${color.green("●")} workspace  ${this.workspace.root}${markers}\n` +
-        `${color.green("●")} mode       ${this.session.getMode()}\n` +
-        `${color.green("●")} model      ${this.providerKey} / ${this.session.getModel()}\n\n`,
-    );
+    const lines = [
+      `${color.green("●")} workspace  ${this.workspace.root}${markers}`,
+      `${color.green("●")} mode       ${this.session.getMode()}`,
+      `${color.green("●")} model      ${this.providerKey} / ${this.session.getModel()}`,
+    ];
+    if (this.providerBaseURL) {
+      lines.push(`${color.green("●")} provider   ${this.providerBaseURL}`);
+      if (isPrivateHost(this.providerBaseURL)) {
+        lines.push(
+          `${color.yellow("⚠")} provider menunjuk ke alamat jaringan lokal — pastikan ini server yang kamu maksud, bukan konfigurasi lama yang ikut terbawa. Ganti dengan /provider atau /connect.`,
+        );
+      }
+    }
+    process.stdout.write(`${lines.join("\n")}\n\n`);
   }
 
   /** Jalankan satu tugas (mode non-chat). */

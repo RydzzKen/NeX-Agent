@@ -21,7 +21,14 @@ export const webSearchTool: ToolDefinition<typeof schema> = {
     }
     try {
       const results = await ctx.search(input.query, ctx.signal);
-      if (results.length === 0) return { content: `Tidak ada hasil untuk: ${input.query}` };
+      if (results.length === 0) {
+        return {
+          content:
+            `Tidak ada hasil untuk: ${input.query}. ` +
+            "Backend bawaan hanya DuckDuckGo Instant Answer (jawaban instan), bukan hasil web penuh. " +
+            'Untuk pencarian web penuh, setel "searchProvider" ("searxng" atau "brave") dan "searchUrl"/BRAVE_API_KEY di config.json.',
+        };
+      }
       const content = results
         .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}${r.snippet ? `\n   ${r.snippet}` : ""}`)
         .join("\n");

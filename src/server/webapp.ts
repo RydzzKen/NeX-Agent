@@ -22,7 +22,9 @@ import { SessionStore, deriveTitle, newSessionId, type SessionRecord } from "../
 import { UsageTracker } from "../usage/tracker.js";
 import { UsageStore, type UsageRange } from "../usage/store.js";
 import { renderCrossSession } from "../cli/usage.js";
+import { defaultBaseURL } from "../cli/connect.js";
 import { createWebSearch } from "../util/websearch.js";
+import { isPrivateHost } from "../util/network.js";
 import { createProvider } from "../providers/factory.js";
 import { ToolRegistry } from "../tools/registry.js";
 import type { ModelProvider } from "../providers/provider.js";
@@ -172,6 +174,13 @@ export class WebApp {
     }
     this.provider = provider;
     this.providerKey = key;
+    const creds = await this.credentials.get(key);
+    const baseURL = creds?.baseURL ?? defaultBaseURL(key);
+    this.logger.info("provider.selected", {
+      provider: key,
+      baseURL,
+      private: isPrivateHost(baseURL),
+    });
   }
 
   private async resolveModel(
@@ -222,7 +231,7 @@ export class WebApp {
         systemPrompt: this.baseSystemPrompt,
         resolvePath,
         tracker: this.tracker,
-        search: createWebSearch(this.config.searchUrl),
+        search: createWebSearch({ provider: this.config.searchProvider, url: this.config.searchUrl }),
         skills: this.skills,
         registerSkill: (skill) => this.registerSkill(skill),
         onUsage: (event) => this.usageStore.append(event),
