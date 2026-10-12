@@ -201,6 +201,7 @@ export class AgentSession {
       resolvePath: this.deps.resolvePath,
       confirm: (req, opts) => this.deps.approvals.confirm(req, opts),
       confirmSensitive: (req) => this.deps.approvals.requestSensitiveAccess(req),
+      requestSecret: (req) => this.deps.approvals.requestSecret(req),
     };
   }
 

@@ -187,6 +187,13 @@ Anda tahu kapan agen masih mengerjakan sesuatu dan kapan sudah berhenti.
 > Perintah shell yang menyentuh file itu (mis. `cat .env`) diperlakukan sama.
 > Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 
+> [!NOTE]
+> **Perintah `sudo`.** Bila `sudo` butuh password (tanpa TTY), agen menawarkan
+> input sesaat: yang Anda ketik tampil sebagai `*`, dipakai sekali untuk
+> perintah itu, lalu dibuang — **tidak pernah disimpan** ke file, log, atau
+> `env`. Untuk otomasi penuh, lebih baik pakai aturan `sudoers` NOPASSWD yang
+> spesifik (`/etc/sudoers.d/...`) daripada menaruh password di `.env`.
+
 ### 💬 Slash command (mode chat)
 
 | Kategori | Perintah |

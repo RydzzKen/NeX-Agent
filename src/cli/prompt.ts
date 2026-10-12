@@ -9,6 +9,8 @@ export interface PrompterLike {
   close(): void;
   pause?: () => void;
   resume?: () => void;
+  /** Tanya input rahasia; `mask` (mis. "*") menampilkan jumlah karakter tanpa isinya. */
+  secretQuestion?(query: string, mask?: string): Promise<string>;
   /** Daftarkan handler Ctrl+C (menggantikan perilaku tutup-default readline). */
   onInterrupt?: (handler: () => void) => void;
 }
@@ -59,20 +61,37 @@ export class Prompter implements PrompterLike {
   }
 
   /**
-   * Tanya input rahasia (API key) tanpa menampilkan isinya di layar.
+   * Tanya input rahasia (API key / password) tanpa menampilkan isinya.
    *
-   * Readline menampilkan setiap karakter yang diketik lewat `_writeToOutput`;
-   * kita hanya meneruskan prompt dan newline agar kursor tetap berperilaku
-   * normal, lalu mengembalikannya setelah selesai.
+   * Readline menulis tiap karakter yang diketik lewat `_writeToOutput`; kita
+   * hanya meneruskan prompt dan newline. Bila `mask` diberikan (mis. `"*"`),
+   * jumlah karakter ditampilkan sebagai bintang tanpa pernah mengekspos isi —
+   * dihitung dari `rl.line` agar backspace/panah tetap konsisten.
    */
-  async secretQuestion(query: string): Promise<string> {
+  async secretQuestion(query: string, mask?: string): Promise<string> {
     if (this.closed) return PROMPT_EOF;
-    const rl = this.rl as unknown as { _writeToOutput?: (text: string) => void };
+    const rl = this.rl as unknown as {
+      _writeToOutput?: (text: string) => void;
+      line?: string;
+    };
     const original = rl._writeToOutput;
     if (typeof original !== "function") return this.question(query);
     const bound = original.bind(this.rl);
+    let shown = 0;
     rl._writeToOutput = (text: string): void => {
-      if (text === query || text === "\n" || text === "\r\n") bound(text);
+      if (text === query || text === "\n" || text === "\r\n") {
+        bound(text);
+        return;
+      }
+      if (!mask) return;
+      const target = rl.line?.length ?? shown;
+      if (target > shown) {
+        bound(mask.repeat(target - shown));
+        shown = target;
+      } else if (target < shown) {
+        bound("\b \b".repeat(shown - target));
+        shown = target;
+      }
     };
     this.completing = false;
     try {

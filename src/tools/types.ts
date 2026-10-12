@@ -1,6 +1,6 @@
 import type { z } from "zod";
 import type { Logger } from "../logging/logger.js";
-import type { AccessKind, ConfirmDecision, ConfirmRequest, SensitiveAccessRequest } from "../core/io.js";
+import type { AccessKind, ConfirmDecision, ConfirmRequest, SecretRequest, SensitiveAccessRequest } from "../core/io.js";
 import type { Mode, ToolRisk } from "../core/types.js";
 import type { TodoItem, TodoStore } from "../core/todos.js";
 import type { Skill } from "../memory/skills.js";
@@ -60,6 +60,11 @@ export interface ToolContext {
   confirm(req: ConfirmRequest, opts?: { allowAll?: boolean }): Promise<ConfirmDecision>;
   /** Konfirmasi file sensitif; tidak bisa dilewati allow-all. */
   confirmSensitive(req: SensitiveAccessRequest): Promise<boolean>;
+  /**
+   * Minta rahasia sesaat (mis. password sudo); `null` bila dibatalkan atau UI
+   * tidak mendukung. Rahasia hanya sekali pakai dan tidak boleh disimpan.
+   */
+  requestSecret?(req: SecretRequest): Promise<string | null>;
 }
 
 export interface ToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {

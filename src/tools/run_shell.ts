@@ -44,9 +44,21 @@ interface ShellOutput {
   aborted: boolean;
 }
 
-function runShell(command: string, timeoutMs: number, cwd: string, signal: AbortSignal): Promise<ShellOutput> {
+function runShell(
+  command: string,
+  timeoutMs: number,
+  cwd: string,
+  signal: AbortSignal,
+  secret?: string,
+): Promise<ShellOutput> {
   return new Promise((resolve) => {
     const child = spawn(command, { shell: resolveShell(), cwd, env: process.env });
+    if (secret !== undefined && child.stdin) {
+      // Rahasia hanya lewat stdin — tak pernah masuk argv/env/log — lalu stdin
+      // ditutup agar perintah setelah sudo tidak bisa membacanya.
+      child.stdin.on("error", () => {});
+      child.stdin.end(`${secret}\n`);
+    }
     let stdout = "";
     let stderr = "";
     let timedOut = false;
@@ -84,6 +96,24 @@ function runShell(command: string, timeoutMs: number, cwd: string, signal: Abort
       resolve({ code, signal: sig, stdout: cap(stdout), stderr: cap(stderr), timedOut, aborted });
     });
   });
+}
+
+/** True bila perintah dimulai dengan `sudo` (bukan `sudoedit`/path lain). */
+export function isSudoCommand(command: string): boolean {
+  return /^\s*sudo\b/.test(command);
+}
+
+/** True bila stderr menandakan sudo gagal karena tidak ada TTY untuk password. */
+export function sudoNeedsPassword(command: string, stderr: string): boolean {
+  if (!isSudoCommand(command)) return false;
+  return /no tty present|a terminal is required|a password is required|must have a tty|askpass helper/i.test(
+    stderr,
+  );
+}
+
+/** Sisipkan `-S -k` pada `sudo` terdepan agar membaca password dari stdin. */
+export function withSudoStdin(command: string): string {
+  return command.replace(/^(\s*)sudo\b/, "$1sudo -S -k");
 }
 
 export const runShellTool: ToolDefinition<typeof schema> = {
@@ -136,7 +166,36 @@ export const runShellTool: ToolDefinition<typeof schema> = {
     }
 
     const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT;
-    const result = await runShell(input.command, timeoutMs, ctx.workspace.root, ctx.signal);
+    let result = await runShell(input.command, timeoutMs, ctx.workspace.root, ctx.signal);
+
+    // sudo tanpa TTY gagal meminta password; tawarkan input sesaat (masked).
+    if (
+      ctx.requestSecret &&
+      !result.timedOut &&
+      !result.aborted &&
+      result.code !== 0 &&
+      sudoNeedsPassword(input.command, result.stderr)
+    ) {
+      const password = await ctx.requestSecret({
+        kind: "sudo",
+        detail: input.command,
+        reason: "sudo membutuhkan password di sistem ini.",
+      });
+      if (password === null) {
+        return {
+          content: `Dibatalkan: password sudo tidak diberikan untuk: ${input.command}`,
+          ok: false,
+          summary: "sudo dibatalkan",
+        };
+      }
+      result = await runShell(
+        withSudoStdin(input.command),
+        timeoutMs,
+        ctx.workspace.root,
+        ctx.signal,
+        password,
+      );
+    }
 
     const parts: string[] = [];
     parts.push(`exit code: ${result.code ?? "null"}`);

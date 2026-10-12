@@ -49,6 +49,18 @@ export interface SensitiveAccessRequest {
 }
 
 /**
+ * Permintaan rahasia sesaat (mis. password sudo). Rahasia hanya dipakai sekali
+ * pakai, tidak boleh disimpan ke file, log, atau lingkungan (`env`).
+ */
+export interface SecretRequest {
+  kind: "sudo";
+  /** Perintah yang membutuhkan rahasia (ditampilkan ke pengguna). */
+  detail: string;
+  /** Penjelasan singkat kenapa rahasia dibutuhkan. */
+  reason: string;
+}
+
+/**
  * Abstraksi interaksi pengguna. `core/` hanya berbicara lewat interface ini;
  * implementasi konkret ada di `cli/`.
  */
@@ -89,6 +101,13 @@ export interface AgentIO {
    */
   requestSensitiveAccess?(req: SensitiveAccessRequest): Promise<boolean>;
 
+  /**
+   * Minta rahasia sesaat (mis. password sudo). Mengembalikan `null` bila
+   * pengguna membatalkan atau UI tidak mendukung input rahasia. Nilai ini tidak
+   * boleh disimpan/di-log oleh pemanggil.
+   */
+  requestSecret?(req: SecretRequest): Promise<string | null>;
+
   /** Mode saat ini berubah. */
   modeChanged?(mode: Mode): void;
 
@@ -116,5 +135,6 @@ export function silentIO(decisions: ConfirmDecision = "no"): AgentIO {
     confirm: async () => decisions,
     requestPathAccess: async () => decisions === "yes" || decisions === "all",
     requestSensitiveAccess: async () => decisions === "yes" || decisions === "all",
+    requestSecret: async () => null,
   };
 }

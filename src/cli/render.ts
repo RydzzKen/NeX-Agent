@@ -3,6 +3,7 @@ import type {
   ConfirmDecision,
   ConfirmRequest,
   PathAccessRequest,
+  SecretRequest,
   SensitiveAccessRequest,
   StepInfo,
   StepOutcome,
@@ -12,7 +13,7 @@ import type { TodoItem } from "../core/todos.js";
 import { color } from "../util/color.js";
 import { renderMarkdown } from "../util/markdown.js";
 import { todoHeader, todoLines } from "../util/todos.js";
-import type { PrompterLike } from "./prompt.js";
+import { PROMPT_EOF, type PrompterLike } from "./prompt.js";
 
 export interface RenderOptions {
   thinking: boolean;
@@ -356,6 +357,24 @@ export class TerminalIO implements AgentIO {
       );
       const answer = (await this.prompter.question("  Izinkan akses rahasia ini? [y/N]: ")).trim().toLowerCase();
       return answer === "y" || answer === "yes";
+    } finally {
+      this.resumeSpinner();
+    }
+  }
+
+  async requestSecret(req: SecretRequest): Promise<string | null> {
+    if (this.opts.json) return null;
+    const ask = this.prompter.secretQuestion;
+    if (!ask) return null;
+    this.suspendSpinner();
+    try {
+      this.writeContent(
+        `${color.yellow("🔒")} Password sudo untuk: ${req.detail}\n` +
+          `  ${color.gray(req.reason)} Ditampilkan sebagai "*" dan dipakai sekali — tidak disimpan.\n`,
+      );
+      const value = await ask.call(this.prompter, "  password: ", "*");
+      if (value === PROMPT_EOF || value === "") return null;
+      return value;
     } finally {
       this.resumeSpinner();
     }

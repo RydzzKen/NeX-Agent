@@ -3,6 +3,7 @@ import type {
   ConfirmDecision,
   ConfirmRequest,
   PathAccessRequest,
+  SecretRequest,
   SensitiveAccessRequest,
 } from "./io.js";
 
@@ -85,6 +86,18 @@ export class Approvals {
     return this.serialize(async () => {
       if (this.io.requestSensitiveAccess) return this.io.requestSensitiveAccess(req);
       return false;
+    });
+  }
+
+  /**
+   * Minta rahasia sesaat (mis. password sudo). Tidak pernah diisi otomatis oleh
+   * allow-all/--yes — hanya prompt interaktif eksplisit. Non-interaktif → null.
+   */
+  requestSecret(req: SecretRequest): Promise<string | null> {
+    if (!this.opts.interactive) return Promise.resolve(null);
+    return this.serialize(async () => {
+      if (this.io.requestSecret) return this.io.requestSecret(req);
+      return null;
     });
   }
 
