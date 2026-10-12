@@ -182,3 +182,62 @@ describe("Approvals", () => {
     ).toBe(false);
   });
 });
+
+describe("Approvals showDiffOnAutoApprove", () => {
+  const diff = "--- a\n+++ b";
+
+  function approvalsWith(showDiff: boolean): { approvals: Approvals; diffs: string[]; prompts: () => number } {
+    const diffs: string[] = [];
+    let prompts = 0;
+    const io: AgentIO = {
+      ...silentIO("no"),
+      diff: (text: string) => diffs.push(text),
+      confirm: async () => {
+        prompts++;
+        return "no";
+      },
+    };
+    const approvals = new Approvals(io, { yes: true, interactive: true, showDiffOnAutoApprove: showDiff });
+    return { approvals, diffs, prompts: () => prompts };
+  }
+
+  it("menampilkan diff walau disetujui otomatis, tanpa memanggil prompt", async () => {
+    const { approvals, diffs, prompts } = approvalsWith(true);
+    const decision = await approvals.confirm({ kind: "write", title: "x", detail: "", diff });
+
+    expect(decision).toBe("yes");
+    expect(diffs).toEqual([diff]);
+    expect(prompts()).toBe(0);
+  });
+
+  it("tidak menampilkan diff saat opsi nonaktif", async () => {
+    const { approvals, diffs } = approvalsWith(false);
+    await approvals.confirm({ kind: "write", title: "x", detail: "", diff });
+
+    expect(diffs).toEqual([]);
+  });
+
+  it("tidak menampilkan diff tanpa diff pada permintaan", async () => {
+    const { approvals, diffs } = approvalsWith(true);
+    await approvals.confirm({ kind: "shell", title: "x", detail: "" });
+
+    expect(diffs).toEqual([]);
+  });
+
+  it("tetap menampilkan diff saat yang mengaktifkan adalah allowAll sesi", async () => {
+    const diffs: string[] = [];
+    const io: AgentIO = {
+      ...silentIO("no"),
+      diff: (text: string) => diffs.push(text),
+    };
+    const approvals = new Approvals(io, {
+      yes: false,
+      interactive: true,
+      allowAll: true,
+      showDiffOnAutoApprove: true,
+    });
+    await approvals.confirm({ kind: "write", title: "x", detail: "", diff });
+
+    expect(diffs).toEqual([diff]);
+  });
+});

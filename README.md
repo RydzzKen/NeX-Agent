@@ -175,6 +175,13 @@ ditegakkan di kode, bukan lewat prompt. Direktif mode yang selalu ikut tiap
 giliran membuat tahu mode aktifnya: di Plan, bila kamu meminta eksekusi, dia
 akan menganalisis dulu lalu mengarahkanmu pindah dengan `/build`.
 
+> [!TIP]
+> **Tetap lihat diff walau auto-approve.** Konfirmasi otomatis (`--yes`/
+> `/allow-all`) biasanya ikut menyembunyikan preview diff sebelum file ditulis.
+> Bila ingin tetap melihatnya tanpa kembali bertanya, setel
+> `"showDiffOnAutoApprove": true` di `config.json` — diff tetap dicetak sebagai
+> preview, konfirmasi tetap otomatis.
+
 **⏳ Indikator bekerja.** Selama agen memproses, terminal menampilkan spinner
 `⠋ sedang bekerja… <detik>` (hanya di TTY, redup saat menunggu jawaban
 konfirmasi). Spinner hilang begitu ada keluaran atau giliran selesai, jadi

@@ -42,6 +42,12 @@ export interface AgentConfig {
   defaultProvider?: string;
   /** Model terakhir per workspace (key = path absolut root). */
   models?: Record<string, string>;
+  /**
+   * Tampilkan diff sebagai preview walau konfirmasi disetujui otomatis
+   * (allow-all/--yes). Aktifkan bila ingin tetap melihat perubahan saat
+   * tidak lagi dikonfirmasi satu per satu.
+   */
+  showDiffOnAutoApprove?: boolean;
   /** URL layanan pencarian web opsional. */
   searchUrl?: string;
   /** Backend pencarian: "duckduckgo" (default), "searxng", atau "brave". */

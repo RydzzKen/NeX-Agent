@@ -217,6 +217,7 @@ export class ChatApp {
       yes: Boolean(opts.yes),
       interactive: Boolean(process.stdin.isTTY) && !opts.json,
       allowAll: Boolean(opts.allowAll),
+      showDiffOnAutoApprove: Boolean(config.showDiffOnAutoApprove),
     });
 
     const app = new ChatApp(

@@ -18,6 +18,11 @@ export interface ApprovalOptions {
    * ditolak sebelum sampai ke sini.
    */
   allowAll?: boolean;
+  /**
+   * Tampilkan diff sebagai preview walau konfirmasi disetujui otomatis
+   * (`--yes`/`--allow-all`). Tidak bertanya — hanya menampilkan diff-nya.
+   */
+  showDiffOnAutoApprove?: boolean;
 }
 
 /**
@@ -61,7 +66,11 @@ export class Approvals {
   }
 
   confirm(req: ConfirmRequest, o: { allowAll?: boolean } = {}): Promise<ConfirmDecision> {
-    if (this.sessionAllowAll) return Promise.resolve("yes");
+    if (this.sessionAllowAll) {
+      // Walau otomatis disetujui, tampilkan diff sebagai preview bila diminta.
+      if (this.opts.showDiffOnAutoApprove && req.diff) this.io.diff(req.diff);
+      return Promise.resolve("yes");
+    }
     if (o.allowAll && this.autoAllWrites) return Promise.resolve("yes");
     if (!this.opts.interactive) return Promise.resolve("no");
     return this.serialize(async () => {
