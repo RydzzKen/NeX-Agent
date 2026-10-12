@@ -99,6 +99,9 @@ describe("AGENT_GUIDE", () => {
     expect(AGENT_GUIDE).toContain("plugins.json");
     expect(AGENT_GUIDE).toContain("skills/");
     expect(AGENT_GUIDE).toContain("RydzzKen");
+    expect(AGENT_GUIDE).toContain("github.com/RydzzKen/NeX-Agent");
+    expect(AGENT_GUIDE).toContain("Pengembang & pemilik");
+    expect(AGENT_GUIDE).toContain("Indonesia");
   });
 
   it("tetap ringkas (bukan dump seluruh dokumentasi)", () => {
