@@ -1,21 +1,85 @@
-# NeX-Agent (AI Agent CLI)
+<p align="center">
+  <img src="banner.svg" alt="NeX-Agent — AI Agent CLI" width="100%">
+</p>
 
-Agent berbasis terminal dengan loop agentik, dua mode (**Plan** dan **Build**),
-soft workspace boundary, diff + konfirmasi, checkpoint/undo, dan arsitektur
-**multi-provider**. Dibangun CLI-first dengan TypeScript strict.
+<p align="center">
+  <img alt="Node.js" src="https://img.shields.io/badge/Node.js-20%2B-339933?style=for-the-badge&logo=node.js&logoColor=white">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white">
+  <img alt="pnpm" src="https://img.shields.io/badge/pnpm-ready-F69220?style=for-the-badge&logo=pnpm&logoColor=white">
+  <img alt="Termux" src="https://img.shields.io/badge/Termux-supported-000000?style=for-the-badge&logo=android&logoColor=3DDC84">
+  <img alt="MCP" src="https://img.shields.io/badge/MCP-plugin-8A2BE2?style=for-the-badge">
+</p>
 
-## Persyaratan
+<p align="center">
+  <b>Agent berbasis terminal</b> dengan loop agentik, dua mode (<b>Plan</b> &amp; <b>Build</b>),<br>
+  soft workspace boundary, diff + konfirmasi, checkpoint/undo, dan arsitektur <b>multi-provider</b>.<br>
+  Dibangun CLI-first dengan TypeScript strict.
+</p>
 
-- Node.js 20+ (dikembangkan di Node 24) — **dipasang otomatis** bila belum ada
-  (lewat `nvm` di Linux/macOS tanpa sudo, atau `pkg` di Termux)
-- pnpm — dipasang otomatis lewat corepack atau npm
-- `git` dan `curl` (untuk mode unduh satu baris)
-- Mendukung **Termux** (Android): Node/pnpm dipasang lewat `pkg`, perintah
-  dipasang ke `$PREFIX/bin` yang sudah ada di `PATH`
+<p align="center">
+  <a href="#instalasi">🚀 Instalasi</a> ·
+  <a href="#penggunaan">⌨️ Penggunaan</a> ·
+  <a href="#web">🌐 Web</a> ·
+  <a href="#telegram">🤖 Telegram</a> ·
+  <a href="#mcp">🔌 MCP</a> ·
+  <a href="#skill">🧠 Skill</a>
+</p>
 
-## Instalasi
+---
 
-### Cepat — satu perintah, di perangkat mana pun
+## ✨ Fitur Unggulan
+
+| | Fitur | Keterangan |
+|---|---|---|
+| 🔁 | **Loop agentik** | Agent bekerja bertahap sampai tujuan selesai |
+| 🧭 | **Mode Plan & Build** | Plan = read-only (ditegakkan di kode), Build = eksekusi |
+| 🛡️ | **Workspace boundary** | Akses luar workspace & file sensitif butuh konfirmasi |
+| 📝 | **Diff + konfirmasi** | Lihat perubahan dulu sebelum ditulis |
+| ⏪ | **Checkpoint / Undo** | Batalkan perubahan dengan `/undo` |
+| 🔀 | **Multi-provider** | Adapter OpenAI-compatible & Anthropic |
+| 🌐 | **Mode Web** | Chat + terminal nyata di browser, dengan QR untuk ponsel |
+| 🤖 | **Bot Telegram** | Daemon mandiri, auto-restart, kontrol dari ponsel |
+| 🔌 | **Plugin MCP** | Tambah tool dari server MCP (stdio / HTTP / SSE) |
+| 🧠 | **Skill (SKILL.md)** | Agent bisa membuat & memasang skill sendiri |
+| ✅ | **Todo live** | Checklist tugas yang diperbarui di tempat |
+| 🎨 | **Render Markdown** | Heading, tabel, kode, dan gaya inline di terminal |
+
+---
+
+## 📋 Daftar Isi
+
+- [Persyaratan](#persyaratan)
+- [Instalasi](#instalasi)
+- [Penggunaan](#penggunaan)
+- [Mode Web](#web)
+- [Bot Telegram](#telegram)
+- [Perbarui & hapus](#update)
+- [Plugin MCP](#mcp)
+- [Konfigurasi & kredensial](#konfigurasi)
+- [Arsitektur](#arsitektur)
+- [Render Markdown](#markdown)
+- [Skill (SKILL.md)](#skill)
+- [Daftar tugas (todo) live](#todo)
+- [Pengembangan](#pengembangan)
+
+---
+
+<a id="persyaratan"></a>
+## 📦 Persyaratan
+
+| Kebutuhan | Keterangan |
+|---|---|
+| 🟢 **Node.js 20+** | Dikembangkan di Node 24 — **dipasang otomatis** bila belum ada (lewat `nvm` di Linux/macOS tanpa sudo, atau `pkg` di Termux) |
+| 📦 **pnpm** | Dipasang otomatis lewat corepack atau npm |
+| 🔧 **git** & **curl** | Untuk mode unduh satu baris |
+| 📱 **Termux (Android)** | Didukung — Node/pnpm dipasang lewat `pkg`, perintah dipasang ke `$PREFIX/bin` yang sudah ada di `PATH` |
+
+---
+
+<a id="instalasi"></a>
+## 🚀 Instalasi
+
+### ⚡ Cepat — satu perintah, di perangkat mana pun
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/RydzzKen/NeX-Agent/main/install.sh | bash
@@ -30,9 +94,10 @@ perintah `nex-agent` (alias `agent`). Di Linux/macOS perintah diletakkan di
 `source ~/.bashrc` sekali); di Termux perintah langsung diletakkan di
 `$PREFIX/bin` tanpa menyunting rc.
 
-Catatan toolchain: `.npmrc` menyetel `minimum-release-age=0`, dan pada pnpm 12+
-skrip otomatis memakai `--trust-lockfile` serta `pnpm approve-builds --all`
-agar instalasi dari lockfile tetap berjalan.
+> [!NOTE]
+> Catatan toolchain: `.npmrc` menyetel `minimum-release-age=0`, dan pada pnpm 12+
+> skrip otomatis memakai `--trust-lockfile` serta `pnpm approve-builds --all`
+> agar instalasi dari lockfile tetap berjalan.
 
 Sesuaikan lewat variabel lingkungan bila perlu:
 
@@ -44,7 +109,7 @@ NEX_AGENT_BIN_DIR=~/.local/bin \
   bash install.sh
 ```
 
-### Termux (Android)
+### 📱 Termux (Android)
 
 ```bash
 pkg install -y git
@@ -58,7 +123,7 @@ melaporkan `process.platform === "android"`, sehingga esbuild memakai binary
 menyunting rc. Bila build `tsup`/esbuild gagal di perangkat tertentu, installer
 otomatis jatuh ke kompilasi `tsc` (murni JS) sebagai cadangan.
 
-### Manual (dari checkout)
+### 🛠️ Manual (dari checkout)
 
 ```bash
 pnpm install
@@ -69,33 +134,36 @@ pnpm link:global  # alternatif: daftarkan lewat pnpm
 
 Menjalankan dari sumber: `pnpm dev -- "<tujuan>"`.
 
-## Penggunaan
+---
 
-```bash
-nex-agent "<tujuan>"          # jalankan satu tugas
-nex-agent                     # mode chat interaktif
-nex-agent --mode plan "..."   # mulai di mode Plan (read-only)
-nex-agent --resume <id>       # lanjutkan sesi
-nex-agent --continue          # lanjutkan sesi terakhir di workspace ini
-nex-agent usage today         # rekap pemakaian lintas sesi
-nex-agent logs <id>           # jejak satu sesi
-nex-agent web                 # buka chat + terminal di browser
-nex-agent telegram            # bot Telegram sebagai daemon latar belakang
-nex-agent telegram stop       # hentikan bot (status/restart/logs juga ada)
-nex-agent update              # tarik versi terbaru dari repo lalu bangun ulang
-nex-agent update --check      # hanya periksa, tanpa mengubah
-nex-agent update --stash      # simpan perubahan lokal sementara saat update
-nex-agent uninstall           # lepas perintah nex-agent/agent dari PATH
-nex-agent uninstall --purge --yes  # hapus juga config & sumber terpasang
-```
+<a id="penggunaan"></a>
+## ⌨️ Penggunaan
 
-`nex-agent` dan `agent` adalah perintah yang sama.
+| Perintah | Fungsi |
+|---|---|
+| `nex-agent "<tujuan>"` | Jalankan satu tugas |
+| `nex-agent` | Mode chat interaktif |
+| `nex-agent --mode plan "..."` | Mulai di mode Plan (read-only) |
+| `nex-agent --resume <id>` | Lanjutkan sesi |
+| `nex-agent --continue` | Lanjutkan sesi terakhir di workspace ini |
+| `nex-agent usage today` | Rekap pemakaian lintas sesi |
+| `nex-agent logs <id>` | Jejak satu sesi |
+| `nex-agent web` | Buka chat + terminal di browser |
+| `nex-agent telegram` | Bot Telegram sebagai daemon latar belakang |
+| `nex-agent telegram stop` | Hentikan bot (`status`/`restart`/`logs` juga ada) |
+| `nex-agent update` | Tarik versi terbaru dari repo lalu bangun ulang |
+| `nex-agent update --check` | Hanya periksa, tanpa mengubah |
+| `nex-agent update --stash` | Simpan perubahan lokal sementara saat update |
+| `nex-agent uninstall` | Lepas perintah `nex-agent`/`agent` dari PATH |
+| `nex-agent uninstall --purge --yes` | Hapus juga config & sumber terpasang |
 
-### Flag penting
+> `nex-agent` dan `agent` adalah perintah yang sama.
 
-`--model`, `--provider`, `--max-steps`, `--max-cost`, `--yes`,
-`--allow-all`, `--cwd <path>`, `--allow-path <path>` (bisa diulang),
-`--no-thinking`, `--no-markdown`, `--no-skills`, `--debug`, `--json`.
+### 🚩 Flag penting
+
+`--model` · `--provider` · `--max-steps` · `--max-cost` · `--yes` ·
+`--allow-all` · `--cwd <path>` · `--allow-path <path>` (bisa diulang) ·
+`--no-thinking` · `--no-markdown` · `--no-skills` · `--debug` · `--json`
 
 `--yes` dan `--allow-all` menyetujui semua konfirmasi untuk sesi ini
 (termasuk akses luar workspace). Mode Plan tetap read-only karena aturan itu
@@ -103,27 +171,30 @@ ditegakkan di kode, bukan lewat prompt. Direktif mode yang selalu ikut tiap
 giliran membuat tahu mode aktifnya: di Plan, bila kamu meminta eksekusi, dia
 akan menganalisis dulu lalu mengarahkanmu pindah dengan `/build`.
 
-**Indikator bekerja.** Selama agen memproses, terminal menampilkan spinner
+**⏳ Indikator bekerja.** Selama agen memproses, terminal menampilkan spinner
 `⠋ sedang bekerja… <detik>` (hanya di TTY, redup saat menunggu jawaban
 konfirmasi). Spinner hilang begitu ada keluaran atau giliran selesai, jadi
 Anda tahu kapan agen masih mengerjakan sesuatu dan kapan sudah berhenti.
 
-**File sensitif tetap dilindungi.** Terlepas dari `--allow-all`/`--yes`, akses
-ke `.env`, kredensial (`.npmrc`, `.git-credentials`, `credentials.json`),
-private key (`id_rsa`, `*.pem`, `*.key`), dan folder `.ssh`/`.aws`/`.gnupg`
-selalu minta konfirmasi eksplisit di TTY, dan ditolak di mode non-interaktif.
-Perintah shell yang menyentuh file itu (mis. `cat .env`) diperlakukan sama.
-Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
+> [!IMPORTANT]
+> **File sensitif tetap dilindungi.** Terlepas dari `--allow-all`/`--yes`, akses
+> ke `.env`, kredensial (`.npmrc`, `.git-credentials`, `credentials.json`),
+> private key (`id_rsa`, `*.pem`, `*.key`), dan folder `.ssh`/`.aws`/`.gnupg`
+> selalu minta konfirmasi eksplisit di TTY, dan ditolak di mode non-interaktif.
+> Perintah shell yang menyentuh file itu (mis. `cat .env`) diperlakukan sama.
+> Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 
-### Slash command (mode chat)
+### 💬 Slash command (mode chat)
 
-`/connect` · `/provider [use|edit|hapus <nama>]` · `/models [nomor|0|nama]` ·
-`/plan` · `/build` · `/sessions [clear]` · `/resume <n>` · `/new` · `/clear` ·
-`/rename` · `/delete [all]` · `/undo [n]` ·
-`/usage` · `/permissions` · `/allow-all [on|off]` · `/thinking` · `/markdown` ·
-`/skills` · `/skill <nama>|off` · `/mcp [add|remove|reload|key|presets]` · `/todos` ·
-`/web [lan|stop]` · `/telegram [start|stop|restart|status|logs|token|allow]` ·
-`/update` · `/restart` · `/exit` · `/help`.
+| Kategori | Perintah |
+|---|---|
+| 🔌 **Koneksi & model** | `/connect` · `/provider [use\|edit\|hapus <nama>]` · `/models [nomor\|0\|nama]` |
+| 🧭 **Mode & izin** | `/plan` · `/build` · `/permissions` · `/allow-all [on\|off]` · `/thinking` · `/markdown` |
+| 🗂️ **Sesi** | `/sessions [clear]` · `/resume <n>` · `/new` · `/clear` · `/rename` · `/delete [all]` · `/undo [n]` |
+| 📊 **Info & tugas** | `/usage` · `/todos` · `/help` |
+| 🧩 **Ekstensi** | `/skills` · `/skill <nama>\|off` · `/mcp [add\|remove\|reload\|key\|presets]` |
+| 🌍 **Layanan** | `/web [lan\|stop]` · `/telegram [start\|stop\|restart\|status\|logs\|token\|allow]` |
+| ⚙️ **Sistem** | `/update` · `/restart` · `/exit` |
 
 Mengetik `/` menampilkan daftar perintah terkait secara langsung di atas baris
 input (di TTY). Tab melengkapi perintah slash, subperintah (`/provider <Tab>`),
@@ -138,7 +209,7 @@ pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/allow-all` menyalakan
 mode izinkan-semua tanpa keluar dari sesi. `/web` menyalakan server web
 (chat + terminal) di dalam sesi yang sedang berjalan, memakai workspace, model,
 provider, dan mode aktif; `/web stop` mematikannya. `/telegram` menyalakan bot
-Telegram mandiri (lihat bagian Bot Telegram). `/exit` (atau Ctrl+D)
+Telegram mandiri (lihat [Bot Telegram](#telegram)). `/exit` (atau Ctrl+D)
 keluar dari chat (server web ikut berhenti).
 
 `/models` menampilkan daftar model bernomor dengan opsi `0) Custom model`.
@@ -146,10 +217,20 @@ Ganti model dengan `/models 2`, `/models 0` (lalu ketik nama model manual),
 atau langsung `/models <nama>`. Pilihan model diingat per workspace di
 `config.json`, jadi model custom tetap terpakai setelah restart.
 
-Kode keluar: `0` sukses, `1` gagal tugas, `2` error konfigurasi,
-`3` batas langkah/anggaran/pengulangan, `130` diinterupsi.
+### 🔢 Kode keluar
 
-## Mode Web (chat + terminal di browser)
+| Kode | Arti |
+|:---:|---|
+| `0` | ✅ Sukses |
+| `1` | ❌ Gagal tugas |
+| `2` | ⚙️ Error konfigurasi |
+| `3` | ⛔ Batas langkah/anggaran/pengulangan |
+| `130` | ✋ Diinterupsi |
+
+---
+
+<a id="web"></a>
+## 🌐 Mode Web (chat + terminal di browser)
 
 ```bash
 nex-agent web                   # buka http://127.0.0.1:<port>/#t=<token>
@@ -161,44 +242,47 @@ nex-agent web --no-qr           # sembunyikan kode QR
 
 `serve` adalah alias lama untuk `web`. Perintah ini menjalankan server HTTP +
 WebSocket yang menyajikan antarmuka web:
-**tab Chat** (streaming jawaban, thinking, langkah tool, diff, todo, tombol
-persetujuan) dan **tab Terminal** (shell interaktif nyata lewat `xterm.js`).
+**💬 tab Chat** (streaming jawaban, thinking, langkah tool, diff, todo, tombol
+persetujuan) dan **🖥️ tab Terminal** (shell interaktif nyata lewat `xterm.js`).
 
 Bisa juga dinyalakan **dari dalam sesi chat** tanpa keluar: ketik `/web`
 (memakai workspace/model/provider/mode aktif), `/web lan` untuk mengekspos ke
 jaringan, dan `/web stop` (atau `/exit`) untuk mematikannya. Server web ikut
 mati saat sesi chat ditutup.
 
-- **LAN & QR** — dengan `--lan` (atau `/web lan`) server mendengarkan semua
+- 📡 **LAN & QR** — dengan `--lan` (atau `/web lan`) server mendengarkan semua
   antarmuka, mencetak URL loopback **dan** setiap alamat IPv4 LAN, lalu menampilkan
   **kode QR** dari URL LAN agar bisa langsung dipindai dari ponsel.
-- **Keamanan** — secara default server hanya mendengarkan `127.0.0.1` dan
+- 🔐 **Keamanan** — secara default server hanya mendengarkan `127.0.0.1` dan
   mewajibkan **token** acak (dibuat otomatis, dicetak di URL sebagai fragmen
   `#t=…`; token tidak pernah ditulis ke log). Saat terikat ke jaringan (`--lan`)
   muncul peringatan: siapa pun yang memegang token bisa menjalankan shell.
-- **Persisten** — terminal berjalan selama proses server hidup; me-refresh
+- ♻️ **Persisten** — terminal berjalan selama proses server hidup; me-refresh
   halaman menyambung ulang ke shell yang sama (buffer keluaran diputar ulang).
   Backend PTY memakai `script` (`util-linux`/BSD/busybox), dengan cadangan pipe
   bila `script` tidak ada.
-- **Sesi** — sidebar menampilkan semua sesi. Klik untuk membuka, `✕` untuk
+- 🗂️ **Sesi** — sidebar menampilkan semua sesi. Klik untuk membuka, `✕` untuk
   menghapus; membuka sesi dari workspace lain otomatis berpindah workspace.
-- **Indikator status** — pill di bilah atas menunjukkan **siap** (hijau),
-  **bekerja…** (biru, titik berdenyut), atau **terputus** (merah). Saat agen
+- 🚦 **Indikator status** — pill di bilah atas menunjukkan 🟢 **siap** (hijau),
+  🔵 **bekerja…** (biru, titik berdenyut), atau 🔴 **terputus** (merah). Saat agen
   bekerja muncul indikator "sedang mengerjakan…" di percakapan dan judul tab
   diberi tanda `●`; tombol Kirim nonaktif diganti tombol Stop.
-- **Responsif** — tata letak menyesuaikan desktop & ponsel: di layar sempit
+- 📱 **Responsif** — tata letak menyesuaikan desktop & ponsel: di layar sempit
   sidebar menjadi *drawer* yang dibuka lewat tombol menu, input 16px (mencegah
   zoom iOS), dan terminal otomatis menyesuaikan ukuran saat keyboard muncul.
   Aman untuk notch (`viewport-fit=cover` + `safe-area-inset`).
-- **Persetujuan** — konfirmasi tool muncul di percakapan (Ya / Tidak / Selalu).
+- ✅ **Persetujuan** — konfirmasi tool muncul di percakapan (Ya / Tidak / Selalu).
   `--allow-all`/`--yes` di `web` menyetujui otomatis; file sensitif tetap
   minta konfirmasi eksplisit.
-- Port/host default bisa disetel di `config.json` lewat `webHost` dan `webPort`
+- ⚙️ Port/host default bisa disetel di `config.json` lewat `webHost` dan `webPort`
   (kosong/`0` = port acak).
-- Tanpa argumen model/provider, `web` memakai pilihan yang sama seperti CLI
+- 🔁 Tanpa argumen model/provider, `web` memakai pilihan yang sama seperti CLI
   (tersimpan per workspace), jadi tidak perlu menyetel ulang setiap kali.
 
-## Bot Telegram
+---
+
+<a id="telegram"></a>
+## 🤖 Bot Telegram
 
 NeX-Agent bisa dihubungkan ke **Telegram** sebagai **daemon mandiri** — tidak
 menempel pada server web maupun sesi chat. Bot memakai Bot API lewat long polling
@@ -233,12 +317,15 @@ terpisah, jadi **tetap hidup walau kamu menutup chat dengan Ctrl+C**. Bot memaka
 **sesi sendiri** (percakapan terpisah dari chat/web), sehingga aman dipakai dari
 ponsel.
 
-- **Selalu hidup (auto-restart)** — bot dijalankan oleh *supervisor* yang otomatis
+- 🔄 **Selalu hidup (auto-restart)** — bot dijalankan oleh *supervisor* yang otomatis
   me-restart worker-nya dengan backoff bila berhenti tak terduga. Supervisor
   berhenti hanya bila worker keluar karena error konfigurasi (mis. token tidak
   valid) agar tidak restart tanpa henti.
-- **Ikut hidup saat server/mesin restart** — jalankan sebagai service. Contoh
+- 🖥️ **Ikut hidup saat server/mesin restart** — jalankan sebagai service. Contoh
   systemd **user** unit (`~/.config/systemd/user/nex-agent-telegram.service`):
+
+  <details>
+  <summary>📄 Lihat contoh unit systemd</summary>
 
   ```ini
   [Unit]
@@ -256,11 +343,13 @@ ponsel.
   WantedBy=default.target
   ```
 
+  </details>
+
   Lalu `systemctl --user daemon-reload && systemctl --user enable --now nex-agent-telegram`
   (tambahkan `loginctl enable-linger $USER` agar tetap jalan tanpa login).
   Sesuaikan `ExecStart` dengan lokasi `nex-agent`/`agent` di mesinmu
   (`command -v agent`).
-- **Berkas** — pid di `~/.config/agent/telegram.pid`, log di
+- 📁 **Berkas** — pid di `~/.config/agent/telegram.pid`, log di
   `~/.config/agent/telegram.log`.
 
 Sisanya diatur lewat `config.json`:
@@ -276,14 +365,16 @@ Sisanya diatur lewat `config.json`:
 }
 ```
 
-- **Keamanan** — isi `allowedChatIds` untuk membatasi siapa yang boleh memakai
-  bot. Bila kosong, bot **terbuka** untuk siapa pun yang menemukannya (berbahaya:
-  bot bisa menjalankan shell). Chat tak dikenal ditolak sambil diberi tahu
-  chat-id-nya untuk didaftarkan (`/telegram allow <chatId>`).
-- **Persetujuan** — prompt konfirmasi (tulis file, shell, akses luar workspace,
+> [!WARNING]
+> **Keamanan** — isi `allowedChatIds` untuk membatasi siapa yang boleh memakai
+> bot. Bila kosong, bot **terbuka** untuk siapa pun yang menemukannya (berbahaya:
+> bot bisa menjalankan shell). Chat tak dikenal ditolak sambil diberi tahu
+> chat-id-nya untuk didaftarkan (`/telegram allow <chatId>`).
+
+- ✅ **Persetujuan** — prompt konfirmasi (tulis file, shell, akses luar workspace,
   file sensitif) diteruskan ke Telegram; balas `y` (setuju), `n` (tolak), atau
   `a` (setuju semua).
-- **Perintah chat** — didaftarkan otomatis ke Telegram (`setMyCommands`) sehingga
+- ⌨️ **Perintah chat** — didaftarkan otomatis ke Telegram (`setMyCommands`) sehingga
   muncul di menu tombol **"/"**. Yang didukung:
   `/new` · `/clear` · `/sessions` · `/resume <n|id>` · `/rename <judul>` ·
   `/delete` · `/plan` · `/build` · `/mode <plan|build>` · `/allow-all [on|off]` ·
@@ -297,15 +388,20 @@ Sisanya diatur lewat `config.json`:
   Beberapa perintah CLI tidak tersedia di Telegram karena butuh prompt interaktif
   atau akses lokal: `/connect`, `/provider`, `/mcp`, `/permissions`, `/skill`,
   `/undo`, `/web`, `/telegram`.
-- **Kelola** — `/telegram` (nyalakan) · `/telegram stop` ·
+- 🛠️ **Kelola** — `/telegram` (nyalakan) · `/telegram stop` ·
   `/telegram restart` · `/telegram status` · `/telegram logs` ·
   `/telegram token <TOKEN>|hapus` · `/telegram allow <chatId...|clear>` ·
   `/telegram deny <chatId...>` · `/telegram on|off`.
-- Token **tidak pernah** dicetak (disamarkan `1234…WXYZ`).
+- 🙈 Token **tidak pernah** dicetak (disamarkan `1234…WXYZ`).
 
-## Perbarui & hapus
+---
 
-**Update.** `nex-agent update` (atau `/update` di chat) menjelaskan pembaruan yang
+<a id="update"></a>
+## 🔄 Perbarui & hapus
+
+### ⬆️ Update
+
+`nex-agent update` (atau `/update` di chat) menjelaskan pembaruan yang
 tersedia lalu **meminta konfirmasi** sebelum menarik commit terbaru dari repo git
 asal, menjalankan `pnpm install`, dan `pnpm build`. Bila sudah sama dengan remote,
 ia berkata "sudah versi terbaru". Update dibatalkan bila ada perubahan lokal yang
@@ -315,7 +411,9 @@ lokal, tambahkan **`--stash`** (`/update --stash`): perubahan disimpan sementara
 ke `git stash` (termasuk file baru), update dijalankan, lalu dipulihkan; kalau
 bentrok, konfliknya diberitahukan untuk diselesaikan manual.
 
-**Alternatif (force-update).** Menjalankan ulang installer
+### 💪 Alternatif (force-update)
+
+Menjalankan ulang installer
 (`curl -fsSL https://raw.githubusercontent.com/RydzzKen/NeX-Agent/main/install.sh | bash`)
 juga memperbarui instalasi standar: skrip mendeteksi folder sumber yang sudah ada
 (`~/.local/share/nex-agent`), menarik `origin/main`, menjalankan `git reset --hard`,
@@ -324,6 +422,7 @@ sumber **dibuang** (bukan disimpan), tanpa konfirmasi, dan launcher ditulis ulan
 Cocok untuk memperbaiki instalasi yang macet; untuk update sehari-hari lebih aman pakai
 `/update`. Config di `~/.config/agent` tidak disentuh oleh keduanya.
 
+> [!CAUTION]
 > Catatan untuk checkout pengembangan: jangan jalankan installer ini di repo kerja Anda.
 > Launcher `~/.local/bin/agent` (symlink ke `dist/index.js`) akan dialihkan ke folder
 > instalasi, dan tanpa perlindungan `rm` launcher bisa menimpa berkas dev lewat symlink.
@@ -332,13 +431,18 @@ Setelah update selesai, jalankan **`/restart`**: di chat/terminal ia menjalankan
 ulang proses agar `dist/` terbaru dimuat; di Telegram ia menyalakan ulang worker,
 sehingga versi baru langsung terpakai.
 
-**Uninstall.** `nex-agent uninstall` menghapus launcher `nex-agent`/`agent` yang
+### 🗑️ Uninstall
+
+`nex-agent uninstall` menghapus launcher `nex-agent`/`agent` yang
 menunjuk ke sumber ini dan membersihkan entri PATH di rc shell. Config di
 `~/.config/agent` tetap disimpan; tambahkan `--purge --yes` untuk juga
 menghapusnya beserta sumber terpasang (`~/.local/share/nex-agent`). Checkout
 pengembangan yang sedang dipakai tidak pernah dihapus.
 
-## Plugin MCP (Model Context Protocol)
+---
+
+<a id="mcp"></a>
+## 🔌 Plugin MCP (Model Context Protocol)
 
 Server **MCP** (transport `stdio` local, atau `http`/`sse` jarak jauh) bisa
 menjadi sumber tool tambahan. Daftar server disimpan di
@@ -368,7 +472,7 @@ menjadi sumber tool tambahan. Daftar server disimpan di
 }
 ```
 
-### Preset cepat (`/mcp add`)
+### ⚡ Preset cepat (`/mcp add`)
 
 Daripada menyunting JSON manual, tambah server yang sudah dikenal dengan satu
 perintah:
@@ -403,27 +507,19 @@ otomatis dari paket/host, atau dipaksa dengan `--name`):
 Nama hasil tebakan boleh bentrok (otomatis diberi akhiran `-2`), sedangkan nama
 eksplisit (`--name`) menolak menimpa server yang sudah ada.
 
-> Ringkasan semua perintah `/mcp add` & `/skills install`: lihat [`COMMANDS.md`](COMMANDS.md).
+> 📖 Ringkasan semua perintah `/mcp add` & `/skills install`: lihat [`COMMANDS.md`](COMMANDS.md).
 
-- **Context7** — tanpa API key tetap jalan (limit rendah). Untuk limit lebih
-  tinggi, dapatkan key gratis di <https://context7.com/dashboard>, jalankan
-  `/mcp key context7`, lalu tambahkan
-  `"headers": { "CONTEXT7_API_KEY": "${apiKey}" }` + `"credential": "context7"`.
-- **Playwright** — berat: butuh Node + Chromium (`npx playwright install chromium`)
-  dan kurang cocok untuk Termux. Semua aksi halaman diklasifikasikan `mutate`
-  (perlu persetujuan). Untuk agent pengkodean, Playwright juga punya CLI ringan
-  (`@playwright/cli`) yang bisa dipakai lewat `run_shell` — lebih hemat token
-  daripada MCP.
-- **Supabase** — butuh Personal Access Token dari dashboard Supabase; simpan
-  lewat `/mcp key supabase`.
-- **GitHub** — butuh Personal Access Token (`/mcp key github`); default
-  **read-only** (header `X-MCP-Readonly: "true"`). Untuk mengizinkan tulis,
-  hapus header itu dan sesuaikan `risk` di `plugins.json`.
-- **Cloudflare Docs** — dokumentasi Cloudflare terbaru, HTTP read-only, tanpa token.
-- **Fetch** — butuh `uv`/`uvx` terpasang. Alternatif tanpa Python:
-  `/mcp add --name fetch docker run -i --rm mcp/fetch`.
-- **Filesystem** — default membuka folder kerja saat ini (`.`). Semua tool
-  diklasifikasikan `mutate` (perlu persetujuan) karena bisa menulis/menghapus.
+### 📝 Catatan per preset
+
+| Preset | Catatan |
+|---|---|
+| 📚 **Context7** | Tanpa API key tetap jalan (limit rendah). Untuk limit lebih tinggi, dapatkan key gratis di <https://context7.com/dashboard>, jalankan `/mcp key context7`, lalu tambahkan `"headers": { "CONTEXT7_API_KEY": "${apiKey}" }` + `"credential": "context7"`. |
+| 🎭 **Playwright** | Berat: butuh Node + Chromium (`npx playwright install chromium`) dan kurang cocok untuk Termux. Semua aksi halaman diklasifikasikan `mutate` (perlu persetujuan). Untuk agent pengkodean, Playwright juga punya CLI ringan (`@playwright/cli`) yang bisa dipakai lewat `run_shell` — lebih hemat token daripada MCP. |
+| ⚡ **Supabase** | Butuh Personal Access Token dari dashboard Supabase; simpan lewat `/mcp key supabase`. |
+| 🐙 **GitHub** | Butuh Personal Access Token (`/mcp key github`); default **read-only** (header `X-MCP-Readonly: "true"`). Untuk mengizinkan tulis, hapus header itu dan sesuaikan `risk` di `plugins.json`. |
+| ☁️ **Cloudflare Docs** | Dokumentasi Cloudflare terbaru, HTTP read-only, tanpa token. |
+| 🌍 **Fetch** | Butuh `uv`/`uvx` terpasang. Alternatif tanpa Python: `/mcp add --name fetch docker run -i --rm mcp/fetch`. |
+| 📁 **Filesystem** | Default membuka folder kerja saat ini (`.`). Semua tool diklasifikasikan `mutate` (perlu persetujuan) karena bisa menulis/menghapus. |
 
 Tool dari server MCP didaftarkan ke provider dengan nama
 `mcp__<server>__<tool>` (karakter selain `A-Za-z0-9_-` disamakan). Opsi per
@@ -447,23 +543,23 @@ per tool:
 }
 ```
 
-- **Klasifikasi risiko.** Default tool asing = `read`. Tool yang namanya jelas
+- 🚦 **Klasifikasi risiko.** Default tool asing = `read`. Tool yang namanya jelas
   mengubah keadaan (mis. `delete_*`, `execute_*`, `insert_*`) otomatis naik ke
   `mutate`: perlu konfirmasi sebelum dipanggil, dan **tidak diekspos di mode
   Plan** (ditegakkan di kode, bukan lewat prompt). Urutan prioritas:
   override per tool > `risk` server > heuristik nama.
-- **Rahasia.** `plugins.json` hanya menyimpan *referensi*. Nilai nyata diambil
+- 🔑 **Rahasia.** `plugins.json` hanya menyimpan *referensi*. Nilai nyata diambil
   dari `CredentialStore` (`${apiKey}`/`${baseURL}`) atau variabel lingkungan
   (`${NAMA_VAR}`), lalu dikirim ke proses server lewat env — tidak pernah masuk
   log atau layar. Simpan kunci server dengan `/mcp key <nama>` (input
   tersembunyi saat mengetik). Template yang tidak terpenuhi membuat server itu
   gagal dengan status error di `/mcp` (jangan kirim nilai kosong).
-- **Status & pengelolaan.** `/mcp` menampilkan status semua server (tersambung,
+- 📊 **Status & pengelolaan.** `/mcp` menampilkan status semua server (tersambung,
   jumlah tool terdaftar, error), `/mcp reload` memuat ulang `plugins.json`
   tanpa keluar dari sesi, dan `/mcp add`/`/mcp remove` mengubah daftar server.
   Server yang rusak atau gagal dijalankan tidak menghentikan sesi — hanya
   tercatat di `/mcp`.
-- Tool MCP aktif di sesi CLI. (Mode Web belum memuat tool MCP — mengikuti.)
+- 🌐 Tool MCP aktif di sesi CLI. (Mode Web belum memuat tool MCP — mengikuti.)
 
 Contoh server sungguhan — **Cloudflare** (kelola Workers, DNS, dll.) dan
 **Context7** (dokumentasi library):
@@ -490,23 +586,33 @@ Contoh server sungguhan — **Cloudflare** (kelola Workers, DNS, dll.) dan
 }
 ```
 
-Simpan token Cloudflare dengan `/mcp key cloudflare`. Catatan: server MCP
-hosted yang mewajibkan **OAuth** (mis. sebagian endpoint `*.mcp.cloudflare.com`)
-belum didukung — pakai server stdio lokal, atau endpoint yang cukup dengan
-`Authorization: Bearer` di `headers`.
+Simpan token Cloudflare dengan `/mcp key cloudflare`.
 
-## Konfigurasi & kredensial
+> [!NOTE]
+> Server MCP hosted yang mewajibkan **OAuth** (mis. sebagian endpoint
+> `*.mcp.cloudflare.com`) belum didukung — pakai server stdio lokal, atau
+> endpoint yang cukup dengan `Authorization: Bearer` di `headers`.
+
+---
+
+<a id="konfigurasi"></a>
+## 🔐 Konfigurasi & kredensial
 
 Disimpan di `~/.config/agent/` (bisa diubah lewat `AGENT_CONFIG_DIR`):
 
-- `config.json` — preferensi (model per workspace, anggaran, dll.)
-- `credentials.json` — kredensial, izin `600`, tidak pernah dicetak/log
-- `plugins.json` — daftar server MCP (lihat bagian Plugin MCP)
-- `AGENTS.md` — aturan global pengguna (dimuat otomatis)
-- `sessions/` — riwayat sesi
-- `logs/` — log JSONL terstruktur
+| Berkas | Isi |
+|---|---|
+| `config.json` | Preferensi (model per workspace, anggaran, dll.) |
+| `credentials.json` | Kredensial, izin `600`, tidak pernah dicetak/log |
+| `plugins.json` | Daftar server MCP (lihat [Plugin MCP](#mcp)) |
+| `AGENTS.md` | Aturan global pengguna (dimuat otomatis) |
+| `sessions/` | Riwayat sesi |
+| `logs/` | Log JSONL terstruktur |
 
-## Arsitektur
+---
+
+<a id="arsitektur"></a>
+## 🏗️ Arsitektur
 
 ```
 src/
@@ -527,10 +633,14 @@ src/
 `web/` (di root) berisi aset antarmuka web (HTML/CSS/JS); saat `pnpm build`,
 aset itu bersama `xterm.js` disalin ke `dist/web/` dan disajikan oleh `web`.
 
-Aturan: `core/` tidak mengimpor `cli/` maupun SDK provider. Interaksi pengguna
-lewat interface `AgentIO`; model lewat `ModelProvider`; tool lewat registri.
+> [!TIP]
+> Aturan: `core/` tidak mengimpor `cli/` maupun SDK provider. Interaksi pengguna
+> lewat interface `AgentIO`; model lewat `ModelProvider`; tool lewat registri.
 
-## Render Markdown
+---
+
+<a id="markdown"></a>
+## 🎨 Render Markdown
 
 Jawaban model dirender sebagai Markdown di terminal: heading, daftar bersarang,
 blockquote, blok kode berkutip, tabel (dengan perataan kolom), tautan, dan gaya
@@ -542,7 +652,10 @@ lebar terminal.
 - Saat pertama kali mulai: `nex-agent --no-markdown`.
 - Mode `--json` tidak merender markdown (mengeluarkan event `text` mentah).
 
-## Skill (SKILL.md)
+---
+
+<a id="skill"></a>
+## 🧠 Skill (SKILL.md)
 
 NeX-Agent memuat **Agent Skills**: folder berisi `SKILL.md` dengan frontmatter
 sederhana (`name`, `description`) plus isi instruksi. Format ini sama dengan
@@ -572,31 +685,33 @@ ln -s "$PWD/skills/coding-skill.md" ~/.config/agent/skills/coding-skill.md
 
 Cara kerjanya **progressive disclosure**:
 
-- **Otomatis** — hanya `name` + `description` yang masuk system prompt (murah).
+- 🤖 **Otomatis** — hanya `name` + `description` yang masuk system prompt (murah).
   Saat tugas cocok, model memanggil tool `skill` untuk memuat instruksi lengkap.
-- **Manual** — `/skills` untuk daftar, `/skill <nama>` untuk memaksa sebuah
+- 🖐️ **Manual** — `/skills` untuk daftar, `/skill <nama>` untuk memaksa sebuah
   skill aktif sepanjang sesi, `/skill off` untuk melepas semuanya,
   `/skills install <sumber>` untuk memasang skill baru via SkillUI.
-- Matikan total dengan `nex-agent --no-skills` atau `"skills": false` di
+- 🔕 Matikan total dengan `nex-agent --no-skills` atau `"skills": false` di
   `config.json`. Tool `skill` bersifat read-only, jadi tetap aman di mode Plan.
 
-### Agent bisa membuat & memasang skill sendiri
+### 🛠️ Agent bisa membuat & memasang skill sendiri
 
-- **Membuat skill baru** — minta agent menyimpan sebuah prosedur; ia memakai tool
+- ✍️ **Membuat skill baru** — minta agent menyimpan sebuah prosedur; ia memakai tool
   `skill_write` (name/description/body tervalidasi Zod) untuk menulis
   `skills/<nama>/SKILL.md` (tetap butuh konfirmasi + diff). Skill yang baru dibuat
   **langsung aktif** untuk sesi berjalan — tanpa restart — berkat hot-reload.
-- **Memasang skill eksternal (SkillUI)** — `/skills install <url|repo|folder>`
+- 📥 **Memasang skill eksternal (SkillUI)** — `/skills install <url|repo|folder>`
   atau minta agent memakai tool `skill_install`. Wrapper ini menjalankan
   [SkillUI](https://skillui.vercel.app) (`npx skillui`), mengambil `SKILL.md`
   yang dihasilkan, lalu menyalinnya ke `skills/<nama>/` dan **langsung
   mengaktifkannya**. SkillUI menyalin sistem desain (warna, tipografi, komponen)
   dari situs/repo/folder — tanpa AI, tanpa API key.
+
   ```
   /skills install https://linear.app
   /skills install https://github.com/org/repo --name linear
   /skills install ./frontend --ultra --overwrite
   ```
+
   Opsi: `--name <nama>`, `--ultra` (Playwright: screenshot + animasi, lebih
   berat), `--overwrite`. Folder sementara selalu dibersihkan; tidak ada yang
   ditulis di luar `skills/`. Cara manual tetap bisa lewat `run_shell`
@@ -615,7 +730,10 @@ Saat diminta meringkas:
 2. Tulis maksimal 7 poin, masing-masing < 20 kata.
 ```
 
-## Daftar tugas (todo) live
+---
+
+<a id="todo"></a>
+## ✅ Daftar tugas (todo) live
 
 Untuk tugas berlapis, agent memakai tool `todo_write` untuk mencatat rencana
 sebagai checklist, lalu memperbarui statusnya seiring kemajuan:
@@ -633,7 +751,10 @@ Checklist di-render ulang **di tempat** setiap kali status berubah
 tugas disimpan bersama sesi (bisa dilihat lagi dengan `/todos`, ikut saat
 `--resume`).
 
-## Pengembangan
+---
+
+<a id="pengembangan"></a>
+## 🧪 Pengembangan
 
 ```bash
 pnpm test           # Vitest
@@ -644,3 +765,9 @@ pnpm build
 ```
 
 Lihat `AGENTS.md` untuk konvensi kerja.
+
+---
+
+<p align="center">
+  Dibuat dengan ❤️ oleh <a href="https://github.com/RydzzKen">RydzzKen</a> · ⭐ Beri bintang bila bermanfaat
+</p>
