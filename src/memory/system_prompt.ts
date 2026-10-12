@@ -1,5 +1,6 @@
 import { loadAgentsMd } from "./agents_md.js";
 import { formatSkillsForPrompt, type Skill } from "./skills.js";
+import { AGENT_GUIDE } from "./self_guide.js";
 import type { Mode } from "../core/types.js";
 
 /** Nama agent yang dilaporkan ke model. */
@@ -73,6 +74,9 @@ export async function buildSystemPrompt(input: SystemPromptInput): Promise<strin
     ...rules,
   ].join("\n");
   const base = memory.content ? `${header}\n\n# Konteks proyek (AGENTS.md)\n${memory.content}` : header;
+  // Peta fitur sendiri (murah, statis) agar model tidak menjelajah kode untuk
+  // menjawab pertanyaan tentang NeX-Agent. Detail menyusul lewat skill/berkas.
+  const withGuide = `${base}\n\n${AGENT_GUIDE}`;
   const skillsSection = formatSkillsForPrompt(input.skills);
-  return skillsSection ? `${base}\n\n${skillsSection}` : base;
+  return skillsSection ? `${withGuide}\n\n${skillsSection}` : withGuide;
 }

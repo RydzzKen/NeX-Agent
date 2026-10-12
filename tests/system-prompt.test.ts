@@ -7,6 +7,7 @@ import {
   buildSystemPrompt,
   modeDirective,
 } from "../src/memory/system_prompt.js";
+import { AGENT_GUIDE } from "../src/memory/self_guide.js";
 
 let root: string;
 
@@ -58,5 +59,34 @@ describe("buildSystemPrompt", () => {
     expect(prompt).not.toContain("Di mode Plan kamu hanya boleh membaca");
     // Aturan pengganti menekan arahan mode dari prompt statis.
     expect(prompt).toContain("Mode saat ini");
+  });
+
+  it("menyuntik peta fitur NeX-Agent agar tidak perlu menjelajah kode", async () => {
+    const prompt = await buildSystemPrompt({
+      workspaceRoot: root,
+      globalConfigDir: root,
+      skills: [],
+      skillsEnabled: false,
+    });
+    expect(prompt).toContain("Peta fitur NeX-Agent");
+    expect(prompt).toContain(AGENT_GUIDE);
+    expect(prompt).toContain("/mcp");
+    expect(prompt).toContain("nex-agent-usage");
+    expect(prompt).toContain("~/.config/agent");
+  });
+});
+
+describe("AGENT_GUIDE", () => {
+  it("memuat daftar perintah kunci dan lokasi konfigurasi", () => {
+    expect(AGENT_GUIDE).toContain("/skills [install");
+    expect(AGENT_GUIDE).toContain("/telegram");
+    expect(AGENT_GUIDE).toContain("agent update");
+    expect(AGENT_GUIDE).toContain("plugins.json");
+    expect(AGENT_GUIDE).toContain("skills/");
+  });
+
+  it("tetap ringkas (bukan dump seluruh dokumentasi)", () => {
+    // Peta ini dibayar di setiap giliran; jaga agar tidak membengkak.
+    expect(AGENT_GUIDE.split("\n").length).toBeLessThanOrEqual(30);
   });
 });
