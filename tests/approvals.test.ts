@@ -136,6 +136,29 @@ describe("Approvals", () => {
     expect(await approvals.confirm({ kind: "write", title: "x", detail: "" })).toBe("no");
   });
 
+  it("'setujui semua' tersimpan hanya untuk kategori yang mengizinkan allowAll", async () => {
+    let prompts = 0;
+    const io: AgentIO = {
+      ...silentIO("no"),
+      confirm: async () => {
+        prompts++;
+        return "all";
+      },
+    };
+    const approvals = new Approvals(io, { yes: false, interactive: true });
+
+    // Shell mengizinkan allowAll → "all" pertama otomatis menyetujui berikutnya.
+    expect(
+      await approvals.confirm({ kind: "shell", title: "a", detail: "" }, { allowAll: true }),
+    ).toBe("all");
+    expect(
+      await approvals.confirm({ kind: "shell", title: "b", detail: "" }, { allowAll: true }),
+    ).toBe("yes");
+    // Tanpa allowAll (mis. tulis luar workspace) → tetap bertanya.
+    expect(await approvals.confirm({ kind: "write", title: "c", detail: "" })).toBe("all");
+    expect(prompts).toBe(2);
+  });
+
   it("requestSensitiveAccess tidak dilewati allow-all dan butuh interaktif", async () => {
     let asked = 0;
     const base = silentIO("no");

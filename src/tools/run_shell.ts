@@ -155,12 +155,15 @@ export const runShellTool: ToolDefinition<typeof schema> = {
           "mode Plan + perintah mutating",
         );
       }
-      const decision = await ctx.confirm({
-        kind: "shell",
-        title: "Jalankan perintah shell",
-        detail: input.command,
-        irreversible: true,
-      });
+      const decision = await ctx.confirm(
+        {
+          kind: "shell",
+          title: "Jalankan perintah shell",
+          detail: input.command,
+          irreversible: true,
+        },
+        { allowAll: true },
+      );
       if (decision === "no") throw new ToolDeniedError(`Pengguna menolak perintah: ${input.command}`);
     }
 

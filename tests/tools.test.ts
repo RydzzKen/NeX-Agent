@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Approvals } from "../src/core/approvals.js";
-import { silentIO } from "../src/core/io.js";
+import { silentIO, type AgentIO } from "../src/core/io.js";
 import { PermissionManager } from "../src/safety/permissions.js";
 import { createPathResolver } from "../src/safety/policy.js";
 import { createWorkspace } from "../src/safety/workspace.js";
@@ -128,5 +128,41 @@ describe("tools", () => {
     const result = await runShellTool.execute({ command: "printf 'halo-nex'" }, ctx);
     expect(result.ok).toBe(true);
     expect(result.content).toContain("halo-nex");
+  });
+
+  it("run_shell: 'setujui semua' melewati konfirmasi perintah mutating berikutnya", async () => {
+    let prompts = 0;
+    const io: AgentIO = {
+      ...silentIO("no"),
+      confirm: async () => {
+        prompts++;
+        return "all";
+      },
+    };
+    const workspace = createWorkspace(root);
+    const permissions = new PermissionManager(workspace.root);
+    const approvals = new Approvals(io, { yes: false, interactive: true });
+    const resolvePath = createPathResolver({
+      workspace,
+      permissions,
+      approvals,
+      getMode: () => "build",
+    });
+    const ctx: ToolContext = {
+      workspace,
+      permissions,
+      mode: "build",
+      signal: new AbortController().signal,
+      logger: { log() {}, info() {}, debug() {}, warn() {}, error() {} },
+      todos: new TodoStore(),
+      resolvePath,
+      confirm: (req, opts) => approvals.confirm(req, opts),
+      confirmSensitive: (req) => approvals.requestSensitiveAccess(req),
+    };
+
+    await runShellTool.execute({ command: "touch satu.txt" }, ctx);
+    await runShellTool.execute({ command: "touch dua.txt" }, ctx);
+
+    expect(prompts).toBe(1);
   });
 });

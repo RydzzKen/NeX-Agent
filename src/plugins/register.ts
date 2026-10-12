@@ -184,11 +184,14 @@ export function buildMcpTools(params: {
       summarize: (input) => summarizeArgs(input),
       async execute(input, ctx) {
         if (risk === "mutate") {
-          const decision = await ctx.confirm({
-            kind: "mcp",
-            title: `Panggil tool MCP ${server}`,
-            detail: `${mcpName}(${summarizeArgs(input)})`,
-          });
+          const decision = await ctx.confirm(
+            {
+              kind: "mcp",
+              title: `Panggil tool MCP ${server}`,
+              detail: `${mcpName}(${summarizeArgs(input)})`,
+            },
+            { allowAll: true },
+          );
           if (decision === "no") {
             throw new ToolDeniedError(`Pengguna menolak tool MCP: ${registryName}`, "tool MCP mutating");
           }
