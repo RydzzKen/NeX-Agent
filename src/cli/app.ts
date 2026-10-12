@@ -50,7 +50,7 @@ import { isPrivateHost } from "../util/network.js";
 import { firstNonEmpty } from "../util/strings.js";
 import { todoHeader, todoLines } from "../util/todos.js";
 import { renderCrossSession, renderUsage } from "./usage.js";
-import { runConnect, describeProvider, defaultBaseURL } from "./connect.js";
+import { runConnect, describeProvider, defaultBaseURL, resolveProviderKey } from "./connect.js";
 import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice } from "./models.js";
 import { TerminalIO } from "./render.js";
 import { Prompter, PROMPT_EOF } from "./prompt.js";
@@ -109,7 +109,7 @@ interface ResolvedModel {
 
 const SLASH_HELP: Array<[string, string]> = [
   ["/connect", "hubungkan provider (yang tersimpan bisa dipakai ulang)"],
-  ["/provider [use|edit|hapus <nama>]", "kelola provider tersimpan"],
+  ["/provider [use|edit|hapus <id>]", "kelola provider tersimpan (id: anthropic, openai, custom:<nama>)"],
   ["/models [nomor|0|nama]", "lihat/ganti model (0 = custom)"],
   ["/plan", "pindah ke mode Plan (read-only)"],
   ["/build", "pindah ke mode Build (eksekusi)"],
@@ -762,61 +762,70 @@ export class ChatApp {
       return;
     }
 
+    const saved = await this.credentials.list();
+
     if (sub === "use" || sub === "pakai") {
       if (!name) {
-        this.io.warn("Pakai: /provider use <nama>.");
+        this.io.warn("Pakai: /provider use <id>.");
         return;
       }
-      const provider = await createProvider(name, this.credentials);
-      if (!provider) {
+      const key = resolveProviderKey(name, saved);
+      const provider = key ? await createProvider(key, this.credentials) : undefined;
+      if (!key || !provider) {
         this.io.warn(`Provider tidak dikenal atau belum tersimpan: ${name}. Lihat /provider.`);
         return;
       }
       this.provider = provider;
-      this.providerKey = name;
-      this.config = await saveConfig({ defaultProvider: name });
+      this.providerKey = key;
+      this.config = await saveConfig({ defaultProvider: key });
       const model = await this.resolveModel(this.provider, undefined);
       if (!model) {
         this.io.warn("Tidak ada model terpilih.");
         return;
       }
-      this.session.setProvider(this.provider, name);
+      this.session.setProvider(this.provider, key);
       this.session.setModel(model.id, model.info);
-      this.record.providerId = name;
+      this.record.providerId = key;
       this.record.model = model.id;
       await rememberModel(this.workspace.root, model.id);
-      this.io.info(`Provider aktif: ${name} / ${model.id}.`);
+      this.io.info(`Provider aktif: ${key} / ${model.id}.`);
       return;
     }
 
     if (sub === "edit") {
       if (!name) {
-        this.io.warn("Pakai: /provider edit <nama>.");
+        this.io.warn("Pakai: /provider edit <id>.");
         return;
       }
-      await this.editProvider(name);
+      const key = resolveProviderKey(name, saved);
+      if (!key) {
+        this.io.warn(`Tidak ada provider tersimpan dengan id ${name}. Lihat /provider.`);
+        return;
+      }
+      await this.editProvider(key);
       return;
     }
 
     if (sub === "hapus" || sub === "delete" || sub === "rm") {
       if (!name) {
-        this.io.warn("Pakai: /provider hapus <nama>.");
+        this.io.warn("Pakai: /provider hapus <id>.");
         return;
       }
-      const deleted = await this.credentials.delete(name);
+      const key = resolveProviderKey(name, saved) ?? name;
+      const deleted = await this.credentials.delete(key);
       if (!deleted) {
-        this.io.warn(`Tidak ada provider tersimpan bernama ${name}.`);
+        this.io.warn(`Tidak ada provider tersimpan dengan id ${name}.`);
         return;
       }
-      if (this.config.defaultProvider === name) {
+      if (this.config.defaultProvider === key) {
         this.config = await saveConfig({ defaultProvider: undefined });
       }
-      const active = name === this.providerKey ? " (masih aktif sampai sesi ini berakhir)" : "";
-      this.io.info(`Provider ${name} dihapus${active}.`);
+      const active = key === this.providerKey ? " (masih aktif sampai sesi ini berakhir)" : "";
+      this.io.info(`Provider ${key} dihapus${active}.`);
       return;
     }
 
-    this.io.warn(`Argumen tidak dikenal: ${sub}. Pakai /provider [use|edit|hapus <nama>].`);
+    this.io.warn(`Argumen tidak dikenal: ${sub}. Pakai /provider [use|edit|hapus <id>].`);
   }
 
   private async listProviders(): Promise<void> {
@@ -839,14 +848,14 @@ export class ChatApp {
       );
     }
     process.stdout.write(
-      "\n  (* = aktif)  /provider use <nama> · /provider edit <nama> · /provider hapus <nama>\n\n",
+      "\n  (* = aktif)  /provider use|edit|hapus <id>  (untuk custom, awalan 'custom:' boleh dilewat)\n\n",
     );
   }
 
   private async editProvider(name: string): Promise<void> {
     const creds = await this.credentials.get(name);
     if (!creds) {
-      this.io.warn(`Tidak ada provider tersimpan bernama ${name}. Lihat /provider.`);
+      this.io.warn(`Tidak ada provider tersimpan dengan id ${name}. Lihat /provider.`);
       return;
     }
     const baseDefault = creds.baseURL ?? defaultBaseURL(name) ?? "";

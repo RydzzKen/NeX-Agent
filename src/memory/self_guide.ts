@@ -26,7 +26,7 @@ export const AGENT_GUIDE = [
   "Perintah slash (diketik pengguna di sesi chat):",
   "- Sesi: /new /clear /rename <judul> /delete [all] /sessions [clear] /resume <n|id> /undo [n]",
   "- Mode: /plan /build",
-  "- Model & provider: /connect /provider [use|edit|hapus <nama>] /models [nomor|0|nama]",
+  "- Model & provider: /connect /provider [use|edit|hapus <id>] /models [nomor|0|nama]",
   "- Kendali: /thinking [on|off] /markdown [on|off] /allow-all [on|off] /permissions [revoke <path>]",
   "- Skill: /skills [install <sumber>] /skill <nama>|off",
   "- MCP: /mcp [add|remove|reload|key|presets]",

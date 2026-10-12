@@ -198,7 +198,7 @@ Anda tahu kapan agen masih mengerjakan sesuatu dan kapan sudah berhenti.
 
 | Kategori | Perintah |
 |---|---|
-| 🔌 **Koneksi & model** | `/connect` · `/provider [use\|edit\|hapus <nama>]` · `/models [nomor\|0\|nama]` |
+| 🔌 **Koneksi & model** | `/connect` · `/provider [use\|edit\|hapus <id>]` · `/models [nomor\|0\|nama]` |
 | 🧭 **Mode & izin** | `/plan` · `/build` · `/permissions` · `/allow-all [on\|off]` · `/thinking` · `/markdown` |
 | 🗂️ **Sesi** | `/sessions [clear]` · `/resume <n>` · `/new` · `/clear` · `/rename` · `/delete [all]` · `/undo [n]` |
 | 📊 **Info & tugas** | `/usage` · `/todos` · `/help` |
@@ -210,10 +210,12 @@ Anda tahu kapan agen masih mengerjakan sesuatu dan kapan sudah berhenti.
 Mengetik `/` menampilkan daftar perintah terkait secara langsung di atas baris
 input (di TTY). Tab melengkapi perintah slash, subperintah (`/provider <Tab>`),
 dan path berkas.
-`/provider` menampilkan provider tersimpan (base URL + status kunci, **tanpa**
-membocorkan nilainya); `use` mengaktifkannya, `edit` mengubah base URL/API key,
-`hapus` menghapusnya. `/connect` juga menampilkan provider custom tersimpan agar
-bisa dipakai ulang tanpa mengetik ulang.
+`/provider` menampilkan provider tersimpan (id + base URL + status kunci, **tanpa**
+membocorkan nilainya); `use` mengaktifkannya, `edit` mengubah base URL/API key
+(kosongkan API key untuk mempertahankan yang lama), `hapus` menghapusnya. Argumennya
+berupa **id** (`anthropic`, `openai`, `custom:<nama>`); untuk custom, awalan
+`custom:` boleh dilewat (mis. `/provider hapus 9router`). `/connect` juga
+menampilkan provider custom tersimpan agar bisa dipakai ulang tanpa mengetik ulang.
 
 `/sessions` menampilkan sesi bernomor (judul diambil otomatis dari pesan
 pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/allow-all` menyalakan

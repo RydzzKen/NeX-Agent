@@ -129,7 +129,8 @@ agent uninstall [--purge --yes]
 
 - `/sessions [clear]` daftar/hapus sesi · `/resume <n|id>` lanjut · `/new` sesi baru ·
   `/clear` bersihkan riwayat · `/rename <judul>` · `/delete [all]`.
-- `/connect` hubungkan provider · `/provider [use|edit|hapus <nama>]` kelola provider
-  tersimpan · `/models [nomor|0|nama]` pilih model (`0` = custom).
+- `/connect` hubungkan provider · `/provider [use|edit|hapus <id>]` kelola provider
+  tersimpan (id `anthropic`/`openai`/`custom:<nama>`; awalan `custom:` boleh dilewat) ·
+  `/models [nomor|0|nama]` pilih model (`0` = custom).
 - Flag CLI umum: `--model --provider --max-steps --max-cost --yes --allow-all
   --cwd --allow-path --no-thinking --no-markdown --no-skills --debug --json`.

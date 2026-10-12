@@ -1,5 +1,14 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildConnectMenu, defaultBaseURL, describeProvider } from "../src/cli/connect.js";
+import {
+  buildConnectMenu,
+  defaultBaseURL,
+  describeProvider,
+  resolveProviderKey,
+} from "../src/cli/connect.js";
+import { CredentialStore } from "../src/config/credentials.js";
 
 describe("buildConnectMenu", () => {
   it("memuat provider bawaan, custom tersimpan (tanpa duplikat), dan opsi custom baru", () => {
@@ -51,5 +60,49 @@ describe("defaultBaseURL", () => {
   it("mengembalikan basis bawaan untuk provider builtin", () => {
     expect(defaultBaseURL("openai")).toContain("openai.com");
     expect(defaultBaseURL("custom:9router")).toBeUndefined();
+  });
+});
+
+describe("resolveProviderKey", () => {
+  const saved = ["anthropic", "custom:9router", "custom:zzz"];
+
+  it("mengembalikan id persis bila tersimpan", () => {
+    expect(resolveProviderKey("custom:9router", saved)).toBe("custom:9router");
+    expect(resolveProviderKey("anthropic", saved)).toBe("anthropic");
+  });
+
+  it("mengubah nama singkat custom menjadi id lengkap", () => {
+    expect(resolveProviderKey("9router", saved)).toBe("custom:9router");
+    expect(resolveProviderKey("zzz", saved)).toBe("custom:zzz");
+  });
+
+  it("mengenali provider bawaan walau belum tersimpan", () => {
+    expect(resolveProviderKey("openai", [])).toBe("openai");
+  });
+
+  it("mengembalikan undefined untuk yang tak dikenal atau kosong", () => {
+    expect(resolveProviderKey("tidak-ada", saved)).toBeUndefined();
+    expect(resolveProviderKey("custom:tidak-ada", saved)).toBeUndefined();
+    expect(resolveProviderKey("   ", saved)).toBeUndefined();
+  });
+});
+
+describe("CredentialStore + nama singkat", () => {
+  it("hapus lewat nama singkat mengenai id tersimpan", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "nex-cred-"));
+    try {
+      const store = new CredentialStore(dir);
+      await store.set("custom:9router", { baseURL: "http://localhost:20128/v1", apiKey: "k" });
+
+      const saved = await store.list();
+      const key = resolveProviderKey("9router", saved);
+      expect(key).toBe("custom:9router");
+      if (!key) throw new Error("key tak terduga");
+      expect(await store.get(key)).toBeDefined();
+      expect(await store.delete(key)).toBe(true);
+      expect(await store.list()).toEqual([]);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });

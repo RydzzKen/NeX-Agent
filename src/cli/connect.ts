@@ -33,6 +33,22 @@ export function defaultBaseURL(key: string): string | undefined {
   return BUILTIN_PROVIDERS.find((p) => p.key === key)?.baseURL;
 }
 
+/**
+ * Terjemahkan argumen `/provider` menjadi id provider yang tersimpan.
+ * Menerima id persis (`anthropic`, `custom:9router`) **maupun** nama singkat
+ * custom (`9router` → `custom:9router`), supaya pengguna tak dipaksa mengetik
+ * awalan `custom:`.
+ */
+export function resolveProviderKey(input: string, saved: string[]): string | undefined {
+  const token = input.trim();
+  if (!token) return undefined;
+  if (saved.includes(token)) return token;
+  if (BUILTIN_PROVIDERS.some((p) => p.key === token)) return token;
+  const key = customKey(token);
+  if (saved.includes(key)) return key;
+  return undefined;
+}
+
 export interface ProviderView {
   key: string;
   baseURL: string;
