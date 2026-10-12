@@ -116,6 +116,15 @@ export function withSudoStdin(command: string): string {
   return command.replace(/^(\s*)sudo\b/, "$1sudo -S -k");
 }
 
+/**
+ * Sisipkan `-n` pada `sudo` terdepan agar percobaan pertama tidak pernah
+ * menggantung menunggu password di TTY (`/dev/tty`). Bila memang butuh
+ * password, sudo gagal cepat dan kita menawarkan input sesaat.
+ */
+export function withSudoNonInteractive(command: string): string {
+  return command.replace(/^(\s*)sudo\b/, "$1sudo -n");
+}
+
 export const runShellTool: ToolDefinition<typeof schema> = {
   name: "run_shell",
   description:
@@ -166,7 +175,11 @@ export const runShellTool: ToolDefinition<typeof schema> = {
     }
 
     const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT;
-    let result = await runShell(input.command, timeoutMs, ctx.workspace.root, ctx.signal);
+    // Percobaan pertama dibuat non-interaktif (`-n`) supaya sudo tidak pernah
+    // menggantung menunggu password di TTY; bila butuh password, kita yang
+    // menawarkan input sesaat di bawah ini.
+    const probe = isSudoCommand(input.command) ? withSudoNonInteractive(input.command) : input.command;
+    let result = await runShell(probe, timeoutMs, ctx.workspace.root, ctx.signal);
 
     // sudo tanpa TTY gagal meminta password; tawarkan input sesaat (masked).
     if (

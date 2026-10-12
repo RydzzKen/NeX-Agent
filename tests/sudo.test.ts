@@ -15,6 +15,7 @@ import {
   isSudoCommand,
   runShellTool,
   sudoNeedsPassword,
+  withSudoNonInteractive,
   withSudoStdin,
 } from "../src/tools/run_shell.js";
 
@@ -26,15 +27,24 @@ let savedPath: string | undefined;
 
 /** sudo tiruan: gagal "tanpa TTY" kecuali dipanggil dengan `-S` + password benar. */
 const FAKE_SUDO = `#!/bin/sh
+if [ -n "$SUDO_LOG" ]; then printf '%s\n' "$*" >> "$SUDO_LOG"; fi
+has_s=0; has_n=0
 for a in "$@"; do
-  if [ "$a" = "-S" ]; then
-    IFS= read -r pw
-    if [ "$pw" = "${PASSWORD}" ]; then exit 0; fi
-    echo "sudo: 1 incorrect password attempt" >&2
-    exit 1
-  fi
+  [ "$a" = "-S" ] && has_s=1
+  [ "$a" = "-n" ] && has_n=1
 done
+if [ "$has_s" = "1" ]; then
+  IFS= read -r pw
+  if [ "$pw" = "${PASSWORD}" ]; then exit 0; fi
+  echo "sudo: 1 incorrect password attempt" >&2
+  exit 1
+fi
+if [ "$has_n" = "1" ]; then
+  echo "sudo: a password is required" >&2
+  exit 1
+fi
 echo "sudo: a terminal is required to read the password; either use the -S option to read from standard input or configure an askpass helper" >&2
+echo "sudo: a password is required" >&2
 exit 1
 `;
 
@@ -91,6 +101,7 @@ describe("helper sudo", () => {
   it("hanya menandai sudo yang gagal karena tidak ada TTY", () => {
     expect(sudoNeedsPassword("sudo ls", "sudo: a terminal is required to read the password")).toBe(true);
     expect(sudoNeedsPassword("sudo ls", "sudo: no tty present and no askpass program specified")).toBe(true);
+    expect(sudoNeedsPassword("sudo ls", "sudo: a password is required")).toBe(true);
     expect(sudoNeedsPassword("ls", "a terminal is required")).toBe(false);
     expect(sudoNeedsPassword("sudo ls", "permission denied")).toBe(false);
   });
@@ -100,6 +111,13 @@ describe("helper sudo", () => {
     expect(withSudoStdin("  sudo ls")).toBe("  sudo -S -k ls");
     expect(withSudoStdin("sudoedit /etc/hosts")).toBe("sudoedit /etc/hosts");
     expect(withSudoStdin("echo sudo")).toBe("echo sudo");
+  });
+
+  it("menyisipkan -n pada sudo terdepan saja (tanpa menggantung di TTY)", () => {
+    expect(withSudoNonInteractive("sudo whoami")).toBe("sudo -n whoami");
+    expect(withSudoNonInteractive("  sudo ls")).toBe("  sudo -n ls");
+    expect(withSudoNonInteractive("sudoedit /etc/hosts")).toBe("sudoedit /etc/hosts");
+    expect(withSudoNonInteractive("echo sudo")).toBe("echo sudo");
   });
 });
 
@@ -117,6 +135,22 @@ describe("run_shell + sudo", () => {
     // Rahasia tidak boleh bocor ke hasil yang dikirim ke model.
     expect(result.content).not.toContain(PASSWORD);
     expect(result.summary ?? "").not.toContain(PASSWORD);
+  });
+
+  it("percobaan pertama non-interaktif (-n), lalu jalankan ulang dengan -S", async () => {
+    const log = path.join(root, "sudo.log");
+    process.env.SUDO_LOG = log;
+    try {
+      const ctx = makeContext(async () => PASSWORD);
+      const result = await runShellTool.execute({ command: "sudo whoami" }, ctx);
+
+      expect(result.ok).toBe(true);
+      const lines = (await fs.readFile(log, "utf8")).trim().split("\n");
+      expect(lines[0]).toBe("-n whoami");
+      expect(lines[1]).toBe("-S -k whoami");
+    } finally {
+      delete process.env.SUDO_LOG;
+    }
   });
 
   it("batal saat pengguna tidak memberi password", async () => {
