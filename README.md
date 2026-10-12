@@ -43,6 +43,8 @@
 | 🧠 | **Skill (SKILL.md)** | Agent bisa membuat & memasang skill sendiri |
 | ✅ | **Todo live** | Checklist tugas yang diperbarui di tempat |
 | 🎨 | **Render Markdown** | Heading, tabel, kode, dan gaya inline di terminal |
+| 🔎 | **Pencarian & baca web** | `web_search` (DuckDuckGo/SearXNG/Brave) + `web_fetch` halaman |
+| 📌 | **Memori jangka panjang** | Ingat fakta sederhana pengguna (nama, hobi) lintas sesi |
 
 ---
 
@@ -56,6 +58,7 @@
 - [Perbarui & hapus](#update)
 - [Plugin MCP](#mcp)
 - [Konfigurasi & kredensial](#konfigurasi)
+- [Tool bawaan](#tool)
 - [Arsitektur](#arsitektur)
 - [Render Markdown](#markdown)
 - [Skill (SKILL.md)](#skill)
@@ -194,6 +197,7 @@ Anda tahu kapan agen masih mengerjakan sesuatu dan kapan sudah berhenti.
 | 📊 **Info & tugas** | `/usage` · `/todos` · `/help` |
 | 🧩 **Ekstensi** | `/skills` · `/skill <nama>\|off` · `/mcp [add\|remove\|reload\|key\|presets]` |
 | 🌍 **Layanan** | `/web [lan\|stop]` · `/telegram [start\|stop\|restart\|status\|logs\|token\|allow]` |
+| 📌 **Memori** | `/memory [add <key> <value>\|forget <key>\|clear]` |
 | ⚙️ **Sistem** | `/update` · `/restart` · `/exit` |
 
 Mengetik `/` menampilkan daftar perintah terkait secara langsung di atas baris
@@ -211,6 +215,15 @@ mode izinkan-semua tanpa keluar dari sesi. `/web` menyalakan server web
 provider, dan mode aktif; `/web stop` mematikannya. `/telegram` menyalakan bot
 Telegram mandiri (lihat [Bot Telegram](#telegram)). `/exit` (atau Ctrl+D)
 keluar dari chat (server web ikut berhenti).
+
+**Ctrl+C** — saat tugas sedang berjalan, tekan sekali untuk **menghentikannya**
+(perintah shell yang berjalan ikut dihentikan; sesi tetap tersimpan dan bisa
+dilanjutkan), tekan lagi untuk memaksa keluar. Saat menganggur di prompt, tekan
+sekali untuk minta konfirmasi dan sekali lagi untuk keluar.
+
+`/memory` mengelola **memori jangka panjang** (lihat [Tool bawaan](#tool)):
+tanpa argumen menampilkan fakta tersimpan, `add <key> <value>` menambah/memperbarui,
+`forget <key>` menghapus, dan `clear` mengosongkan.
 
 `/models` menampilkan daftar model bernomor dengan opsi `0) Custom model`.
 Ganti model dengan `/models 2`, `/models 0` (lalu ketik nama model manual),
@@ -606,8 +619,74 @@ Disimpan di `~/.config/agent/` (bisa diubah lewat `AGENT_CONFIG_DIR`):
 | `credentials.json` | Kredensial, izin `600`, tidak pernah dicetak/log |
 | `plugins.json` | Daftar server MCP (lihat [Plugin MCP](#mcp)) |
 | `AGENTS.md` | Aturan global pengguna (dimuat otomatis) |
+| `memory.json` | Fakta jangka panjang tentang pengguna (izin `600`, disuntik ke prompt) |
 | `sessions/` | Riwayat sesi |
 | `logs/` | Log JSONL terstruktur |
+
+---
+
+<a id="tool"></a>
+## 🧰 Tool bawaan (pencarian, ambil web, memori)
+
+### 🔎 Pencarian web (`web_search`)
+
+Tool `web_search` aktif secara bawaan. Backend bawaannya **DuckDuckGo tanpa
+kunci**: mula-mula **Instant Answer API**, lalu otomatis jatuh ke **halaman hasil
+HTML DuckDuckGo** bila kosong — sehingga pencarian biasa tetap mendapat hasil
+web. Untuk hasil yang lebih andal, pilih backend lewat `searchProvider`:
+
+| `searchProvider` | Butuh | Keterangan |
+| --- | --- | --- |
+| `duckduckgo` (default) | — | Instant Answer + fallback HTML DuckDuckGo. |
+| `searxng` | `searchUrl` | Instance SearXNG dengan API JSON aktif (`format=json`). |
+| `brave` | `BRAVE_API_KEY` | Brave Search API (kunci lewat env, tidak ditulis ke berkas). |
+
+```jsonc
+// ~/.config/agent/config.json
+{
+  "searchProvider": "searxng",
+  "searchUrl": "https://searx.example/search"
+  // atau Brave (url default https://api.search.brave.com/res/v1/web/search):
+  // "searchProvider": "brave"
+}
+```
+
+- **SearXNG** dipanggil `GET <searchUrl>?q=<kueri>&format=json` dan harus membalas
+  `{ "results": [{ "title", "url", "content" }] }`.
+- **Brave** memakai kunci dari env `BRAVE_API_KEY` (tidak pernah ditulis ke
+  `config.json`/log); respons `web.results` dibaca otomatis.
+- **Endpoint JSON generik**: setel `searchUrl` **tanpa** `searchProvider` untuk
+  `GET <searchUrl>?q=<kueri>` yang membalas
+  `{ "results": [{ "title", "url", "snippet" }] }`.
+
+### 🌐 Ambil halaman web (`web_fetch`)
+
+Tool `web_fetch` aktif secara bawaan dan bersifat **read-only**. Beri satu URL
+`http/https`; tool mengambil halaman (mengikuti redirect) lalu mengubah HTML
+menjadi teks/Markdown yang bisa dibaca — berguna untuk membuka dokumentasi,
+artikel, atau URL yang baru ditemukan lewat `web_search`.
+
+- Respons non-HTML (mis. JSON/teks) dikembalikan apa adanya.
+- Batas waktu 20 detik dan batas ukuran; keluaran dipotong (default 20.000
+  karakter, atur lewat `maxChars`).
+- Kegagalan (HTTP error, timeout, URL tidak valid) dikembalikan sebagai pesan
+  error ke model, bukan menghentikan proses.
+
+Jika ingin konversi halaman berbasis Python, preset MCP `fetch`
+(`/mcp add --name fetch ...`) juga tersedia sebagai alternatif.
+
+### 📌 Memori jangka panjang (`memory`)
+
+Tool `memory` menyimpan **fakta sederhana tentang pengguna** (nama, hobi,
+preferensi, bahasa) agar dikenali lintas sesi. Disimpan sebagai
+`~/.config/agent/memory.json` (izin `600`) dan disuntikkan ke system prompt.
+
+- Aksi: `add` (simpan/perbarui `key` + `value`), `list`, `forget` (hapus `key`).
+- Key tidak peka huruf besar-kecil; fakta dengan key sama akan diperbarui.
+- **Kredensial/rahasia ditolak** (sandi, token, API key, dsb.).
+- Kelola dari chat dengan `/memory`, `/memory add <key> <value>`,
+  `/memory forget <key>`, atau `/memory clear`.
+- Batas: 200 fakta, ±4.000 karakter saat disuntik ke prompt agar hemat token.
 
 ---
 
@@ -618,11 +697,11 @@ Disimpan di `~/.config/agent/` (bisa diubah lewat `AGENT_CONFIG_DIR`):
 src/
   core/        # loop agentik, approvals, checkpoint, context, repetition
   providers/   # ModelProvider + adapter (OpenAI-compatible, Anthropic)
-  tools/       # read_file, write_file, edit_file, list_dir, run_shell, web_search, todo_write, skill, skill_write, skill_install
+  tools/       # read_file, write_file, edit_file, list_dir, run_shell, web_search, web_fetch, memory, todo_write, skill, skill_write, skill_install
   safety/      # workspace, permissions, classifier, policy
   sessions/    # penyimpanan sesi
   usage/       # token, biaya, agregasi
-  memory/      # loader AGENTS.md + skill (SKILL.md)
+  memory/      # loader AGENTS.md + skill (SKILL.md) + memori jangka panjang
   plugins/     # klien MCP (stdio/HTTP/SSE), plugins.json, preset, registrasi tool MCP
   server/      # server web (HTTP + WS), terminal PTY, bot Telegram, protokol
   cli/         # renderer, prompt, slash command, app
