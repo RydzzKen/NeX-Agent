@@ -15,7 +15,7 @@ export interface PermissionRecord {
 /**
  * Izin akses path diper-sesi.
  *
- * Aturan (PRD §5):
+ * Aturan:
  * - Baca di luar workspace: konfirmasi sekali, diingat selama sesi.
  * - Tulis di luar workspace: selalu konfirmasi, tidak pernah "standing".
  * - `--allow-path` menyetujui path sebelum sesi (read + write), standing.

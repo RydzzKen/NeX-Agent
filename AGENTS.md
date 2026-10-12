@@ -40,4 +40,3 @@ Konteks untuk agent yang bekerja di repo ini (NeX-Agent).
 
 - Tes baru ditulis untuk perilaku baru.
 - `pnpm test`, `pnpm lint`, dan `pnpm typecheck` lulus.
-- Kriteria penerimaan PRD terpenuhi.

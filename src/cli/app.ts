@@ -294,7 +294,7 @@ export class ChatApp {
       record?.history ?? [],
       record?.todos ?? [],
     );
-    // Model terakhir diingat per workspace (PRD §7) agar run berikutnya tidak
+    // Model terakhir diingat per workspace agar run berikutnya tidak
     // perlu memilih ulang.
     await rememberModel(this.workspace.root, model.id);
 

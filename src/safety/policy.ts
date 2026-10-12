@@ -16,7 +16,7 @@ export interface PathResolverDeps {
 }
 
 /**
- * Terapkan soft workspace boundary (PRD §5):
+ * Terapkan soft workspace boundary:
  * - Di dalam workspace: selalu boleh.
  * - Baca luar: konfirmasi sekali, diingat sesi.
  * - Tulis luar: konfirmasi tiap kali, dilarang di mode Plan.
