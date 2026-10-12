@@ -248,7 +248,11 @@ tanpa argumen menampilkan fakta tersimpan, `add <key> <value>` menambah/memperba
 `/models` menampilkan daftar model bernomor dengan opsi `0) Custom model`.
 Ganti model dengan `/models 2`, `/models 0` (lalu ketik nama model manual),
 atau langsung `/models <nama>`. Pilihan model diingat per workspace di
-`config.json`, jadi model custom tetap terpakai setelah restart.
+`config.json`, jadi model custom tetap terpakai setelah restart. Selain itu,
+pilihan terakhir juga dicatat sebagai `"defaultModel"` (fallback global) —
+ketika pindah ke folder/workspace baru yang belum punya model sendiri, model
+itu dipakai otomatis tanpa perlu memilih ulang (selama valid untuk provider
+aktif).
 
 ### 🔢 Kode keluar
 

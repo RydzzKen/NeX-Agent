@@ -51,7 +51,7 @@ import { firstNonEmpty } from "../util/strings.js";
 import { todoHeader, todoLines } from "../util/todos.js";
 import { renderCrossSession, renderUsage } from "./usage.js";
 import { runConnect, describeProvider, defaultBaseURL, resolveProviderKey, providerRefFromArgs } from "./connect.js";
-import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice } from "./models.js";
+import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice, validateFallbackModel } from "./models.js";
 import { TerminalIO } from "./render.js";
 import { Prompter, PROMPT_EOF } from "./prompt.js";
 import { resolveInterrupt } from "./interrupt.js";
@@ -280,6 +280,7 @@ export class ChatApp {
         record?.model,
         this.config.models?.[this.workspace.root],
       ),
+      this.config.defaultModel,
     );
     if (!model) {
       throw new ConfigError(
@@ -336,7 +337,11 @@ export class ChatApp {
     this.providerBaseURL = creds?.baseURL ?? defaultBaseURL(this.providerKey);
   }
 
-  private async resolveModel(provider: ModelProvider, preferred?: string): Promise<ResolvedModel | undefined> {
+  private async resolveModel(
+    provider: ModelProvider,
+    preferred?: string,
+    fallbackDefault?: string,
+  ): Promise<ResolvedModel | undefined> {
     let models: ModelInfo[] = [];
     try {
       models = await provider.listModels();
@@ -344,8 +349,12 @@ export class ChatApp {
       this.logger.warn("provider.list_models_failed", { error: (err as Error).message });
     }
 
-    if (preferred) {
-      return { id: preferred, info: models.find((m) => m.id === preferred) };
+    // defaultModel (global) divalidasi terhadap provider aktif agar model milik
+    // provider lain tidak ikut terbawa; pilihan eksplisit (--model, sesi, atau
+    // per-workspace) tetap dipercaya seperti sebelumnya.
+    const effective = preferred ?? validateFallbackModel(fallbackDefault, models, this.providerKey);
+    if (effective) {
+      return { id: effective, info: models.find((m) => m.id === effective) };
     }
     if (models.length === 0) {
       if (!Boolean(process.stdin.isTTY)) return undefined;

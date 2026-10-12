@@ -26,6 +26,7 @@ import { defaultBaseURL } from "../cli/connect.js";
 import { createWebSearch } from "../util/websearch.js";
 import { isPrivateHost } from "../util/network.js";
 import { createProvider } from "../providers/factory.js";
+import { validateFallbackModel } from "../cli/models.js";
 import { ToolRegistry } from "../tools/registry.js";
 import type { ModelProvider } from "../providers/provider.js";
 import { firstNonEmpty } from "../util/strings.js";
@@ -150,6 +151,7 @@ export class WebApp {
     const model = await this.resolveModel(
       this.provider,
       firstNonEmpty(this.opts.model, this.config.models?.[this.workspace.root]),
+      this.config.defaultModel,
     );
     if (!model) {
       throw new ServerConfigError(
@@ -187,6 +189,7 @@ export class WebApp {
   private async resolveModel(
     provider: ModelProvider,
     preferred?: string,
+    fallbackDefault?: string,
   ): Promise<{ id: string; info?: ModelInfo } | undefined> {
     let models: ModelInfo[] = [];
     try {
@@ -194,7 +197,8 @@ export class WebApp {
     } catch (err) {
       this.logger.warn("provider.list_models_failed", { error: (err as Error).message });
     }
-    if (preferred) return { id: preferred, info: models.find((m) => m.id === preferred) };
+    const effective = preferred ?? validateFallbackModel(fallbackDefault, models, this.providerKey);
+    if (effective) return { id: effective, info: models.find((m) => m.id === effective) };
     if (models.length === 0) return undefined;
     return { id: models[0]!.id, info: models[0] };
   }

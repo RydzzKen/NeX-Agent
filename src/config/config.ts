@@ -43,6 +43,12 @@ export interface AgentConfig {
   /** Model terakhir per workspace (key = path absolut root). */
   models?: Record<string, string>;
   /**
+   * Model fallback global (pilihan terakhir lintas workspace). Dipakai bila
+   * workspace belum punya model sendiri, sehingga pindah folder tidak perlu
+   * memilih model ulang. Hanya dipakai bila valid untuk provider aktif.
+   */
+  defaultModel?: string;
+  /**
    * Tampilkan diff sebagai preview walau konfirmasi disetujui otomatis
    * (allow-all/--yes). Aktifkan bila ingin tetap melihat perubahan saat
    * tidak lagi dikonfirmasi satu per satu.
@@ -81,6 +87,10 @@ export async function saveConfig(patch: Partial<AgentConfig>): Promise<AgentConf
   return merged;
 }
 
+/**
+ * Ingat model untuk sebuah workspace, sekaligus jadikan model global terakhir
+ * (defaultModel) agar pindah folder tidak memaksa memilih ulang.
+ */
 export async function rememberModel(workspaceRoot: string, model: string): Promise<void> {
-  await saveConfig({ models: { [workspaceRoot]: model } });
+  await saveConfig({ models: { [workspaceRoot]: model }, defaultModel: model });
 }

@@ -1,4 +1,5 @@
 import type { ModelInfo } from "../core/types.js";
+import { CUSTOM_PROVIDER_PREFIX } from "../providers/factory.js";
 
 /** Label opsi ke-0 pada daftar model (input nama manual). */
 export const CUSTOM_MODEL_LABEL = "Custom model (ketik manual)";
@@ -11,6 +12,25 @@ export type ModelChoice =
 /** Bersihkan nama model dari spasi tepi dan karakter kontrol (mis. Ctrl+D). */
 export function cleanModelName(raw: string): string {
   return raw.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+}
+
+/**
+ * Sahkan model fallback global (defaultModel) untuk provider aktif.
+ * - Provider custom selalu menerima (nama model bebas, mis. "tes").
+ * - Provider reguler hanya menerima model yang ada di daftarnya.
+ * - Daftar kosong diterima (tidak bisa divalidasi; lebih baik lanjut daripada
+ *   memaksa prompt di sesi non-interaktif).
+ * Mengembalikan undefined bila harus memilih ulang.
+ */
+export function validateFallbackModel(
+  preferred: string | undefined,
+  models: ModelInfo[],
+  providerId: string,
+): string | undefined {
+  if (!preferred) return undefined;
+  if (providerId.startsWith(CUSTOM_PROVIDER_PREFIX)) return preferred;
+  if (models.length === 0) return preferred;
+  return models.some((m) => m.id === preferred) ? preferred : undefined;
 }
 
 /**
