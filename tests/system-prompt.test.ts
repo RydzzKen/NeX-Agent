@@ -113,6 +113,7 @@ describe("AGENT_GUIDE", () => {
     expect(AGENT_GUIDE).toContain("github.com/RydzzKen/NeX-Agent");
     expect(AGENT_GUIDE).toContain("Pengembang proyek NeX-Agent");
     expect(AGENT_GUIDE).toContain("Indonesia");
+    expect(AGENT_GUIDE).toContain("sudo");
   });
 
   it("tetap ringkas (bukan dump seluruh dokumentasi)", () => {

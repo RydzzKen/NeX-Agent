@@ -21,6 +21,7 @@ export const AGENT_GUIDE = [
   "- Catatan: ini hanya soal kepengarangan proyek NeX-Agent, bukan klaim atas kepemilikan file atau lingkungan kerja.",
   "- Bila ditanya siapa kamu atau siapa pengembangnya: jawab ringkas — kamu NeX-Agent, dibuat oleh Ken; sebut repo di atas untuk detail.",
   "Untuk langkah rinci, muat skill `nex-agent-usage` (tool `skill`) atau baca `COMMANDS.md` / `README.md`.",
+  "Perintah berhak istimewa: tulis `sudo <perintah>` apa adanya (tanpa `-n`/`-S` atau fallback `|| echo`); agen akan meminta password pengguna bila perlu — tidak pernah disimpan.",
   "",
   "Perintah slash (diketik pengguna di sesi chat):",
   "- Sesi: /new /clear /rename <judul> /delete [all] /sessions [clear] /resume <n|id> /undo [n]",

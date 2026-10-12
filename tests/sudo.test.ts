@@ -113,6 +113,11 @@ describe("helper sudo", () => {
     expect(withSudoStdin("echo sudo")).toBe("echo sudo");
   });
 
+  it("membuang -n saat menyiapkan retry agar sudo membaca password", () => {
+    expect(withSudoStdin("sudo -n id")).toBe("sudo -S -k id");
+    expect(withSudoStdin("sudo -n id 2>&1 || echo x")).toBe("sudo -S -k id 2>&1 || echo x");
+  });
+
   it("menyisipkan -n pada sudo terdepan saja (tanpa menggantung di TTY)", () => {
     expect(withSudoNonInteractive("sudo whoami")).toBe("sudo -n whoami");
     expect(withSudoNonInteractive("  sudo ls")).toBe("  sudo -n ls");
@@ -148,6 +153,30 @@ describe("run_shell + sudo", () => {
       const lines = (await fs.readFile(log, "utf8")).trim().split("\n");
       expect(lines[0]).toBe("-n whoami");
       expect(lines[1]).toBe("-S -k whoami");
+    } finally {
+      delete process.env.SUDO_LOG;
+    }
+  });
+
+  it("tetap minta password walau model pakai `-n`, `2>&1`, dan `|| echo`", async () => {
+    const log = path.join(root, "sudo.log");
+    process.env.SUDO_LOG = log;
+    try {
+      const spy = vi.fn(async () => PASSWORD);
+      const ctx = makeContext(spy);
+
+      const result = await runShellTool.execute(
+        { command: "sudo -n id 2>&1 || echo fallback" },
+        ctx,
+      );
+
+      expect(spy).toHaveBeenCalledTimes(1);
+      const lines = (await fs.readFile(log, "utf8")).trim().split("\n");
+      // Probe kita menambah -n (jadi -n -n id); retry memakai -S -k tanpa -n.
+      expect(lines[0]).toBe("-n -n id");
+      expect(lines[1]).toBe("-S -k id");
+      expect(result.ok).toBe(true);
+      expect(result.content).not.toContain(PASSWORD);
     } finally {
       delete process.env.SUDO_LOG;
     }

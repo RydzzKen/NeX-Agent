@@ -111,9 +111,15 @@ export function sudoNeedsPassword(command: string, stderr: string): boolean {
   );
 }
 
-/** Sisipkan `-S -k` pada `sudo` terdepan agar membaca password dari stdin. */
+/**
+ * Sisipkan `-S -k` pada `sudo` terdepan agar membaca password dari stdin, dan
+ * buang `-n` yang menghalangi (baik dari model maupun probe kita) supaya sudo
+ * benar-benar membaca password.
+ */
 export function withSudoStdin(command: string): string {
-  return command.replace(/^(\s*)sudo\b/, "$1sudo -S -k");
+  return command
+    .replace(/^(\s*)sudo\b/, "$1sudo -S -k")
+    .replace(/^(\s*sudo(?:\s+-\S+)*?)\s+-n\b/, "$1");
 }
 
 /**
@@ -128,7 +134,7 @@ export function withSudoNonInteractive(command: string): string {
 export const runShellTool: ToolDefinition<typeof schema> = {
   name: "run_shell",
   description:
-    "Jalankan perintah shell. Perintah read-only boleh tanpa konfirmasi; mutating butuh persetujuan; berbahaya diblokir.",
+    "Jalankan perintah shell. Perintah read-only boleh tanpa konfirmasi; mutating butuh persetujuan; berbahaya diblokir. Untuk perintah berhak istimewa, tulis `sudo <perintah>` apa adanya (tanpa `-n`/`-S` atau fallback `|| echo`) — password akan diminta ke pengguna bila perlu.",
   risk: "mutate",
   schema,
   summarize: (i) => (i.command.length > 60 ? i.command.slice(0, 57) + "..." : i.command),
@@ -182,12 +188,14 @@ export const runShellTool: ToolDefinition<typeof schema> = {
     let result = await runShell(probe, timeoutMs, ctx.workspace.root, ctx.signal);
 
     // sudo tanpa TTY gagal meminta password; tawarkan input sesaat (masked).
+    // Deteksi dari gabungan stdout+stderr (bukan exit code) karena model kadang
+    // menambahkan `2>&1` atau fallback `|| echo` yang menyamarkan kegagalan.
+    const combinedOutput = `${result.stderr}\n${result.stdout}`;
     if (
       ctx.requestSecret &&
       !result.timedOut &&
       !result.aborted &&
-      result.code !== 0 &&
-      sudoNeedsPassword(input.command, result.stderr)
+      sudoNeedsPassword(input.command, combinedOutput)
     ) {
       const password = await ctx.requestSecret({
         kind: "sudo",
