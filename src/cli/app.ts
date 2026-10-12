@@ -56,6 +56,7 @@ import { TerminalIO } from "./render.js";
 import { Prompter, PROMPT_EOF } from "./prompt.js";
 import { resolveInterrupt } from "./interrupt.js";
 import { formatResumePreview } from "./resume_preview.js";
+import { restartArgs } from "./restart_args.js";
 import { describeUpdate, describeUpdateAvailable, describeUpdateSuccess, runUpdate } from "./update.js";
 import { createWebServer, isLoopbackHost, reachableUrl, type WebServerHandle } from "../server/server.js";
 import { ServerConfigError } from "../server/webapp.js";
@@ -131,7 +132,7 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/memory [add|forget|clear]", "memori jangka panjang tentang pengguna (lihat/tambah/hapus)"],
   ["/web [lan|stop]", "nyalakan server web (lan = buka ke jaringan) / hentikan"],
   ["/telegram [start|stop|restart|status|logs|token|allow]", "kelola bot Telegram (daemon latar belakang)"],
-  ["/update [--stash]", "perbarui NeX-Agent dari repo git (--stash: simpan perubahan lokal sementara)"],
+  ["/update [--stash]", "perbarui NeX-Agent dari repo git, lalu tawarkan restart (--stash: simpan perubahan lokal sementara)"],
   ["/restart", "jalankan ulang NeX-Agent untuk menerapkan versi baru"],
   ["/exit", "keluar dari sesi chat (atau Ctrl+D)"],
   ["/help", "bantuan"],
@@ -1317,6 +1318,7 @@ export class ChatApp {
           "Perubahan lokal bentrok saat dipulihkan; selesaikan konflik lalu commit (git status).",
         );
       }
+      await this.offerRestartAfterUpdate();
       return;
     }
     if (outcome.status === "error") {
@@ -1327,20 +1329,43 @@ export class ChatApp {
   }
 
   /**
-   * Jalankan ulang proses CLI (`/restart`) agar `dist/` terbaru hasil update
-   * dimuat. Proses ini menyerahkan kontrol ke proses baru dengan stdio yang sama,
-   * lalu keluar mengikuti kode keluar proses baru tersebut.
+   * Tawarkan memuat ulang proses tepat setelah update sukses agar versi baru
+   * langsung dipakai tanpa harus mengingat `/restart`. Sesi aktif diteruskan
+   * lewat `--resume`, jadi konteks tidak hilang. Hanya untuk sesi interaktif.
    */
-  private async commandRestart(): Promise<void> {
+  private async offerRestartAfterUpdate(): Promise<void> {
+    if (this.opts.json || !process.stdin.isTTY) return;
+    const answer = (await this.prompter.question("Muat ulang sekarang untuk menerapkan? (y/N): "))
+      .trim()
+      .toLowerCase();
+    if (answer === "y" || answer === "ya") {
+      await this.restartProcess();
+      return;
+    }
+    this.io.info("Diterapkan saat kamu menjalankan /restart berikutnya.");
+  }
+
+  /**
+   * Jalankan ulang proses CLI (`/restart` atau setelah `/update`) agar `dist/`
+   * terbaru dimuat, tetap di sesi yang sama. Sesi disimpan lebih dulu supaya
+   * konteks tidak hilang, lalu kontrol diserahkan ke proses baru dengan stdio
+   * yang sama; proses ini keluar mengikuti kode keluar proses baru.
+   */
+  private async restartProcess(): Promise<void> {
     this.io.info("Menjalankan ulang NeX-Agent untuk menerapkan versi terbaru...");
+    await this.saveRecord();
     await this.close();
-    const args = process.argv.slice(1);
+    const args = restartArgs(process.argv.slice(1), this.record.id);
     const child = spawn(process.execPath, args, { stdio: "inherit" });
     child.on("exit", (code) => process.exit(code ?? 0));
     child.on("error", (err) => {
       process.stderr.write(`Gagal menjalankan ulang: ${err.message}\n`);
       process.exit(1);
     });
+  }
+
+  private async commandRestart(): Promise<void> {
+    await this.restartProcess();
   }
 
   /**

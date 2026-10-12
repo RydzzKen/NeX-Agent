@@ -447,9 +447,11 @@ Cocok untuk memperbaiki instalasi yang macet; untuk update sehari-hari lebih ama
 > Launcher `~/.local/bin/agent` (symlink ke `dist/index.js`) akan dialihkan ke folder
 > instalasi, dan tanpa perlindungan `rm` launcher bisa menimpa berkas dev lewat symlink.
 
-Setelah update selesai, jalankan **`/restart`**: di chat/terminal ia menjalankan
-ulang proses agar `dist/` terbaru dimuat; di Telegram ia menyalakan ulang worker,
-sehingga versi baru langsung terpakai.
+Setelah update sukses, di CLI kamu **ditawari memuat ulang** ("Muat ulang sekarang
+untuk menerapkan? (y/N)"). Menjawab `y` menjalankan ulang proses agar `dist/`
+terbaru dimuat **tetap di sesi yang sama** (diteruskan lewat `--resume`, jadi
+konteks tidak hilang); menjawab `N` menunda ke **`/restart`** berikutnya. Di
+Telegram, `/restart` menyalakan ulang worker sehingga versi baru langsung terpakai.
 
 ### 🗑️ Uninstall
 

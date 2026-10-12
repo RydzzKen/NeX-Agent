@@ -121,7 +121,8 @@ agent uninstall [--purge --yes]
 - `/update` menarik commit terbaru + `pnpm install` + build, dengan konfirmasi.
 - `--stash` menyimpan perubahan lokal sementara (termasuk file baru). Update
   dibatalkan bila ada perubahan lokal tanpa `--stash` atau riwayat bercabang.
-- Setelah update: `/restart` agar `dist/` terbaru dimuat.
+- Setelah update sukses, CLI menawarkan memuat ulang (`y`) — tetap di sesi ini
+  lewat `--resume`; atau `/restart` kapan saja agar `dist/` terbaru dimuat.
 - `uninstall --purge --yes` juga menghapus `~/.config/agent` + sumber terpasang.
 
 ## 8. Sesi & model
