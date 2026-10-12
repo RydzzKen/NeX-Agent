@@ -1,4 +1,5 @@
 import type { WebSearchFn } from "../tools/types.js";
+import { decodeEntities, stripTags } from "./html.js";
 
 export interface SearchHit {
   title: string;
@@ -19,6 +20,7 @@ export interface WebSearchOptions {
 }
 
 const DDG_ENDPOINT = "https://api.duckduckgo.com/";
+const DDG_HTML_ENDPOINT = "https://html.duckduckgo.com/html/";
 const BRAVE_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_RESULTS = 10;
@@ -109,8 +111,12 @@ interface FetchOptions {
   headers?: Record<string, string>;
 }
 
-/** GET JSON dengan batas waktu; menghormati `signal` pemanggil. */
-async function fetchJson<T>(url: string, signal: AbortSignal, opts: FetchOptions = {}): Promise<T> {
+/** GET dengan batas waktu; menghormati `signal` pemanggil. Mengembalikan teks. */
+async function requestText(
+  url: string,
+  signal: AbortSignal,
+  opts: FetchOptions & { accept?: string } = {},
+): Promise<string> {
   const impl = opts.fetchImpl ?? fetch;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
@@ -118,15 +124,24 @@ async function fetchJson<T>(url: string, signal: AbortSignal, opts: FetchOptions
   signal.addEventListener("abort", onAbort, { once: true });
   try {
     const response = await impl(url, {
-      headers: { "user-agent": USER_AGENT, accept: "application/json", ...opts.headers },
+      headers: {
+        "user-agent": USER_AGENT,
+        accept: opts.accept ?? "application/json",
+        ...opts.headers,
+      },
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return (await response.json()) as T;
+    return await response.text();
   } finally {
     clearTimeout(timer);
     signal.removeEventListener("abort", onAbort);
   }
+}
+
+/** GET JSON dengan batas waktu; menghormati `signal` pemanggil. */
+async function fetchJson<T>(url: string, signal: AbortSignal, opts: FetchOptions = {}): Promise<T> {
+  return JSON.parse(await requestText(url, signal, opts)) as T;
 }
 
 function withQuery(endpoint: string, query: string, extra = ""): string {
@@ -135,7 +150,7 @@ function withQuery(endpoint: string, query: string, extra = ""): string {
 }
 
 /** DuckDuckGo Instant Answer API (tanpa kunci, best-effort). */
-export async function searchDuckDuckGo(
+export async function searchDuckDuckGoInstant(
   query: string,
   signal: AbortSignal,
   fetchImpl: typeof fetch = fetch,
@@ -143,6 +158,103 @@ export async function searchDuckDuckGo(
   const url = withQuery(DDG_ENDPOINT, query, "&format=json&no_html=1&no_redirect=1");
   const payload = await fetchJson<DdgPayload>(url, signal, { fetchImpl });
   return parseDuckDuckGo(payload, query);
+}
+
+/** Regex anchor HTML (untuk parsing halaman hasil DuckDuckGo). */
+const ANCHOR_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+
+function attrValue(attrs: string, name: string): string | undefined {
+  const double = new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, "i").exec(attrs);
+  if (double) return double[1];
+  const single = new RegExp(`\\b${name}\\s*=\\s*'([^']*)'`, "i").exec(attrs);
+  return single?.[1];
+}
+
+/** Jadikan href DuckDuckGo (redirect `.../l/?uddg=...`) sebagai URL asli. */
+function unwrapDdgHref(href: string): string {
+  let out = decodeEntities(href).trim();
+  if (out.startsWith("//")) out = `https:${out}`;
+  try {
+    const uddg = new URL(out).searchParams.get("uddg");
+    if (uddg) return uddg;
+  } catch {
+    // bukan URL absolut; biarkan apa adanya
+  }
+  return out;
+}
+
+function cleanText(html: string): string {
+  return decodeEntities(stripTags(html)).replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Parse halaman hasil DuckDuckGo HTML (`html.duckduckgo.com`) menjadi daftar
+ * hasil. Murni & teruji; snippet dipasangkan ke hasil terdekat sebelumnya.
+ */
+export function parseDuckDuckGoHtml(html: string): SearchHit[] {
+  const hits: SearchHit[] = [];
+  const seen = new Set<string>();
+  let current: SearchHit | undefined;
+  ANCHOR_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = ANCHOR_RE.exec(html))) {
+    const attrs = match[1] ?? "";
+    const cls = attrValue(attrs, "class") ?? "";
+    if (/\bresult__a\b/.test(cls)) {
+      const href = attrValue(attrs, "href");
+      const link = href ? unwrapDdgHref(href) : "";
+      if (!link || seen.has(link)) {
+        current = undefined;
+        continue;
+      }
+      seen.add(link);
+      current = { title: cleanText(match[2] ?? "") || link, url: link };
+      hits.push(current);
+      if (hits.length >= MAX_RESULTS) break;
+    } else if (/\bresult__snippet\b/.test(cls) && current && !current.snippet) {
+      const snippet = cleanText(match[2] ?? "");
+      if (snippet) current.snippet = snippet;
+    }
+  }
+  return hits;
+}
+
+/** Halaman hasil DuckDuckGo HTML (tanpa kunci, hasil web penuh). */
+export async function searchDuckDuckGoHtml(
+  query: string,
+  signal: AbortSignal,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SearchHit[]> {
+  const html = await requestText(withQuery(DDG_HTML_ENDPOINT, query), signal, {
+    fetchImpl,
+    accept: "text/html,application/xhtml+xml",
+  });
+  return parseDuckDuckGoHtml(html);
+}
+
+/**
+ * DuckDuckGo tanpa kunci: coba Instant Answer dulu, lalu jatuh ke halaman HTML
+ * bila kosong. Error Instant Answer dikembalikan hanya bila fallback pun gagal,
+ * sehingga pencarian yang tak menemukan apa pun tidak dianggap error.
+ */
+export async function searchDuckDuckGo(
+  query: string,
+  signal: AbortSignal,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SearchHit[]> {
+  let instantError: unknown;
+  try {
+    const hits = await searchDuckDuckGoInstant(query, signal, fetchImpl);
+    if (hits.length > 0) return hits;
+  } catch (err) {
+    instantError = err;
+  }
+  try {
+    return await searchDuckDuckGoHtml(query, signal, fetchImpl);
+  } catch {
+    if (instantError) throw instantError;
+    return [];
+  }
 }
 
 /** Endpoint JSON generik yang membalas `{ results: [...] }` (mis. SearXNG). */
@@ -194,7 +306,7 @@ export async function searchBrave(
  *
  * - `provider: "brave"` — Brave Search API (kunci dari `apiKey` atau `BRAVE_API_KEY`).
  * - `provider: "searxng"` — instance SearXNG, wajib `url`.
- * - `provider: "duckduckgo"` — Instant Answer API (default).
+ * - `provider: "duckduckgo"` — Instant Answer API + fallback halaman HTML (default).
  * - `url` tanpa `provider` — endpoint JSON generik `{ results: [...] }`.
  */
 export function createWebSearch(options: WebSearchOptions = {}): WebSearchFn {

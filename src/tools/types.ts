@@ -49,6 +49,11 @@ export interface ToolContext {
    * dipakai di sesi berjalan tanpa perlu memulai ulang.
    */
   registerSkill?(skill: Skill): void | Promise<void>;
+  /**
+   * Bangun ulang system prompt setelah memori jangka panjang berubah (mis. oleh
+   * tool memory) agar fakta baru langsung terpakai di sesi berjalan.
+   */
+  refreshMemory?(): void | Promise<void>;
   /** Selesaikan dan cek izin akses path; melempar ToolDeniedError bila ditolak. */
   resolvePath(raw: string, access: AccessKind): Promise<ResolvedPath>;
   /** Minta persetujuan; `allowAll` mengizinkan opsi "setujui semua". */

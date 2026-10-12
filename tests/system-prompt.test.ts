@@ -8,6 +8,7 @@ import {
   modeDirective,
 } from "../src/memory/system_prompt.js";
 import { AGENT_GUIDE } from "../src/memory/self_guide.js";
+import { writeFacts } from "../src/memory/long_term.js";
 
 let root: string;
 
@@ -73,6 +74,20 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("/mcp");
     expect(prompt).toContain("nex-agent-usage");
     expect(prompt).toContain("~/.config/agent");
+  });
+
+  it("menyuntik memori jangka panjang tentang pengguna", async () => {
+    await writeFacts(root, [
+      { key: "nama", value: "Rydz", updatedAt: "2026-01-01T00:00:00.000Z" },
+    ]);
+    const prompt = await buildSystemPrompt({
+      workspaceRoot: root,
+      globalConfigDir: root,
+      skills: [],
+      skillsEnabled: false,
+    });
+    expect(prompt).toContain("Memori jangka panjang");
+    expect(prompt).toContain("- nama: Rydz");
   });
 });
 

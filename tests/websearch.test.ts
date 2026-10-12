@@ -3,7 +3,9 @@ import {
   createWebSearch,
   normalizeHits,
   parseDuckDuckGo,
+  parseDuckDuckGoHtml,
   searchDuckDuckGo,
+  searchDuckDuckGoHtml,
 } from "../src/util/websearch.js";
 
 describe("parseDuckDuckGo", () => {
@@ -199,5 +201,100 @@ describe("createWebSearch", () => {
       if (saved === undefined) delete process.env.BRAVE_API_KEY;
       else process.env.BRAVE_API_KEY = saved;
     }
+  });
+});
+
+const DDG_HTML_RESULTS =
+  '<div class="result"><h2><a rel="nofollow" class="result__a" ' +
+  'href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fzod.dev%2F&rut=abc">Zod &amp; TypeScript</a></h2>' +
+  '<a class="result__snippet" href="https://zod.dev">Validasi skema.</a></div>' +
+  '<div class="result"><h2><a class="result__a" href="https://vitest.dev/">Vitest</a></h2>' +
+  '<a class="result__snippet">Test runner cepat.</a></div>';
+
+describe("parseDuckDuckGoHtml", () => {
+  it("membuka URL redirect uddg dan memasangkan snippet", () => {
+    const hits = parseDuckDuckGoHtml(DDG_HTML_RESULTS);
+    expect(hits).toEqual([
+      { title: "Zod & TypeScript", url: "https://zod.dev/", snippet: "Validasi skema." },
+      { title: "Vitest", url: "https://vitest.dev/", snippet: "Test runner cepat." },
+    ]);
+  });
+
+  it("mengabaikan duplikat dan anchor tanpa href", () => {
+    const html =
+      '<a class="result__a" href="https://a.example">A</a>' +
+      '<a class="result__a">tanpa href</a>' +
+      '<a class="result__a" href="https://a.example">A dup</a>';
+    expect(parseDuckDuckGoHtml(html).map((h) => h.url)).toEqual(["https://a.example"]);
+  });
+
+  it("mengembalikan kosong bila tidak ada hasil", () => {
+    expect(parseDuckDuckGoHtml("<div>kosong</div>")).toEqual([]);
+  });
+});
+
+describe("searchDuckDuckGoHtml", () => {
+  it("memanggil endpoint HTML DuckDuckGo dengan query terenkode", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+      expect(String(url)).toContain("html.duckduckgo.com");
+      expect(String(url)).toContain("q=zod%20trpc");
+      expect((init?.headers as Record<string, string>).accept).toContain("text/html");
+      return new Response(DDG_HTML_RESULTS, { status: 200 });
+    });
+    const hits = await searchDuckDuckGoHtml(
+      "zod trpc",
+      new AbortController().signal,
+      fetchMock as unknown as typeof fetch,
+    );
+    expect(hits).toHaveLength(2);
+    expect(hits[0]?.url).toBe("https://zod.dev/");
+  });
+});
+
+describe("searchDuckDuckGo fallback", () => {
+  it("jatuh ke halaman HTML saat Instant Answer kosong", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).includes("api.duckduckgo.com")) {
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      return new Response(DDG_HTML_RESULTS, { status: 200 });
+    });
+    const hits = await searchDuckDuckGo(
+      "zod",
+      new AbortController().signal,
+      fetchMock as unknown as typeof fetch,
+    );
+    expect(hits.map((h) => h.url)).toEqual(["https://zod.dev/", "https://vitest.dev/"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("tidak memanggil HTML bila Instant Answer sudah berisi hasil", async () => {
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ Heading: "TS", AbstractURL: "https://example.com/ts" }), {
+        status: 200,
+      }),
+    );
+    const hits = await searchDuckDuckGo(
+      "ts",
+      new AbortController().signal,
+      fetchMock as unknown as typeof fetch,
+    );
+    expect(hits).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("mengembalikan kosong (bukan error) bila keduanya kosong", async () => {
+    const fetchMock = vi.fn(async (url: string | URL | Request) => {
+      if (String(url).includes("api.duckduckgo.com")) {
+        return new Response(JSON.stringify({}), { status: 200 });
+      }
+      return new Response("<div>kosong</div>", { status: 200 });
+    });
+    const hits = await searchDuckDuckGo(
+      "tak ada",
+      new AbortController().signal,
+      fetchMock as unknown as typeof fetch,
+    );
+    expect(hits).toEqual([]);
   });
 });

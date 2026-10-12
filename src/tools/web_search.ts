@@ -25,8 +25,8 @@ export const webSearchTool: ToolDefinition<typeof schema> = {
         return {
           content:
             `Tidak ada hasil untuk: ${input.query}. ` +
-            "Backend bawaan hanya DuckDuckGo Instant Answer (jawaban instan), bukan hasil web penuh. " +
-            'Untuk pencarian web penuh, setel "searchProvider" ("searxng" atau "brave") dan "searchUrl"/BRAVE_API_KEY di config.json.',
+            "Coba kueri yang lebih spesifik, atau buka URL langsung dengan tool web_fetch. " +
+            'Backend bawaan (DuckDuckGo) bisa ditingkatkan dengan "searchProvider" ("searxng" atau "brave") dan "searchUrl"/BRAVE_API_KEY di config.json.',
         };
       }
       const content = results

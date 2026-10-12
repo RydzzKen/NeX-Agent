@@ -9,6 +9,8 @@ import { editFileTool } from "./edit_file.js";
 import { listDirTool } from "./list_dir.js";
 import { runShellTool } from "./run_shell.js";
 import { webSearchTool } from "./web_search.js";
+import { webFetchTool } from "./web_fetch.js";
+import { memoryTool } from "./memory.js";
 import { todoWriteTool } from "./todo_write.js";
 import { skillTool } from "./skill.js";
 import { skillWriteTool } from "./skill_write.js";
@@ -24,6 +26,8 @@ export const allTools: AnyTool[] = [
   listDirTool,
   runShellTool,
   webSearchTool,
+  webFetchTool,
+  memoryTool,
   todoWriteTool,
   skillTool,
   skillWriteTool,

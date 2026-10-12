@@ -234,6 +234,7 @@ export class WebApp {
         search: createWebSearch({ provider: this.config.searchProvider, url: this.config.searchUrl }),
         skills: this.skills,
         registerSkill: (skill) => this.registerSkill(skill),
+        refreshMemory: () => this.refreshMemory(),
         onUsage: (event) => this.usageStore.append(event),
         sessionId: this.record.id,
       },
@@ -293,6 +294,12 @@ export class WebApp {
     if (index >= 0) this.skills[index] = skill;
     else this.skills.push(skill);
     await this.applySkills();
+  }
+
+  /** Dipanggil tool `memory`: bangun ulang prompt agar fakta baru langsung terpakai. */
+  private async refreshMemory(): Promise<void> {
+    await this.rebuildSystemPrompt();
+    this.session.setSystemPrompt(this.baseSystemPrompt);
   }
 
   private async saveRecord(): Promise<void> {

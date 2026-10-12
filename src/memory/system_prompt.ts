@@ -1,5 +1,6 @@
 import { loadAgentsMd } from "./agents_md.js";
 import { formatSkillsForPrompt, type Skill } from "./skills.js";
+import { formatFacts, readFacts } from "./long_term.js";
 import { AGENT_GUIDE } from "./self_guide.js";
 import type { Mode } from "../core/types.js";
 
@@ -52,12 +53,14 @@ export async function buildSystemPrompt(input: SystemPromptInput): Promise<strin
     workspaceRoot: input.workspaceRoot,
     globalConfigDir: input.globalConfigDir,
   });
+  const facts = formatFacts(await readFacts(input.globalConfigDir));
   const rules = [
     "- Selalu jawab setiap tool call dengan memanggil tool; jangan mengarang hasil.",
     "- Patuhi mode yang tertera pada direktif \"Mode saat ini\" di konteks; jangan mengira-ngira mode.",
     "- Buat perubahan kecil dan terarah; jangan mengubah file di luar tugas.",
     "- Perubahan file memerlukan persetujuan dan menampilkan diff; jelaskan alasan singkat.",
     "- Untuk tugas berlapis, pakai tool todo_write untuk mencatat rencana sebagai checklist, lalu perbarui statusnya (pending/in_progress/completed) seiring kemajuan.",
+    "- Simpan fakta pribadi yang stabil tentang pengguna (nama, hobi, preferensi) lewat tool `memory` saat relevan; jangan pernah menyimpan kredensial/rahasia.",
     "- Jangan pernah menulis kredensial ke file atau output.",
   ];
   if (input.skillsEnabled) {
@@ -74,9 +77,12 @@ export async function buildSystemPrompt(input: SystemPromptInput): Promise<strin
     ...rules,
   ].join("\n");
   const base = memory.content ? `${header}\n\n# Konteks proyek (AGENTS.md)\n${memory.content}` : header;
+  const withMemory = facts
+    ? `${base}\n\n# Memori jangka panjang (tentang pengguna)\n${facts}`
+    : base;
   // Peta fitur sendiri (murah, statis) agar model tidak menjelajah kode untuk
   // menjawab pertanyaan tentang NeX-Agent. Detail menyusul lewat skill/berkas.
-  const withGuide = `${base}\n\n${AGENT_GUIDE}`;
+  const withGuide = `${withMemory}\n\n${AGENT_GUIDE}`;
   const skillsSection = formatSkillsForPrompt(input.skills);
   return skillsSection ? `${withGuide}\n\n${skillsSection}` : withGuide;
 }

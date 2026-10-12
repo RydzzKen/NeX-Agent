@@ -16,6 +16,14 @@ import { PermissionManager } from "../safety/permissions.js";
 import { createWorkspace, type Workspace } from "../safety/workspace.js";
 import { discoverSkills, type Skill } from "../memory/skills.js";
 import { installSkillViaSkillui, parseSkillInstallTokens } from "../memory/skillui.js";
+import {
+  findFact,
+  looksSecret,
+  readFacts,
+  removeFact,
+  upsertFact,
+  writeFacts,
+} from "../memory/long_term.js";
 import { buildSystemPrompt } from "../memory/system_prompt.js";
 import { CredentialStore } from "../config/credentials.js";
 import { McpManager } from "../plugins/manager.js";
@@ -120,6 +128,7 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
   ["/mcp [add|remove|reload|key|presets]", "status server MCP; tambah preset, muat ulang, atau atur API key"],
   ["/todos", "tampilkan daftar tugas (checklist)"],
+  ["/memory [add|forget|clear]", "memori jangka panjang tentang pengguna (lihat/tambah/hapus)"],
   ["/web [lan|stop]", "nyalakan server web (lan = buka ke jaringan) / hentikan"],
   ["/telegram [start|stop|restart|status|logs|token|allow]", "kelola bot Telegram (daemon latar belakang)"],
   ["/update [--stash]", "perbarui NeX-Agent dari repo git (--stash: simpan perubahan lokal sementara)"],
@@ -408,6 +417,12 @@ export class ChatApp {
     await this.applySkills();
   }
 
+  /** Dipanggil tool `memory`: bangun ulang prompt agar fakta baru langsung terpakai. */
+  private async refreshMemory(): Promise<void> {
+    await this.buildSystemPrompt();
+    this.session.setSystemPrompt(this.composeSystemPrompt());
+  }
+
   /** System prompt dasar + skill yang diaktifkan manual lewat `/skill`. */
   private composeSystemPrompt(): string {
     let prompt = this.baseSystemPrompt;
@@ -449,6 +464,7 @@ export class ChatApp {
         search: createWebSearch({ provider: this.config.searchProvider, url: this.config.searchUrl }),
         skills: this.skills,
         registerSkill: (skill) => this.registerSkill(skill),
+        refreshMemory: () => this.refreshMemory(),
         onUsage: (event) => this.usageStore.append(event),
         sessionId: this.record.id,
       },
@@ -679,6 +695,9 @@ export class ChatApp {
         return "continue";
       case "/todos":
         this.commandTodos();
+        return "continue";
+      case "/memory":
+        await this.commandMemory(args);
         return "continue";
       case "/mcp":
         await this.commandMcp(args);
@@ -1511,6 +1530,59 @@ export class ChatApp {
     );
     for (const line of todoLines(todos)) process.stdout.write(`  ${line}\n`);
     process.stdout.write("\n");
+  }
+
+  private async commandMemory(args: string[]): Promise<void> {
+    const dir = configDir();
+    const sub = args[0];
+
+    if (sub === "forget" && args[1]) {
+      const key = args.slice(1).join(" ");
+      const before = await readFacts(dir);
+      const existed = findFact(before, key);
+      if (!existed) {
+        this.io.warn(`Tidak ada memori dengan key "${key}".`);
+        return;
+      }
+      await writeFacts(dir, removeFact(before, existed.key));
+      await this.refreshMemory();
+      this.io.info(`Dilupakan: ${existed.key}.`);
+      return;
+    }
+
+    if (sub === "add" && args.length >= 3) {
+      const key = args[1]!;
+      const value = args.slice(2).join(" ");
+      if (looksSecret(key) || looksSecret(value)) {
+        this.io.warn("Ditolak: jangan menyimpan kredensial/rahasia di memori.");
+        return;
+      }
+      await writeFacts(dir, upsertFact(await readFacts(dir), key, value));
+      await this.refreshMemory();
+      this.io.info(`Diingat: ${key} = ${value}.`);
+      return;
+    }
+
+    if (sub === "clear") {
+      const before = await readFacts(dir);
+      if (before.length === 0) {
+        this.io.info("Memori sudah kosong.");
+        return;
+      }
+      await writeFacts(dir, []);
+      await this.refreshMemory();
+      this.io.info(`Dihapus ${before.length} fakta memori.`);
+      return;
+    }
+
+    const facts = await readFacts(dir);
+    if (facts.length === 0) {
+      this.io.info('Belum ada memori jangka panjang. Contoh: /memory add hobi coding');
+      return;
+    }
+    process.stdout.write(`\nMemori jangka panjang (${facts.length}):\n`);
+    for (const f of facts) process.stdout.write(`  ${f.key}: ${f.value}\n`);
+    process.stdout.write("\nHapus dengan: /memory forget <key>  ·  /memory clear\n\n");
   }
 
   private async commandMcp(args: string[]): Promise<void> {

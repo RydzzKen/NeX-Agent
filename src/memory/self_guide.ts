@@ -23,7 +23,7 @@ export const AGENT_GUIDE = [
   "- Skill: /skills [install <sumber>] /skill <nama>|off",
   "- MCP: /mcp [add|remove|reload|key|presets]",
   "- Server: /web [lan|stop] /telegram [start|stop|restart|status|logs|token|allow]",
-  "- Lain: /usage [today|week|all|<id>] /todos /update [--stash] /restart /help /exit",
+  "- Lain: /usage [today|week|all|<id>] /todos /memory [add|forget|clear] /update [--stash] /restart /help /exit",
   "",
   "Perintah CLI: `agent [tujuan]` · `agent usage [range]` · `agent logs <id>` · `agent web` · `agent telegram ...` · `agent update` · `agent uninstall`.",
   "",

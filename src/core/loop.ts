@@ -41,6 +41,11 @@ export interface SessionDeps {
    * tool `skill_write`). Diinjeksi oleh CLI/web; core hanya memanggil.
    */
   registerSkill?: (skill: Skill) => void | Promise<void>;
+  /**
+   * Bangun ulang system prompt setelah memori jangka panjang berubah (dipakai
+   * tool `memory`). Diinjeksi oleh CLI/web; core hanya memanggil.
+   */
+  refreshMemory?: () => void | Promise<void>;
   onUsage?: (event: UsageEvent) => void | Promise<void>;
   sleep?: (ms: number) => Promise<void>;
   sessionId?: string;
@@ -192,6 +197,7 @@ export class AgentSession {
       search: this.deps.search,
       skills: this.deps.skills,
       ...(this.deps.registerSkill ? { registerSkill: this.deps.registerSkill } : {}),
+      ...(this.deps.refreshMemory ? { refreshMemory: this.deps.refreshMemory } : {}),
       resolvePath: this.deps.resolvePath,
       confirm: (req, opts) => this.deps.approvals.confirm(req, opts),
       confirmSensitive: (req) => this.deps.approvals.requestSensitiveAccess(req),
