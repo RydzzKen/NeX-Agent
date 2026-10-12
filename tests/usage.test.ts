@@ -37,4 +37,21 @@ describe("usage", () => {
     expect(tracker.perModel()).toHaveLength(2);
     expect(tracker.perModel()[0]!.model).toBe("m1");
   });
+
+  it("merge menggabungkan pemakaian sesi anak ke induk", () => {
+    const parent = new UsageTracker();
+    const child = new UsageTracker();
+    parent.record("fake", "m1", { input: 100, output: 50, cacheRead: 0, cacheWrite: 0 }, { input: 1, output: 2 });
+    child.record("fake", "m1", { input: 1000, output: 500, cacheRead: 0, cacheWrite: 0 }, { input: 1, output: 2 });
+    child.record("fake", "m2", { input: 10, output: 5, cacheRead: 0, cacheWrite: 0 }, undefined);
+
+    parent.merge(child);
+
+    const totals = parent.totals();
+    expect(totals.calls).toBe(3);
+    expect(totals.usage.input).toBe(1110);
+    expect(totals.usage.output).toBe(555);
+    expect(totals.cost).toBeCloseTo(0.0022, 6);
+    expect(parent.perModel()).toHaveLength(2);
+  });
 });

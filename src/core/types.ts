@@ -81,6 +81,30 @@ export interface ModelPricing {
   cacheWrite?: number;
 }
 
+/** Permintaan sesi anak (tool `task`). */
+export interface SubagentPlan {
+  /** Tugas untuk sesi anak. */
+  prompt: string;
+  /** Batas langkah sesi anak (default 12, maks 50). */
+  maxSteps?: number;
+  /** Anggaran biaya sesi anak (USD). */
+  maxCost?: number;
+  /**
+   * True = hanya tool baca yang dipasang dan mode Plan dipakai; satu-satunya
+   * cara menjalankan `task` di mode Plan.
+   */
+  readOnly?: boolean;
+}
+
+/** Hasil sesi anak yang dikembalikan ke induk. */
+export interface SubagentResult {
+  /** Ringkasan teks untuk induk (sudah dipotong agar tidak membanjiri konteks). */
+  summary: string;
+  steps: number;
+  stopReason: StopReason;
+  status: "ok" | "limited";
+}
+
 export interface ModelInfo {
   id: string;
   name?: string;

@@ -17,6 +17,7 @@ import { todoWriteTool } from "./todo_write.js";
 import { skillTool } from "./skill.js";
 import { skillWriteTool } from "./skill_write.js";
 import { skillInstallTool } from "./skill_install.js";
+import { taskTool } from "./task.js";
 
 /** Tool dengan skema yang sudah di-type-erase untuk penyimpanan generik. */
 export type AnyTool = ToolDefinition<z.ZodTypeAny>;
@@ -36,6 +37,7 @@ export const allTools: AnyTool[] = [
   skillTool,
   skillWriteTool,
   skillInstallTool,
+  taskTool,
 ];
 
 export class ToolRegistry {
@@ -75,7 +77,11 @@ export class ToolRegistry {
   /** Tool yang boleh diekspos ke model untuk mode tertentu. */
   forMode(mode: Mode): AnyTool[] {
     const list = this.all();
-    return mode === "plan" ? list.filter((t) => t.risk === "read") : list;
+    // Tool dengan risiko dinamis (riskFor) tetap terlihat di mode Plan: bisa
+    // dipanggil read-only (mis. task readOnly); eksekusi menolak yang mutate.
+    return mode === "plan"
+      ? list.filter((t) => t.risk === "read" || t.riskFor !== undefined)
+      : list;
   }
 
   /** Spesifikasi tool untuk dikirim ke provider. */
@@ -86,4 +92,15 @@ export class ToolRegistry {
       parameters: tool.jsonSchema ?? (zodToJsonSchema(tool.schema) as Record<string, unknown>),
     }));
   }
+}
+
+/**
+ * Registri untuk sesi anak (tool `task`): tanpa tool `task` (kedalaman 1);
+ * bila readOnly, hanya tool baca yang dipasang. Tool MCP bawaan ikut terlihat.
+ */
+export function forkRegistry(parent: ToolRegistry, readOnly: boolean): ToolRegistry {
+  const tools = parent
+    .all()
+    .filter((t) => t.name !== "task" && (!readOnly || t.risk === "read"));
+  return new ToolRegistry(tools);
 }

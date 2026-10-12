@@ -1,7 +1,7 @@
 import type { z } from "zod";
 import type { Logger } from "../logging/logger.js";
 import type { AccessKind, ConfirmDecision, ConfirmRequest, SecretRequest, SensitiveAccessRequest } from "../core/io.js";
-import type { Mode, ToolRisk } from "../core/types.js";
+import type { Mode, SubagentPlan, SubagentResult, ToolRisk } from "../core/types.js";
 import type { TodoItem, TodoStore } from "../core/todos.js";
 import type { Skill } from "../memory/skills.js";
 import type { PermissionManager } from "../safety/permissions.js";
@@ -66,6 +66,11 @@ export interface ToolContext {
    * boleh disimpan.
    */
   requestSecret?(req: SecretRequest): Promise<string | null>;
+  /**
+   * Jalankan sesi anak (tool `task`). Diinjeksi oleh CLI/web; tidak tersedia
+   * di sesi anak (kedalaman 1).
+   */
+  task?(plan: SubagentPlan, signal: AbortSignal): Promise<SubagentResult>;
 }
 
 export interface ToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {
@@ -84,6 +89,13 @@ export interface ToolDefinition<S extends z.ZodTypeAny = z.ZodTypeAny> {
    * dirender lewat hasilnya sendiri (mis. todo_write menggambar checklist).
    */
   control?: boolean;
+  /**
+   * Risiko dinamis berdasarkan argumen (mis. tool `task`: readOnly -> read).
+   * Dipakai penegakan mode Plan dan checkpoint. Bila ada, tool tetap terlihat
+   * di mode Plan (bisa dipanggil read-only), dan eksekusi menilainya per
+   * argumen.
+   */
+  riskFor?(input: z.infer<S>): ToolRisk;
   execute(input: z.infer<S>, ctx: ToolContext): Promise<ToolExecResult>;
   /**
    * Path file yang akan dimutasi tool ini (untuk checkpoint sebelum eksekusi).

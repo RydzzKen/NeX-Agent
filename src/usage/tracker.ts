@@ -71,6 +71,26 @@ export class UsageTracker {
     return [...this.entries.values()].sort((a, b) => b.cost - a.cost || b.calls - a.calls);
   }
 
+  /**
+   * Gabungkan pemakaian sesi lain (anak) ke tracker ini. Dipakai tool `task`
+   * agar biaya subagent ikut dihitung ke total sesi induk.
+   */
+  merge(other: UsageTracker): void {
+    for (const e of other.perModel()) {
+      const key = `${e.provider}\u0000${e.model}`;
+      const entry = this.entries.get(key);
+      if (!entry) {
+        this.entries.set(key, { ...e, usage: { ...e.usage } });
+        continue;
+      }
+      entry.calls += e.calls;
+      entry.usage = addUsage(entry.usage, e.usage);
+      entry.cost += e.cost;
+      entry.costKnown = entry.costKnown || e.costKnown;
+      entry.cacheSaved += e.cacheSaved;
+    }
+  }
+
   reset(): void {
     this.entries.clear();
   }

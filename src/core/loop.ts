@@ -1,6 +1,7 @@
 import path from "node:path";
-import type { Mode, ModelInfo, ModelPricing, NeutralMessage, StopReason, TokenUsage, ToolCallRequest } from "./types.js";
+import type { Mode, ModelInfo, ModelPricing, NeutralMessage, StopReason, SubagentPlan, SubagentResult, TokenUsage, ToolCallRequest } from "./types.js";
 import { EMPTY_USAGE } from "./types.js";
+import { runSubagent } from "./task.js";
 import type { StepInfo } from "./io.js";
 import type { AgentIO } from "./io.js";
 import type { Approvals } from "./approvals.js";
@@ -182,6 +183,20 @@ export class AgentSession {
     this.history.push({ role: "user", content: text });
   }
 
+  /**
+   * Jalankan sesi anak (subagent) dengan konteks kosong — dipakai tool `task`.
+   * Anak memakai provider/model induk, anggaran sendiri, dan pemakaiannya
+   * digabung kembali ke tracker induk. Tool `task` tidak dipasang di anak
+   * (kedalaman 1).
+   */
+  async runTask(plan: SubagentPlan, signal: AbortSignal): Promise<SubagentResult> {
+    return runSubagent(
+      { ...this.deps, model: this.model, modelInfo: this.modelInfo },
+      plan,
+      signal,
+    );
+  }
+
   private contextManager(): ContextManager {
     return new ContextManager(this.modelInfo?.contextWindow);
   }
@@ -198,6 +213,7 @@ export class AgentSession {
       skills: this.deps.skills,
       ...(this.deps.registerSkill ? { registerSkill: this.deps.registerSkill } : {}),
       ...(this.deps.refreshMemory ? { refreshMemory: this.deps.refreshMemory } : {}),
+      task: (plan, signal) => this.runTask(plan, signal),
       resolvePath: this.deps.resolvePath,
       confirm: (req, opts) => this.deps.approvals.confirm(req, opts),
       confirmSensitive: (req) => this.deps.approvals.requestSensitiveAccess(req),
@@ -500,18 +516,6 @@ export class AgentSession {
       return { ...base, content, fingerprint: fingerprint(call.name, call.arguments, content) };
     }
 
-    // Penegakan mode Plan di eksekutor (bukan hanya daftar tool).
-    if (this.mode === "plan" && tool.risk === "mutate") {
-      const content = `Ditolak: tool "${call.name}" tidak diizinkan di mode Plan.`;
-      this.deps.io.warn(content);
-      return {
-        ...base,
-        denied: true,
-        content,
-        fingerprint: fingerprint(call.name, call.arguments, content),
-      };
-    }
-
     // Parse & validasi argumen.
     let input: unknown;
     try {
@@ -534,8 +538,22 @@ export class AgentSession {
       return { ...base, content, fingerprint: fingerprint(call.name, call.arguments, content) };
     }
 
+    // Penegakan mode Plan di eksekutor (bukan hanya daftar tool). Risiko bisa
+    // dinamis (riskFor), mis. tool `task`: readOnly -> read, lain -> mutate.
+    const risk = tool.riskFor ? tool.riskFor(parsed.data) : tool.risk;
+    if (this.mode === "plan" && risk === "mutate") {
+      const content = `Ditolak: tool "${call.name}" tidak diizinkan di mode Plan.`;
+      this.deps.io.warn(content);
+      return {
+        ...base,
+        denied: true,
+        content,
+        fingerprint: fingerprint(call.name, call.arguments, content),
+      };
+    }
+
     // Checkpoint sebelum mutating. Snapshot hanya membaca path absolut internal.
-    if (tool.risk === "mutate" && tool.mutatedPaths) {
+    if (risk === "mutate" && tool.mutatedPaths) {
       const paths = tool
         .mutatedPaths(parsed.data)
         .map((p) => path.resolve(this.deps.workspace.root, p));
@@ -548,7 +566,7 @@ export class AgentSession {
       total: this.maxSteps,
       name: call.name,
       argsSummary: summary,
-      risk: tool.risk,
+      risk,
     };
     const isControl = tool.control === true;
     this.stepCounter++;

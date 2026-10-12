@@ -714,6 +714,23 @@ Keduanya aktif bawaan dan boleh dipakai di mode **Plan**:
 Keduanya melewati `node_modules`, `.git`, `dist`, `coverage`, berkas biner, dan
 berkas lebih dari 2 MB; keluaran dipotong bila melebihi batas.
 
+### 👥 Subagent (`task`)
+
+Tool `task` menjalankan sebagian pekerjaan di **sesi anak dengan konteks kosong**
+dan kembali membawa ringkasan teks — meminimalkan pengotoran konteks sesi utama
+dan memungkinkan eksplorasi/perangkuman yang fokus.
+
+- Argumen: `prompt` (tugas, wajib), `maxSteps` (1–50, default 12), `maxCost`
+  (anggaran USD, opsional), `readOnly` (true = hanya tool baca).
+- **Autonomous**: konfirmasi di dalam workspace disetujui otomatis; akses luar
+  workspace, file sensitif (`.env`, kredensial), dan rahasia (sudo/SSH) selalu
+  ditolak tanpa prompt.
+- **Anggaran terpisah**: langkah & biaya anak dibatasi sendiri; pemakaiannya
+  digabung ke total sesi induk setelah selesai.
+- **Kedalaman 1**: sesi anak tidak bisa memanggil `task` lagi (mencegah rekursi).
+- **Mode Plan**: `task` diblokir kecuali `readOnly: true` (penegakan di kode).
+- `AbortSignal` diwariskan — Ctrl+C menghentikan sesi anak juga.
+
 ### 📌 Memori jangka panjang (`memory`)
 
 Tool `memory` menyimpan **fakta sederhana tentang pengguna** (nama, hobi,
@@ -736,7 +753,7 @@ preferensi, bahasa) agar dikenali lintas sesi. Disimpan sebagai
 src/
   core/        # loop agentik, approvals, checkpoint, context, repetition
   providers/   # ModelProvider + adapter (OpenAI-compatible, Anthropic)
-  tools/       # read_file, write_file, edit_file, list_dir, glob, grep, run_shell, web_search, web_fetch, memory, todo_write, skill, skill_write, skill_install
+  tools/       # read_file, write_file, edit_file, list_dir, glob, grep, run_shell, web_search, web_fetch, memory, todo_write, skill, skill_write, skill_install, task
   safety/      # workspace, permissions, classifier, policy
   sessions/    # penyimpanan sesi
   usage/       # token, biaya, agregasi
