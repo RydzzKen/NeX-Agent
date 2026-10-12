@@ -49,4 +49,27 @@ describe("workspace", () => {
     expect(isInside(root, root)).toBe(true);
     expect(isInside(root, outside)).toBe(false);
   });
+
+  it("tidak menjadikan home root hanya karena package.json nyasar", async () => {
+    const home = path.join(root, "home");
+    const start = path.join(home, "kerja", "bebas");
+    await fs.mkdir(start, { recursive: true });
+    await fs.writeFile(path.join(home, "package.json"), "{}");
+
+    // Dari subfolder tanpa penanda, home ber-`package.json` tidak dipakai root.
+    expect(detectProjectRoot(start, home)).toBe(start);
+    // package.json sah yang berada di workspace biasa tetap dikenali.
+    const proj = path.join(root, "proj");
+    await fs.mkdir(proj, { recursive: true });
+    await fs.writeFile(path.join(proj, "package.json"), "{}");
+    expect(detectProjectRoot(proj, home)).toBe(proj);
+  });
+
+  it("home dengan .git tetap menjadi root", async () => {
+    const home = path.join(root, "home-git");
+    const start = path.join(home, "sub");
+    await fs.mkdir(path.join(home, ".git"), { recursive: true });
+    await fs.mkdir(start, { recursive: true });
+    expect(detectProjectRoot(start, home)).toBe(home);
+  });
 });

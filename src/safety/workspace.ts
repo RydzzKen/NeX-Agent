@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 /** File penanda yang menandai sebuah project root. */
@@ -29,13 +30,22 @@ function markersIn(dir: string): string[] {
 /**
  * Cari project root ke atas dari `startDir`. Root pertama yang punya penanda
  * menang; bila tidak ada, kembalikan `startDir` itu sendiri.
+ *
+ * `package.json` di direktori home diabaikan: berkas seperti itu hampir selalu
+ * peninggalan acak (dependency tanpa `name`/`scripts`), dan menjadikannya root
+ * justru melebarkan batas workspace ke seluruh home. Pencarian berhenti di
+ * home: bila tidak ada penanda yang sah di bawahnya, `startDir` yang dipakai.
  */
-export function detectProjectRoot(startDir: string): string {
+export function detectProjectRoot(startDir: string, home: string = os.homedir()): string {
   let current = path.resolve(startDir);
   const root = path.parse(current).root;
+  const resolvedHome = path.resolve(home);
   for (;;) {
-    if (markersIn(current).length > 0) return current;
-    if (current === root) return path.resolve(startDir);
+    const markers = markersIn(current);
+    const effective =
+      current === resolvedHome ? markers.filter((m) => m !== "package.json") : markers;
+    if (effective.length > 0) return current;
+    if (current === root || current === resolvedHome) return path.resolve(startDir);
     const parent = path.dirname(current);
     if (parent === current) return path.resolve(startDir);
     current = parent;
