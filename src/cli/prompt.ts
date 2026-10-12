@@ -9,6 +9,8 @@ export interface PrompterLike {
   close(): void;
   pause?: () => void;
   resume?: () => void;
+  /** Daftarkan handler Ctrl+C (menggantikan perilaku tutup-default readline). */
+  onInterrupt?: (handler: () => void) => void;
 }
 
 export interface PrompterOptions {
@@ -26,6 +28,8 @@ export class Prompter implements PrompterLike {
   private closed = false;
   private completing = true;
   private pending: ((answer: string) => void) | undefined;
+  private interruptHandler: (() => void) | undefined;
+  private interruptBound = false;
 
   constructor(options: PrompterOptions = {}) {
     this.commands = options.commands ?? [];
@@ -82,11 +86,39 @@ export class Prompter implements PrompterLike {
   pause(): void {
     if (this.closed) return;
     this.rl.pause();
+    // Lepas raw mode agar Ctrl+C menghasilkan SIGINT OS saat readline berhenti
+    // membaca (dipakai selama tugas berjalan). Tanpa ini Ctrl+C tidak terdeteksi.
+    this.setRaw(false);
   }
 
   resume(): void {
     if (this.closed) return;
     this.rl.resume();
+    this.setRaw(true);
+  }
+
+  /**
+   * Daftarkan handler Ctrl+C. Kehadiran listener `SIGINT` di readline membuat
+   * Ctrl+C tidak lagi menutup sesi secara diam-diam; keputusan diserahkan ke
+   * pemanggil (mis. hentikan tugas vs keluar).
+   */
+  onInterrupt(handler: () => void): void {
+    this.interruptHandler = handler;
+    if (this.interruptBound) return;
+    this.interruptBound = true;
+    this.rl.on("SIGINT", () => this.interruptHandler?.());
+  }
+
+  /** Aktifkan/matikan raw mode TTY dengan aman (abaikan bila bukan TTY). */
+  private setRaw(on: boolean): void {
+    const input = process.stdin;
+    if (input.isTTY && typeof input.setRawMode === "function") {
+      try {
+        input.setRawMode(on);
+      } catch {
+        // Terminal tidak mendukung raw mode; abaikan.
+      }
+    }
   }
 
   close(): void {

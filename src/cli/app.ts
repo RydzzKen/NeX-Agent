@@ -46,6 +46,7 @@ import { runConnect, describeProvider, defaultBaseURL } from "./connect.js";
 import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice } from "./models.js";
 import { TerminalIO } from "./render.js";
 import { Prompter, PROMPT_EOF } from "./prompt.js";
+import { resolveInterrupt } from "./interrupt.js";
 import { formatResumePreview } from "./resume_preview.js";
 import { describeUpdate, describeUpdateAvailable, describeUpdateSuccess, runUpdate } from "./update.js";
 import { createWebServer, isLoopbackHost, reachableUrl, type WebServerHandle } from "../server/server.js";
@@ -163,6 +164,11 @@ export class ChatApp {
   private baseSystemPrompt = "";
   /** Base URL provider aktif (untuk banner + peringatan alamat lokal). */
   private providerBaseURL?: string;
+  /** Tugas yang sedang berjalan (untuk Ctrl+C: hentikan lalu keluar). */
+  private activeController?: AbortController;
+  /** Ctrl+C saat menganggur: sekali = minta konfirmasi, dua kali = keluar. */
+  private exitArmed = false;
+  private readonly onSigint = (): void => this.handleInterrupt();
   /** Server web (dinyalakan lewat `/web`) selama proses chat ini hidup. */
   private webServer?: WebServerHandle;
 
@@ -281,6 +287,11 @@ export class ChatApp {
     // Model terakhir diingat per workspace (PRD §7) agar run berikutnya tidak
     // perlu memilih ulang.
     await rememberModel(this.workspace.root, model.id);
+
+    // Ctrl+C: readline menangkapnya di prompt, SIGINT proses menangkapnya saat
+    // tugas berjalan (raw mode dimatikan di Prompter.pause). Keduanya ke handler.
+    this.prompter.onInterrupt(() => this.handleInterrupt());
+    process.on("SIGINT", this.onSigint);
   }
 
   private async ensureProvider(): Promise<void> {
@@ -494,15 +505,15 @@ export class ChatApp {
   async runGoal(goal: string): Promise<number> {
     this.banner();
     const controller = new AbortController();
-    const cleanup = this.installInterrupt(controller);
+    this.activeController = controller;
     let code: number;
     this.io.busy(true);
     try {
       const result = await this.session.run(goal, controller.signal);
       code = exitCodeFor(result.stopReason);
     } finally {
+      this.activeController = undefined;
       this.io.busy(false);
-      cleanup();
       await this.saveRecord();
       await this.close();
     }
@@ -513,9 +524,10 @@ export class ChatApp {
   /** REPL chat interaktif. */
   async runRepl(): Promise<number> {
     this.banner();
-    this.io.info("Ketik /help untuk daftar perintah. Ctrl+C dua kali untuk keluar.");
+    this.io.info("Ketik /help untuk daftar perintah. Ctrl+C menghentikan tugas; dua kali keluar.");
     for (;;) {
       const prompt = `${color.gray("[")}${this.session.getMode()}${color.gray("]")} › `;
+      this.exitArmed = false;
       const line = (await this.prompter.question(`\n${prompt}`)).trim();
       if (line === PROMPT_EOF) break;
       if (line === "") continue;
@@ -525,7 +537,7 @@ export class ChatApp {
         continue;
       }
       const controller = new AbortController();
-      const cleanup = this.installInterrupt(controller);
+      this.activeController = controller;
       this.io.lineBreak();
       this.prompter.pause?.();
       this.io.busy(true);
@@ -533,9 +545,9 @@ export class ChatApp {
         await this.reloadSkills();
         await this.session.run(line, controller.signal);
       } finally {
+        this.activeController = undefined;
         this.io.busy(false);
         this.prompter.resume?.();
-        cleanup();
         await this.saveRecord();
       }
     }
@@ -543,20 +555,39 @@ export class ChatApp {
     return 0;
   }
 
-  private installInterrupt(controller: AbortController): () => void {
-    let count = 0;
-    const handler = (): void => {
-      count++;
-      if (count === 1) {
+  /**
+   * Tangani Ctrl+C.
+   *
+   * - Saat tugas berjalan: tekan pertama hentikan tugas (abort), tekan kedua
+   *   saat masih berhenti memaksa keluar.
+   * - Saat menganggur: tekan pertama minta konfirmasi, tekan kedua keluar.
+   */
+  private handleInterrupt(): void {
+    const controller = this.activeController;
+    const action = resolveInterrupt({
+      running: Boolean(controller),
+      aborting: Boolean(controller?.signal.aborted),
+      exitArmed: this.exitArmed,
+    });
+    switch (action) {
+      case "abort":
         this.io.warn("Menghentikan… (Ctrl+C lagi untuk keluar sekarang)");
-        controller.abort();
-      } else {
+        controller?.abort();
+        return;
+      case "force-exit":
+        // Tugas sedang berhenti dan belum selesai bersih-bersih — paksa keluar.
         process.stdout.write("\n");
         process.exit(130);
-      }
-    };
-    process.on("SIGINT", handler);
-    return () => process.removeListener("SIGINT", handler);
+        return;
+      case "arm-exit":
+        this.exitArmed = true;
+        this.io.warn("Tekan Ctrl+C lagi untuk keluar (atau ketik /exit).");
+        return;
+      case "exit":
+        process.stdout.write("\n");
+        this.prompter.close();
+        return;
+    }
   }
 
   private async handleSlash(line: string): Promise<"continue" | "exit"> {
@@ -1635,6 +1666,7 @@ export class ChatApp {
   }
 
   private async close(): Promise<void> {
+    process.removeListener("SIGINT", this.onSigint);
     // Catatan: bot Telegram dijalankan sebagai daemon terpisah, jadi sengaja
     // TIDAK dihentikan di sini — ia tetap hidup setelah sesi chat ditutup.
     if (this.webServer) {

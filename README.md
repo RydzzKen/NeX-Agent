@@ -212,6 +212,12 @@ provider, dan mode aktif; `/web stop` mematikannya. `/telegram` menyalakan bot
 Telegram mandiri (lihat [Bot Telegram](#telegram)). `/exit` (atau Ctrl+D)
 keluar dari chat (server web ikut berhenti).
 
+**Ctrl+C** — saat tugas sedang berjalan, tekan sekali untuk **menghentikannya**
+(perintah shell yang berjalan ikut dihentikan; sesi tetap tersimpan dan bisa
+dilanjutkan), tekan lagi saat masih berhenti untuk memaksa keluar. Saat
+menganggur di prompt, tekan sekali untuk minta konfirmasi dan sekali lagi untuk
+keluar.
+
 `/models` menampilkan daftar model bernomor dengan opsi `0) Custom model`.
 Ganti model dengan `/models 2`, `/models 0` (lalu ketik nama model manual),
 atau langsung `/models <nama>`. Pilihan model diingat per workspace di

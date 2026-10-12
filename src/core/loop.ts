@@ -226,6 +226,9 @@ export class AgentSession {
       try {
         turn = await this.callModel(signal);
       } catch (err) {
+        // Batal dari pengguna (Ctrl+C) memutus koneksi provider — itu bukan
+        // error provider, jadi laporkan sebagai interupsi yang bersih.
+        if (signal.aborted) return this.interrupt();
         const message = (err as Error).message;
         this.deps.io.error(`Gagal memanggil model: ${message}`);
         this.deps.io.summary("provider_error", message);
@@ -371,36 +374,41 @@ export class AgentSession {
     });
 
     let thinkingOpen = false;
-    for await (const event of stream as AsyncIterable<StreamEvent>) {
-      switch (event.type) {
-        case "text":
-          turn.text += event.text;
-          this.deps.io.text(event.text);
-          break;
-        case "thinking":
-          if (!thinkingOpen) {
-            thinkingOpen = true;
-          }
-          turn.thinking += event.text;
-          this.deps.io.thinking(event.text);
-          break;
-        case "tool_call":
-          turn.toolCalls.push({
-            id: event.call.id,
-            name: event.call.name,
-            arguments: event.call.arguments,
-          });
-          break;
-        case "usage":
-          turn.usage = event.usage;
-          break;
-        case "done":
-          turn.stopReason = event.stopReason;
-          break;
+    try {
+      for await (const event of stream as AsyncIterable<StreamEvent>) {
+        switch (event.type) {
+          case "text":
+            turn.text += event.text;
+            this.deps.io.text(event.text);
+            break;
+          case "thinking":
+            if (!thinkingOpen) {
+              thinkingOpen = true;
+            }
+            turn.thinking += event.text;
+            this.deps.io.thinking(event.text);
+            break;
+          case "tool_call":
+            turn.toolCalls.push({
+              id: event.call.id,
+              name: event.call.name,
+              arguments: event.call.arguments,
+            });
+            break;
+          case "usage":
+            turn.usage = event.usage;
+            break;
+          case "done":
+            turn.stopReason = event.stopReason;
+            break;
+        }
       }
+    } finally {
+      // Tutup blok thinking/teks walau stream diputus (mis. Ctrl+C) agar
+      // renderer tidak tertinggal dalam keadaan terbuka.
+      if (thinkingOpen) this.deps.io.thinkingEnd();
+      this.deps.io.textEnd?.();
     }
-    if (thinkingOpen) this.deps.io.thinkingEnd();
-    this.deps.io.textEnd?.();
     return turn;
   }
 
