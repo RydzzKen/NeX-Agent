@@ -10,6 +10,7 @@ import {
   describeUpdateAvailable,
   describeUpdateSuccess,
   isOwnedLauncher,
+  parsePorcelain,
   resolveSourceDir,
   runUninstall,
   runUpdate,
@@ -96,6 +97,21 @@ describe("isOwnedLauncher", () => {
     const content = `#!/usr/bin/env bash\nexec node "${src}/dist/index.js" "$@"\n`;
     expect(isOwnedLauncher(content, src)).toBe(true);
     expect(isOwnedLauncher("#!/bin/sh\nexec node /other/dist/index.js\n", src)).toBe(false);
+  });
+});
+
+describe("parsePorcelain", () => {
+  it("mengurai status, untracked, dan rename", () => {
+    const text = " M src/index.ts\n?? catatan.md\nR  lama.txt -> baru.txt\n";
+    expect(parsePorcelain(text)).toEqual([
+      { status: " M", path: "src/index.ts" },
+      { status: "??", path: "catatan.md" },
+      { status: "R ", path: "baru.txt" },
+    ]);
+  });
+
+  it("mengabaikan baris kosong dan spasi", () => {
+    expect(parsePorcelain("\n   \n")).toEqual([]);
   });
 });
 
@@ -205,6 +221,8 @@ describe("runUpdate", () => {
     const outcome = await runUpdate({ cwd: dir, runner });
     expect(outcome.status).toBe("dirty");
     expect(outcome.message).toContain("--stash");
+    expect(outcome.message).toContain("src/index.ts");
+    expect(outcome.blocking).toEqual(["src/index.ts"]);
   });
 
   it("dengan --stash: menyimpan perubahan lokal, update, lalu memulihkannya", async () => {

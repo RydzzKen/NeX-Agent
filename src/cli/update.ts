@@ -148,6 +148,8 @@ export interface UpdateOutcome {
   stashed?: boolean;
   /** Perubahan lokal bentrok saat dipulihkan dari stash (perlu diselesaikan manual). */
   stashConflict?: boolean;
+  /** Path lokal yang menghalangi update (status "dirty"). */
+  blocking?: string[];
 }
 
 function shortRev(rev?: string): string {
@@ -201,6 +203,37 @@ export interface UpdateOptions {
   stash?: boolean;
   runner?: CommandRunner;
   log?: (line: string) => void;
+}
+
+export interface DirtyEntry {
+  /** Kode status dua huruf dari git (mis. " M", "??", "R "). */
+  status: string;
+  /** Path relatif terhadap repo tujuan. */
+  path: string;
+}
+
+/** Urai keluaran `git status --porcelain` menjadi daftar entri (fungsi murni). */
+export function parsePorcelain(text: string): DirtyEntry[] {
+  const entries: DirtyEntry[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/\r$/, "");
+    if (line.trim() === "") continue;
+    const status = line.slice(0, 2);
+    let rest = line.slice(3);
+    // Rename/copy: "<lama> -> <baru>" — simpan path tujuan.
+    const arrow = rest.indexOf(" -> ");
+    if (arrow >= 0) rest = rest.slice(arrow + 4);
+    entries.push({ status, path: rest.trim() });
+  }
+  return entries;
+}
+
+/** Rangkai baris daftar berkas penghalang (dipadatkan bila terlalu banyak). */
+function formatBlocking(entries: DirtyEntry[], limit = 10): string {
+  if (entries.length === 0) return "";
+  const lines = entries.slice(0, limit).map((e) => `  ${e.status} ${e.path}`);
+  if (entries.length > limit) lines.push(`  … dan ${entries.length - limit} berkas lain`);
+  return lines.join("\n");
 }
 
 function pnpmInstallArgs(major: number, frozen: boolean): string[] {
@@ -271,16 +304,20 @@ export async function runUpdate(options: UpdateOptions = {}): Promise<UpdateOutc
   }
 
   const dirty = await runner.run("git", ["status", "--porcelain"], { cwd });
-  const isDirty = dirty.stdout.trim().length > 0;
+  const blockingEntries = parsePorcelain(dirty.stdout);
+  const isDirty = blockingEntries.length > 0;
   if (isDirty && !options.stash) {
+    const list = formatBlocking(blockingEntries);
     return {
       status: "dirty",
       branch,
       from,
       to,
+      blocking: blockingEntries.map((e) => e.path),
       message:
-        "Ada perubahan lokal yang belum di-commit; update dibatalkan agar tidak hilang. " +
-        "Commit dulu, atau jalankan '/update --stash' untuk menyimpannya sementara.",
+        "Ada perubahan lokal yang belum di-commit; update dibatalkan agar tidak hilang." +
+        (list ? `\nPerubahan yang menghalangi:\n${list}` : "") +
+        "\nCommit dulu, atau jalankan '/update --stash' untuk menyimpannya sementara.",
     };
   }
 
