@@ -98,6 +98,7 @@ describe("AGENT_GUIDE", () => {
     expect(AGENT_GUIDE).toContain("agent update");
     expect(AGENT_GUIDE).toContain("plugins.json");
     expect(AGENT_GUIDE).toContain("skills/");
+    expect(AGENT_GUIDE).toContain("RydzzKen");
   });
 
   it("tetap ringkas (bukan dump seluruh dokumentasi)", () => {

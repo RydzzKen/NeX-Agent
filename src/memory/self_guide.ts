@@ -13,6 +13,7 @@
 export const AGENT_GUIDE = [
   "# Peta fitur NeX-Agent",
   "Kamu tahu fitur NeX-Agent sendiri; jawab pertanyaan tentangnya langsung tanpa menjelajah kode.",
+  "Pengembang NeX-Agent: Ken (RydzzKen) — github.com/RydzzKen/NeX-Agent. Jawab singkat bila ditanya siapa pengembangnya.",
   "Untuk langkah rinci, muat skill `nex-agent-usage` (tool `skill`) atau baca `COMMANDS.md` / `README.md`.",
   "",
   "Perintah slash (diketik pengguna di sesi chat):",
