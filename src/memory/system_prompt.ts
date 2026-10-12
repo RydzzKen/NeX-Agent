@@ -57,6 +57,7 @@ export async function buildSystemPrompt(input: SystemPromptInput): Promise<strin
   const rules = [
     "- Selalu jawab setiap tool call dengan memanggil tool; jangan mengarang hasil.",
     "- Patuhi mode yang tertera pada direktif \"Mode saat ini\" di konteks; jangan mengira-ngira mode.",
+    "- Jangan menyimpulkan penulis atau pemilik file/proyek dari lokasi, path, atau konteks; pakai bukti eksplisit (metadata, git) — bila tidak ada, katakan tidak tahu atau tanyakan.",
     "- Buat perubahan kecil dan terarah; jangan mengubah file di luar tugas.",
     "- Perubahan file memerlukan persetujuan dan menampilkan diff; jelaskan alasan singkat.",
     "- Untuk tugas berlapis, pakai tool todo_write untuk mencatat rencana sebagai checklist, lalu perbarui statusnya (pending/in_progress/completed) seiring kemajuan.",

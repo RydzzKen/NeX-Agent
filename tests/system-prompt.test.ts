@@ -89,6 +89,17 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("Memori jangka panjang");
     expect(prompt).toContain("- nama: Rydz");
   });
+
+  it("melarang klaim penulis/pemilik tanpa bukti", async () => {
+    const prompt = await buildSystemPrompt({
+      workspaceRoot: root,
+      globalConfigDir: root,
+      skills: [],
+      skillsEnabled: false,
+    });
+    expect(prompt).toContain("Jangan menyimpulkan penulis atau pemilik");
+    expect(prompt).toContain("bukan klaim atas kepemilikan file");
+  });
 });
 
 describe("AGENT_GUIDE", () => {
@@ -100,7 +111,7 @@ describe("AGENT_GUIDE", () => {
     expect(AGENT_GUIDE).toContain("skills/");
     expect(AGENT_GUIDE).toContain("RydzzKen");
     expect(AGENT_GUIDE).toContain("github.com/RydzzKen/NeX-Agent");
-    expect(AGENT_GUIDE).toContain("Pengembang & pemilik");
+    expect(AGENT_GUIDE).toContain("Pengembang proyek NeX-Agent");
     expect(AGENT_GUIDE).toContain("Indonesia");
   });
 
