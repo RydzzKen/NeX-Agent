@@ -32,6 +32,8 @@ export class Prompter implements PrompterLike {
   private pending: ((answer: string) => void) | undefined;
   private interruptHandler: (() => void) | undefined;
   private interruptBound = false;
+  /** Apakah raw mode seharusnya aktif (TTY). Diatur oleh pause/resume. */
+  private rawEnabled = true;
 
   constructor(options: PrompterOptions = {}) {
     this.commands = options.commands ?? [];
@@ -94,11 +96,17 @@ export class Prompter implements PrompterLike {
       }
     };
     this.completing = false;
+    // Paksa raw mode aktif: bila TTY dalam canonical mode (mis. setelah
+    // `pause()` saat tugas berjalan), terminal meng-echo ketikan mentah —
+    // membocorkan rahasia sebelum mask kita menimpanya.
+    const wasRaw = this.rawEnabled;
+    this.setRaw(true);
     try {
       return await this.question(query);
     } finally {
       this.completing = true;
       rl._writeToOutput = original;
+      this.setRaw(wasRaw);
     }
   }
 
@@ -107,12 +115,14 @@ export class Prompter implements PrompterLike {
     this.rl.pause();
     // Lepas raw mode agar Ctrl+C menghasilkan SIGINT OS saat readline berhenti
     // membaca (dipakai selama tugas berjalan). Tanpa ini Ctrl+C tidak terdeteksi.
+    this.rawEnabled = false;
     this.setRaw(false);
   }
 
   resume(): void {
     if (this.closed) return;
     this.rl.resume();
+    this.rawEnabled = true;
     this.setRaw(true);
   }
 
