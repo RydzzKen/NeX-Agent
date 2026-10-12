@@ -368,8 +368,9 @@ export class TerminalIO implements AgentIO {
     if (!ask) return null;
     this.suspendSpinner();
     try {
+      const label = req.kind === "ssh" ? "SSH" : "sudo";
       this.writeContent(
-        `${color.yellow("🔒")} Password sudo untuk: ${req.detail}\n` +
+        `${color.yellow("🔒")} Password ${label} untuk: ${req.detail}\n` +
           `  ${color.gray(req.reason)} Ditampilkan sebagai "*" dan dipakai sekali — tidak disimpan.\n`,
       );
       const value = await ask.call(this.prompter, "  password: ", "*");

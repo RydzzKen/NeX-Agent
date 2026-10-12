@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { z } from "zod";
 import type { ToolDefinition } from "./types.js";
 import { ToolDeniedError } from "./errors.js";
@@ -49,15 +52,16 @@ function runShell(
   timeoutMs: number,
   cwd: string,
   signal: AbortSignal,
-  secret?: string,
+  options: { secret?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<ShellOutput> {
   return new Promise((resolve) => {
-    const child = spawn(command, { shell: resolveShell(), cwd, env: process.env });
-    if (secret !== undefined && child.stdin) {
+    const env = options.env ?? process.env;
+    const child = spawn(command, { shell: resolveShell(), cwd, env });
+    if (options.secret !== undefined && child.stdin) {
       // Rahasia hanya lewat stdin — tak pernah masuk argv/env/log — lalu stdin
       // ditutup agar perintah setelah sudo tidak bisa membacanya.
       child.stdin.on("error", () => {});
-      child.stdin.end(`${secret}\n`);
+      child.stdin.end(`${options.secret}\n`);
     }
     let stdout = "";
     let stderr = "";
@@ -131,10 +135,74 @@ export function withSudoNonInteractive(command: string): string {
   return command.replace(/^(\s*)sudo\b/, "$1sudo -n");
 }
 
+/** True bila perintah dimulai dengan klien SSH/SCP/SFTP (termasuk ssh-copy-id). */
+export function isSshCommand(command: string): boolean {
+  return /^\s*(?:ssh|scp|sftp)\b/.test(command);
+}
+
+/**
+ * True bila keluaran ssh menandakan autentikasi gagal yang mungkin dibantu
+ * password. Sengaja tidak menandai kegagalan kunci/host-key agar tidak meminta
+ * password yang tidak berguna.
+ */
+export function sshNeedsPassword(command: string, output: string): boolean {
+  if (!isSshCommand(command)) return false;
+  if (/permission denied \([^)]*\b(?:password|keyboard-interactive)\b[^)]*\)/i.test(output)) return true;
+  if (/^\s*password:\s*$/im.test(output)) return true;
+  if (/authentication failed/i.test(output)) return true;
+  return false;
+}
+
+/**
+ * Sisipkan `-o BatchMode=yes` pada klien ssh terdepan agar percobaan pertama
+ * tidak pernah menggantung menunggu password. Bila memang butuh password, ssh
+ * gagal cepat dan kita menawarkan input sesaat.
+ */
+export function withSshNonInteractive(command: string): string {
+  return command.replace(/^(\s*)(ssh|scp|sftp)\b/, "$1$2 -o BatchMode=yes");
+}
+
+/**
+ * Siapkan retry yang memakai `SSH_ASKPASS`: buang `BatchMode=yes` yang
+ * menghalangi lalu paksa interaktif. Password tetap dikirim lewat stdin ke
+ * program askpass bantu (lihat `createAskpass`).
+ */
+export function withSshAskpass(command: string): string {
+  const cleaned = command
+    .replace(/\s+-o\s*BatchMode=\S+/gi, "")
+    .replace(/\s+-oBatchMode=\S+/gi, "");
+  return cleaned.replace(/^(\s*)(ssh|scp|sftp)\b/, "$1$2 -o BatchMode=no");
+}
+
+/**
+ * Buat skrip askpass sementara. Skrip hanya menyalin password dari stdin ke
+ * stdout (ssh menyalurkan stdin-nya ke program askpass); isi skrip **tidak**
+ * memuat rahasia apa pun.
+ */
+async function createAskpass(): Promise<{ dir: string; script: string }> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "nex-askpass-"));
+  const script = path.join(dir, "askpass.sh");
+  await fs.writeFile(script, "#!/bin/sh\nIFS= read -r pw\nprintf '%s\\n' \"$pw\"\n", {
+    encoding: "utf8",
+    mode: 0o700,
+  });
+  return { dir, script };
+}
+
+/** Lingkungan untuk retry ssh via askpass. Hanya path skrip + require yang di-set. */
+function askpassEnv(script: string): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    SSH_ASKPASS: script,
+    SSH_ASKPASS_REQUIRE: "force",
+    DISPLAY: process.env.DISPLAY ?? ":0",
+  };
+}
+
 export const runShellTool: ToolDefinition<typeof schema> = {
   name: "run_shell",
   description:
-    "Jalankan perintah shell. Perintah read-only boleh tanpa konfirmasi; mutating butuh persetujuan; berbahaya diblokir. Untuk perintah berhak istimewa, tulis `sudo <perintah>` apa adanya (tanpa `-n`/`-S` atau fallback `|| echo`) — password akan diminta ke pengguna bila perlu.",
+    "Jalankan perintah shell. Perintah read-only boleh tanpa konfirmasi; mutating butuh persetujuan; berbahaya diblokir. Untuk perintah berhak istimewa, tulis `sudo <perintah>` apa adanya (tanpa `-n`/`-S` atau fallback `|| echo`) — password akan diminta ke pengguna bila perlu. Perintah `ssh`/`scp`/`sftp` yang butuh password juga akan meminta password ke pengguna; jangan menaruh password di argumen atau pakai `sshpass`.",
   risk: "mutate",
   schema,
   summarize: (i) => (i.command.length > 60 ? i.command.slice(0, 57) + "..." : i.command),
@@ -184,16 +252,21 @@ export const runShellTool: ToolDefinition<typeof schema> = {
     }
 
     const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT;
-    // Percobaan pertama dibuat non-interaktif (`-n`) supaya sudo tidak pernah
-    // menggantung menunggu password di TTY; bila butuh password, kita yang
-    // menawarkan input sesaat di bawah ini.
-    const probe = isSudoCommand(input.command) ? withSudoNonInteractive(input.command) : input.command;
+    // Percobaan pertama dibuat non-interaktif supaya tidak pernah menggantung
+    // menunggu password: sudo lewat `-n`, ssh lewat `-o BatchMode=yes`. Bila
+    // memang butuh password, kita yang menawarkan input sesaat di bawah ini.
+    const probe = isSudoCommand(input.command)
+      ? withSudoNonInteractive(input.command)
+      : isSshCommand(input.command)
+        ? withSshNonInteractive(input.command)
+        : input.command;
     let result = await runShell(probe, timeoutMs, ctx.workspace.root, ctx.signal);
 
-    // sudo tanpa TTY gagal meminta password; tawarkan input sesaat (masked).
     // Deteksi dari gabungan stdout+stderr (bukan exit code) karena model kadang
     // menambahkan `2>&1` atau fallback `|| echo` yang menyamarkan kegagalan.
     const combinedOutput = `${result.stderr}\n${result.stdout}`;
+
+    // sudo tanpa TTY gagal meminta password; tawarkan input sesaat (masked).
     if (
       ctx.requestSecret &&
       !result.timedOut &&
@@ -217,8 +290,42 @@ export const runShellTool: ToolDefinition<typeof schema> = {
         timeoutMs,
         ctx.workspace.root,
         ctx.signal,
-        password,
+        { secret: password },
       );
+    }
+
+    // ssh/scp/sftp yang gagal autentikasi password; tawarkan input sesaat dan
+    // ulangi lewat SSH_ASKPASS (password hanya lewat stdin, tak pernah argv/env).
+    if (
+      ctx.requestSecret &&
+      !result.timedOut &&
+      !result.aborted &&
+      sshNeedsPassword(input.command, combinedOutput)
+    ) {
+      const password = await ctx.requestSecret({
+        kind: "ssh",
+        detail: input.command,
+        reason: "SSH membutuhkan password untuk masuk ke server.",
+      });
+      if (password === null) {
+        return {
+          content: `Dibatalkan: password SSH tidak diberikan untuk: ${input.command}`,
+          ok: false,
+          summary: "ssh dibatalkan",
+        };
+      }
+      const { dir, script } = await createAskpass();
+      try {
+        result = await runShell(
+          withSshAskpass(input.command),
+          timeoutMs,
+          ctx.workspace.root,
+          ctx.signal,
+          { secret: password, env: askpassEnv(script) },
+        );
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
     }
 
     const parts: string[] = [];

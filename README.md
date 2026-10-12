@@ -44,6 +44,7 @@
 | ✅ | **Todo live** | Checklist tugas yang diperbarui di tempat |
 | 🎨 | **Render Markdown** | Heading, tabel, kode, dan gaya inline di terminal |
 | 🔎 | **Pencarian & baca web** | `web_search` (DuckDuckGo/SearXNG/Brave) + `web_fetch` halaman |
+| 🗂️ | **Cari di workspace** | `glob` & `grep` read-only (boleh di mode Plan) |
 | 📌 | **Memori jangka panjang** | Ingat fakta sederhana pengguna (nama, hobi) lintas sesi |
 
 ---
@@ -188,11 +189,13 @@ Anda tahu kapan agen masih mengerjakan sesuatu dan kapan sudah berhenti.
 > Untuk menyetujui di muka di skrip, pakai `--allow-path <file>`.
 
 > [!NOTE]
-> **Perintah `sudo`.** Bila `sudo` butuh password (tanpa TTY), agen menawarkan
-> input sesaat: yang Anda ketik tampil sebagai `*`, dipakai sekali untuk
-> perintah itu, lalu dibuang — **tidak pernah disimpan** ke file, log, atau
-> `env`. Untuk otomasi penuh, lebih baik pakai aturan `sudoers` NOPASSWD yang
-> spesifik (`/etc/sudoers.d/...`) daripada menaruh password di `.env`.
+> **Password `sudo` & SSH.** Bila `sudo` butuh password (tanpa TTY) atau
+> `ssh`/`scp`/`sftp` gagal autentikasi password, agen menawarkan input sesaat:
+> yang Anda ketik tampil sebagai `*`, dipakai sekali untuk perintah itu, lalu
+> dibuang — **tidak pernah disimpan** ke file, log, atau `env`. Khusus SSH,
+> password disalurkan lewat `SSH_ASKPASS` sesaat (bukan di argumen/`sshpass`).
+> Untuk otomasi penuh, lebih baik pakai kunci SSH atau aturan `sudoers` NOPASSWD
+> yang spesifik (`/etc/sudoers.d/...`) daripada menaruh password di `.env`.
 
 ### 💬 Slash command (mode chat)
 
@@ -687,6 +690,19 @@ artikel, atau URL yang baru ditemukan lewat `web_search`.
 Jika ingin konversi halaman berbasis Python, preset MCP `fetch`
 (`/mcp add --name fetch ...`) juga tersedia sebagai alternatif.
 
+### 🗂️ Cari di workspace (`glob`, `grep`)
+
+Dua tool **read-only** untuk menjelajah berkas tanpa membaca satu per satu.
+Keduanya aktif bawaan dan boleh dipakai di mode **Plan**:
+
+- `glob` — cari berkas dengan pola glob (`*`, `**`, `?`, `{a,b}`), mis.
+  `**/*.ts`. Pola tanpa `/` dicocokkan ke nama berkas. Default maksimum 200 hasil.
+- `grep` — cari pola regex di isi berkas, hasil `path:baris: teks`. Dukung
+  `ignoreCase` dan filter `glob` (mis. `*.ts`). Default maksimum 200 baris hasil.
+
+Keduanya melewati `node_modules`, `.git`, `dist`, `coverage`, berkas biner, dan
+berkas lebih dari 2 MB; keluaran dipotong bila melebihi batas.
+
 ### 📌 Memori jangka panjang (`memory`)
 
 Tool `memory` menyimpan **fakta sederhana tentang pengguna** (nama, hobi,
@@ -709,7 +725,7 @@ preferensi, bahasa) agar dikenali lintas sesi. Disimpan sebagai
 src/
   core/        # loop agentik, approvals, checkpoint, context, repetition
   providers/   # ModelProvider + adapter (OpenAI-compatible, Anthropic)
-  tools/       # read_file, write_file, edit_file, list_dir, run_shell, web_search, web_fetch, memory, todo_write, skill, skill_write, skill_install
+  tools/       # read_file, write_file, edit_file, list_dir, glob, grep, run_shell, web_search, web_fetch, memory, todo_write, skill, skill_write, skill_install
   safety/      # workspace, permissions, classifier, policy
   sessions/    # penyimpanan sesi
   usage/       # token, biaya, agregasi

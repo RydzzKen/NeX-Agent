@@ -3,6 +3,7 @@ import path from "node:path";
 import { z } from "zod";
 import type { ToolDefinition } from "./types.js";
 import { ToolInputError } from "./errors.js";
+import { SEARCH_SKIP } from "./fs_walk.js";
 
 const schema = z.object({
   path: z.string().optional().describe("Direktori yang didaftar (default: workspace)."),
@@ -10,7 +11,6 @@ const schema = z.object({
 });
 
 const MAX_ENTRIES = 500;
-const ALWAYS_SKIP = new Set(["node_modules", ".git", "dist", "coverage", ".DS_Store"]);
 
 async function walk(dir: string, base: string, depth: number, maxDepth: number, out: string[]): Promise<void> {
   if (out.length >= MAX_ENTRIES) return;
@@ -23,7 +23,7 @@ async function walk(dir: string, base: string, depth: number, maxDepth: number, 
   entries.sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name));
   for (const entry of entries) {
     if (out.length >= MAX_ENTRIES) return;
-    if (ALWAYS_SKIP.has(entry.name)) continue;
+    if (SEARCH_SKIP.has(entry.name)) continue;
     const rel = base ? `${base}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
       out.push(`${rel}/`);

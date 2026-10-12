@@ -61,8 +61,9 @@ export interface ToolContext {
   /** Konfirmasi file sensitif; tidak bisa dilewati allow-all. */
   confirmSensitive(req: SensitiveAccessRequest): Promise<boolean>;
   /**
-   * Minta rahasia sesaat (mis. password sudo); `null` bila dibatalkan atau UI
-   * tidak mendukung. Rahasia hanya sekali pakai dan tidak boleh disimpan.
+   * Minta rahasia sesaat (mis. password sudo atau password SSH); `null` bila
+   * dibatalkan atau UI tidak mendukung. Rahasia hanya sekali pakai dan tidak
+   * boleh disimpan.
    */
   requestSecret?(req: SecretRequest): Promise<string | null>;
 }

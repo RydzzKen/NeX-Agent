@@ -49,11 +49,12 @@ export interface SensitiveAccessRequest {
 }
 
 /**
- * Permintaan rahasia sesaat (mis. password sudo). Rahasia hanya dipakai sekali
- * pakai, tidak boleh disimpan ke file, log, atau lingkungan (`env`).
+ * Permintaan rahasia sesaat (mis. password sudo atau password SSH). Rahasia
+ * hanya dipakai sekali pakai, tidak boleh disimpan ke file, log, atau
+ * lingkungan (`env`).
  */
 export interface SecretRequest {
-  kind: "sudo";
+  kind: "sudo" | "ssh";
   /** Perintah yang membutuhkan rahasia (ditampilkan ke pengguna). */
   detail: string;
   /** Penjelasan singkat kenapa rahasia dibutuhkan. */
@@ -102,9 +103,9 @@ export interface AgentIO {
   requestSensitiveAccess?(req: SensitiveAccessRequest): Promise<boolean>;
 
   /**
-   * Minta rahasia sesaat (mis. password sudo). Mengembalikan `null` bila
-   * pengguna membatalkan atau UI tidak mendukung input rahasia. Nilai ini tidak
-   * boleh disimpan/di-log oleh pemanggil.
+   * Minta rahasia sesaat (mis. password sudo atau password SSH). Mengembalikan
+   * `null` bila pengguna membatalkan atau UI tidak mendukung input rahasia.
+   * Nilai ini tidak boleh disimpan/di-log oleh pemanggil.
    */
   requestSecret?(req: SecretRequest): Promise<string | null>;
 

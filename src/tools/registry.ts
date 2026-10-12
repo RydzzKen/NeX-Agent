@@ -7,6 +7,8 @@ import { readFileTool } from "./read_file.js";
 import { writeFileTool } from "./write_file.js";
 import { editFileTool } from "./edit_file.js";
 import { listDirTool } from "./list_dir.js";
+import { globTool } from "./glob.js";
+import { grepTool } from "./grep.js";
 import { runShellTool } from "./run_shell.js";
 import { webSearchTool } from "./web_search.js";
 import { webFetchTool } from "./web_fetch.js";
@@ -24,6 +26,8 @@ export const allTools: AnyTool[] = [
   writeFileTool,
   editFileTool,
   listDirTool,
+  globTool,
+  grepTool,
   runShellTool,
   webSearchTool,
   webFetchTool,
