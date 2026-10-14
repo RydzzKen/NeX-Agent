@@ -150,6 +150,9 @@ Menjalankan dari sumber: `pnpm dev -- "<tujuan>"`.
 | `nex-agent "<tujuan>"` | Jalankan satu tugas |
 | `nex-agent` | Mode chat interaktif |
 | `nex-agent tui` | Mode chat dengan antarmuka layar penuh (TUI) |
+| `nex-agent default tui` | Jadikan TUI antarmuka default saat `nex-agent` dijalankan tanpa tujuan |
+| `nex-agent default cli` | Kembalikan antarmuka default ke chat readline (`reset` untuk menghapus) |
+| `nex-agent --ui tui` | Paksa antarmuka untuk sesi ini (menimpa default tersimpan) |
 | `nex-agent --mode plan "..."` | Mulai di mode Plan (read-only) |
 | `nex-agent --resume <id>` | Lanjutkan sesi |
 | `nex-agent --continue` | Lanjutkan sesi terakhir di workspace ini |
@@ -171,7 +174,8 @@ Menjalankan dari sumber: `pnpm dev -- "<tujuan>"`.
 
 `--model` · `--provider` · `--max-steps` · `--max-cost` · `--yes` ·
 `--allow-all` · `--cwd <path>` · `--allow-path <path>` (bisa diulang) ·
-`--no-thinking` · `--no-markdown` · `--no-skills` · `--debug` · `--json`
+`--no-thinking` · `--no-markdown` · `--no-skills` · `--debug` · `--json` ·
+`--ui <cli|tui>`
 
 `--yes` dan `--allow-all` menyetujui semua konfirmasi untuk sesi ini
 (termasuk akses luar workspace). Mode Plan tetap read-only karena aturan itu
@@ -213,7 +217,7 @@ Anda tahu kapan agen masih mengerjakan sesuatu dan kapan sudah berhenti.
 | Kategori | Perintah |
 |---|---|
 | 🔌 **Koneksi & model** | `/connect` · `/provider [use\|edit\|hapus <id>]` · `/models [nomor\|0\|nama]` |
-| 🧭 **Mode & izin** | `/plan` · `/build` · `/permissions` · `/allow-all [on\|off]` · `/thinking` · `/markdown` |
+| 🧭 **Mode & izin** | `/plan` · `/build` · `/permissions` · `/allow-all [on\|off]` · `/thinking` · `/markdown` · `/default [tui\|cli\|reset]` |
 | 🗂️ **Sesi** | `/sessions [clear]` · `/resume <n>` · `/search <kata>` · `/new` · `/clear` · `/rename` · `/delete [all]` · `/diff` · `/undo [n]` |
 | 📊 **Info & tugas** | `/usage` · `/todos` · `/help` |
 | 🧩 **Ekstensi** | `/skills` · `/skill <nama>\|off` · `/mcp [add\|remove\|reload\|key\|presets]` |
@@ -306,6 +310,11 @@ untuk subagent, dan overlay di tengah layar untuk konfirmasi/input rahasia.
 nex-agent tui                 # mulai layar penuh
 nex-agent tui --mode plan     # mulai di mode Plan
 ```
+
+Ingin TUI jadi bawaan? Jalankan `nex-agent default tui` sekali — mulai sekarang
+`nex-agent` tanpa argumen langsung membuka layar penuh. Kembalikan dengan
+`nex-agent default cli` (atau `nex-agent default reset`), lihat statusnya dengan
+`nex-agent default`. Untuk satu sesi saja, pakai `nex-agent --ui tui`.
 
 | Tombol | Fungsi |
 |---|---|

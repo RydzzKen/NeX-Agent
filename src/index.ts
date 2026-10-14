@@ -5,6 +5,14 @@ import { SessionStore } from "./sessions/store.js";
 import { UsageStore, type UsageRange } from "./usage/store.js";
 import { renderCrossSession } from "./cli/usage.js";
 import { ChatApp, ConfigError, type CliOptions } from "./cli/app.js";
+import {
+  DEFAULT_USAGE,
+  chooseInterface,
+  describeDefault,
+  parseDefaultTarget,
+  readDefaultInterface,
+  setDefaultInterface,
+} from "./cli/default.js";
 import { renderDoctor, runDoctor } from "./cli/doctor.js";
 import { describeUpdate, describeUpdateSuccess, runUninstall, runUpdate } from "./cli/update.js";
 import { createWebServer, isLoopbackHost, reachableUrl } from "./server/server.js";
@@ -102,13 +110,25 @@ function telegramServerOptions(merged: Record<string, unknown>): TelegramServerO
   };
 }
 
+/** Jalankan REPL interaktif, pastikan layar TUI dipulihkan saat proses keluar. */
+async function runInteractive(app: ChatApp): Promise<number> {
+  const cleanup = (): void => app.stopTui();
+  process.once("exit", cleanup); // jaring force-exit (Ctrl+C kedua)
+  try {
+    return await app.runRepl();
+  } finally {
+    process.removeListener("exit", cleanup);
+    cleanup();
+  }
+}
+
 async function main(): Promise<void> {
   const program = new Command();
 
   program
     .name("agent")
     .description("AI Agent CLI — loop agentik, mode Plan/Build, multi-provider")
-    .version("1.14.0", "-v, --version", "tampilkan versi")
+    .version("1.15.0", "-v, --version", "tampilkan versi")
     .argument("[goal]", "tujuan tugas; kosong untuk mode chat interaktif")
     .option("--mode <mode>", "mode awal: plan atau build")
     .option("--model <model>", "model yang dipakai")
@@ -126,17 +146,33 @@ async function main(): Promise<void> {
     .option("--no-skills", "jangan muat skill dari SKILL.md")
     .option("--debug", "log debug")
     .option("--json", "keluaran JSON per baris")
+    .option("--ui <ui>", "antarmuka interaktif: cli atau tui (menimpa default tersimpan)")
     .action(async (goal: string | undefined, options: Record<string, unknown>) => {
       const opts = toCliOptions(options, goal);
 
+      if (!goal) {
+        const ui = chooseInterface(
+          options.ui === undefined ? undefined : String(options.ui),
+          Boolean(opts.json),
+          await readDefaultInterface(),
+        );
+        if (ui === null) {
+          throw new Error(`Antarmuka tidak valid: ${String(options.ui)} (gunakan cli atau tui)`);
+        }
+        if (ui === "tui") opts.ui = "tui";
+      }
+
       const app = await ChatApp.create(opts);
-      const code = goal ? await app.runGoal(goal) : await app.runRepl();
-      process.exitCode = code;
+      if (goal) {
+        process.exitCode = await app.runGoal(goal);
+        return;
+      }
+      process.exitCode = await runInteractive(app);
     });
 
   program
     .command("tui")
-    .description("antarmuka TUI layar penuh; CLI readline tetap default")
+    .description("antarmuka TUI layar penuh (lihat `agent default`)")
     .option("--mode <mode>", "mode awal: plan atau build")
     .option("--model <model>", "model yang dipakai")
     .option("--provider <provider>", "provider yang dipakai")
@@ -155,15 +191,27 @@ async function main(): Promise<void> {
     .action(async (options: Record<string, unknown>) => {
       const opts = toCliOptions(options, undefined, { ui: "tui" });
       const app = await ChatApp.create(opts);
-      const cleanup = (): void => app.stopTui();
-      process.once("exit", cleanup); // jaring force-exit (Ctrl+C kedua)
-      try {
-        const code = await app.runRepl();
-        process.exitCode = code;
-      } finally {
-        process.removeListener("exit", cleanup);
-        cleanup();
+      process.exitCode = await runInteractive(app);
+    });
+
+  program
+    .command("default")
+    .description("atur antarmuka default saat `agent` dijalankan tanpa tujuan")
+    .argument("[target]", "tui | cli | reset")
+    .action(async (target?: string) => {
+      if (!target) {
+        process.stdout.write(`${describeDefault(await readDefaultInterface())}\n`);
+        process.stdout.write(`${DEFAULT_USAGE}\n`);
+        return;
       }
+      const parsed = parseDefaultTarget(target);
+      if (!parsed) {
+        process.stderr.write(`Target tidak valid: ${target} (gunakan tui, cli, atau reset)\n`);
+        process.exitCode = 1;
+        return;
+      }
+      const ui = await setDefaultInterface(parsed);
+      process.stdout.write(`${describeDefault(ui)}\n`);
     });
 
   program

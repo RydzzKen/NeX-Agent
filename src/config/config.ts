@@ -27,6 +27,9 @@ export interface TelegramConfig {
   enabled?: boolean;
 }
 
+/** Antarmuka interaktif default saat `agent` dijalankan tanpa tujuan. */
+export type DefaultInterface = "cli" | "tui";
+
 export interface AgentConfig {
   /** Batas langkah default bila tidak diberikan lewat flag. */
   maxSteps?: number;
@@ -40,6 +43,11 @@ export interface AgentConfig {
   skills?: boolean;
   /** Provider default. */
   defaultProvider?: string;
+  /**
+   * Antarmuka default saat `agent` dijalankan tanpa tujuan: "cli" (readline)
+   * atau "tui" (layar penuh). Kosong = "cli".
+   */
+  defaultInterface?: DefaultInterface;
   /** Model terakhir per workspace (key = path absolut root). */
   models?: Record<string, string>;
   /**

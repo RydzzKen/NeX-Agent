@@ -13,6 +13,9 @@ umum, jelaskan langsung dari sini — jangan menjelajah kode.
 
 - **Slash** (`/help`, `/mcp`, ...) diketik **di dalam sesi chat** (REPL), bukan di shell.
 - **CLI** (`agent ...`, alias `nex-agent`) dijalankan di shell.
+  - `agent default tui` menjadikan TUI bawaan untuk `agent` tanpa argumen;
+    `agent default cli` mengembalikannya ke readline (`agent default reset`
+    menghapusnya, `agent --ui tui` untuk satu sesi saja).
 - **TUI** (layar penuh): `agent tui`. Pintasan: `Shift+Tab` ganti mode,
   `Ctrl+X ↑/↓` ganti view, `Ctrl+T` thinking, `Ctrl+C` hentikan (2× keluar).
   Input tetap hidup saat agent bekerja — pesan yang dikirim lewat `Enter` akan

@@ -57,6 +57,7 @@ import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice, validateFallbac
 import { TerminalIO, type ChatIO } from "./render.js";
 import { Prompter, PROMPT_EOF, type PrompterLike } from "./prompt.js";
 import { createTuiPair, attachTui, type TuiPair } from "./tui/index.js";
+import { describeDefault, parseDefaultTarget, readDefaultInterface, setDefaultInterface } from "./default.js";
 import type { Screen } from "./tui/screen.js";
 import { resolveInterrupt } from "./interrupt.js";
 import { formatResumePreview } from "./resume_preview.js";
@@ -133,6 +134,7 @@ export const SLASH_HELP: Array<[string, string]> = [
   ["/allow-all [on|off]", "izinkan semua izin untuk sesi ini"],
   ["/thinking [on|off]", "tampilkan/sembunyikan thinking"],
   ["/markdown [on|off]", "render markdown pada jawaban"],
+  ["/default [tui|cli|reset]", "atur antarmuka default saat `agent` dijalankan tanpa tujuan"],
   ["/skills [install <sumber>]", "daftar skill · pasang skill via SkillUI"],
   ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
   ["/mcp [add|remove|reload|key|presets]", "status server MCP; tambah preset, muat ulang, atau atur API key"],
@@ -784,6 +786,20 @@ export class ChatApp {
         this.io.setMarkdown(on);
         this.config = await saveConfig({ markdown: on });
         this.io.info(`Markdown ${on ? "aktif" : "nonaktif"}.`);
+        return "continue";
+      }
+      case "/default": {
+        const value = args[0];
+        if (value === undefined) {
+          this.io.info(describeDefault(await readDefaultInterface()));
+          return "continue";
+        }
+        const parsed = parseDefaultTarget(value);
+        if (!parsed) {
+          this.io.warn(`Target tidak valid: ${value} (gunakan tui, cli, atau reset).`);
+          return "continue";
+        }
+        this.io.info(describeDefault(await setDefaultInterface(parsed)));
         return "continue";
       }
       case "/skills":
