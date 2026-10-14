@@ -242,11 +242,22 @@ export class TuiPrompter implements PrompterLike {
   }
 
   private refreshMenu(): void {
+    // Jangan tampilkan daftar saat input kosong: daftar folder/path hanya
+    // berguna ketika pengguna sedang mengetik kata kunci. Tanpa ini, menekan
+    // Backspace pada input kosong akan memunculkan seluruh isi folder.
+    if (this.screen.getInputText().trim() === "") {
+      this.screen.clearMenu();
+      return;
+    }
     const { matches, token } = this.currentMenu();
     this.screen.setMenu(token, matches);
   }
 
   private tabComplete(): void {
+    if (this.screen.getInputText().trim() === "") {
+      this.screen.clearMenu();
+      return;
+    }
     // Tab berulang: putar pilihan pada menu yang sudah terbuka.
     if (this.screenMenuOpen()) {
       this.screen.menuSelect(1);

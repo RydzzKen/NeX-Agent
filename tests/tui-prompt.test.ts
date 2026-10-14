@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Screen, type ScreenOptions } from "../src/cli/tui/screen.js";
 import { TuiPrompter } from "../src/cli/tui/prompt.js";
 import { normalizeKey } from "../src/util/ansi.js";
@@ -13,7 +16,7 @@ interface FakeStdout {
   on: (event: string, cb: () => void) => void;
 }
 
-function setup(): { screen: Screen; prompter: TuiPrompter } {
+function setup(cwd = "/tmp"): { screen: Screen; prompter: TuiPrompter } {
   const out: FakeStdout = { write: () => true, columns: 40, rows: 12, on: () => {} };
   const stdin = { isTTY: false, setRawMode: () => {}, on: () => {}, removeAllListeners: () => {} };
   const screen = new Screen({
@@ -21,9 +24,23 @@ function setup(): { screen: Screen; prompter: TuiPrompter } {
     stdout: out as unknown as ScreenOptions["stdout"],
   });
   screen.start();
-  const prompter = new TuiPrompter(screen, ["/help", "/diff"], "/tmp");
+  const prompter = new TuiPrompter(screen, ["/help", "/diff"], cwd);
   return { screen, prompter };
 }
+
+/** Folder sementara dengan beberapa entri agar completion punya kandidat. */
+const tmpRoots: string[] = [];
+function tempDir(): string {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nex-tui-"));
+  fs.mkdirSync(path.join(dir, "Project", "Sub"), { recursive: true });
+  fs.mkdirSync(path.join(dir, "Pemandangan"));
+  fs.writeFileSync(path.join(dir, "readme.md"), "x");
+  tmpRoots.push(dir);
+  return dir;
+}
+afterAll(() => {
+  for (const dir of tmpRoots) fs.rmSync(dir, { recursive: true, force: true });
+});
 
 /** Ketik deretan key mentah dan kembalikan hasil konsumsi terakhir. */
 function type(prompter: TuiPrompter, keys: RawKey[]): boolean {
@@ -135,5 +152,36 @@ describe("TuiPrompter: antrean saat agent sibuk", () => {
     const { prompter } = setup();
     expect(prompter.consume(normalizeKey({ name: "home", sequence: "\u001b[H" }))).toBe(false);
     expect(prompter.consume(normalizeKey({ name: "end", sequence: "\u001b[F" }))).toBe(false);
+  });
+});
+
+describe("TuiPrompter: menu autocomplete", () => {
+  it("tidak menampilkan daftar saat input kosong (backspace di awal)", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    type(prompter, [backspace]);
+    expect(screen.getMenuSelected()).toBeUndefined();
+  });
+
+  it("Tab pada input kosong tidak memunculkan/memilih apa pun", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    expect(prompter.consume(normalizeKey({ name: "tab", sequence: "\t" }))).toBe(true);
+    expect(screen.getMenuSelected()).toBeUndefined();
+    expect(screen.getInputText()).toBe("");
+  });
+
+  it("daftar muncul saat mengetik kata kunci folder", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    type(prompter, [letter("P"), letter("r"), letter("o")]);
+    expect(screen.getMenuSelected()).toBe("Project/");
+  });
+
+  it("daftar terisi isi folder setelah kata kunci diakhiri '/'", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    for (const ch of "Project/") type(prompter, [symbol(ch)]);
+    expect(screen.getMenuSelected()).toBe("Project/Sub/");
   });
 });
