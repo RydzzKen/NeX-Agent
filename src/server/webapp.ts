@@ -30,6 +30,7 @@ import { validateFallbackModel } from "../cli/models.js";
 import { ToolRegistry } from "../tools/registry.js";
 import type { ModelProvider } from "../providers/provider.js";
 import { firstNonEmpty } from "../util/strings.js";
+import { formatErrorMessage } from "../util/errors.js";
 import { WebIO } from "./webio.js";
 import type { ServerMessage, SessionSummary, WebState } from "./protocol.js";
 
@@ -350,7 +351,7 @@ export class WebApp {
         await this.reloadSkills();
         await this.session.run(text, controller.signal);
       } catch (err) {
-        this.io.error(`Terjadi kesalahan: ${(err as Error).message}`);
+        this.io.error(`Terjadi kesalahan: ${formatErrorMessage(err)}`);
       } finally {
         this.running = false;
         this.controller = undefined;

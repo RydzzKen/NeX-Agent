@@ -166,6 +166,40 @@ export class CheckpointManager {
     return { entries };
   }
 
+  /**
+   * Pratinjau semua perubahan yang belum di-undo: untuk tiap berkas dipakai
+   * snapshot paling awal yang tercatat (kondisi sebelum tugas pertama yang
+   * menyentuhnya), lalu dibandingkan dengan isinya saat ini. Tidak menulis apa
+   * pun ke disk — hanya membaca.
+   */
+  async preview(workspaceRoot: string): Promise<UndoEntry[]> {
+    const seen = new Set<string>();
+    const entries: UndoEntry[] = [];
+    for (const task of this.tasks) {
+      for (const step of task.steps) {
+        for (const snap of step.snapshots) {
+          if (seen.has(snap.path)) continue;
+          seen.add(snap.path);
+          const before = snap.existed ? (snap.content ?? "") : null;
+          let after: string | null = null;
+          try {
+            after = await fs.readFile(snap.path, "utf8");
+          } catch {
+            after = null;
+          }
+          if (before === after) continue;
+          entries.push({
+            path: snap.path,
+            display: path.relative(workspaceRoot, snap.path) || snap.path,
+            before,
+            after,
+          });
+        }
+      }
+    }
+    return entries.sort((a, b) => a.display.localeCompare(b.display));
+  }
+
   hasUndo(): boolean {
     const task = this.current ?? this.tasks[this.tasks.length - 1];
     return Boolean(task && task.steps.length > 0);

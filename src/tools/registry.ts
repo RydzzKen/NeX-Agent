@@ -6,6 +6,7 @@ import type { ToolDefinition } from "./types.js";
 import { readFileTool } from "./read_file.js";
 import { writeFileTool } from "./write_file.js";
 import { editFileTool } from "./edit_file.js";
+import { applyPatchTool } from "./apply_patch.js";
 import { listDirTool } from "./list_dir.js";
 import { globTool } from "./glob.js";
 import { grepTool } from "./grep.js";
@@ -26,6 +27,7 @@ export const allTools: AnyTool[] = [
   readFileTool,
   writeFileTool,
   editFileTool,
+  applyPatchTool,
   listDirTool,
   globTool,
   grepTool,

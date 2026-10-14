@@ -2,6 +2,7 @@ import type { ModelInfo, NeutralMessage, TokenUsage } from "../core/types.js";
 import { EMPTY_USAGE } from "../core/types.js";
 import type { ChatRequest, ModelProvider, StreamEvent } from "./provider.js";
 import { formatHttpError } from "./errors.js";
+import { formatErrorMessage } from "../util/errors.js";
 import { parseSSE } from "./sse.js";
 
 export interface AnthropicOptions {
@@ -97,7 +98,7 @@ export class AnthropicProvider implements ModelProvider {
       headers: this.headers(),
       signal,
     });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    if (!response.ok) throw new Error(formatHttpError(this.id, response.status, await response.text().catch(() => "")));
     const json = (await response.json()) as { data?: Array<{ id?: string; display_name?: string }> };
     return (json.data ?? [])
       .filter((m): m is { id: string; display_name?: string } => typeof m.id === "string")
@@ -143,6 +144,10 @@ export class AnthropicProvider implements ModelProvider {
         continue;
       }
       const type = event.type as string;
+      if (type === "error") {
+        // Anthropic mengirim error sebagai event SSE (mis. overloaded_error).
+        throw new Error(`Provider ${this.id} gagal: ${formatErrorMessage(event.error ?? event)}`);
+      }
       switch (type) {
         case "message_start": {
           const msg = event.message as { usage?: Record<string, number> } | undefined;

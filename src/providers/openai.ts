@@ -2,6 +2,7 @@ import type { ModelInfo, NeutralMessage, TokenUsage } from "../core/types.js";
 import { EMPTY_USAGE } from "../core/types.js";
 import type { ChatRequest, ModelProvider, ProviderCredentials, StreamEvent } from "./provider.js";
 import { formatHttpError } from "./errors.js";
+import { formatErrorMessage } from "../util/errors.js";
 import { parseSSE } from "./sse.js";
 
 export interface OpenAICompatibleOptions {
@@ -22,6 +23,8 @@ interface OpenAIToolCallDelta {
 }
 
 interface OpenAIChunk {
+  /** Sebagian gateway mengirim error sebagai chunk SSE dengan status HTTP 200. */
+  error?: unknown;
   choices?: Array<{
     delta?: {
       content?: string | null;
@@ -112,7 +115,10 @@ export class OpenAICompatibleProvider implements ModelProvider {
         headers: this.headers(),
         signal: controller.signal,
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new Error(formatHttpError(this.id, response.status, text));
+      }
       const json = (await response.json()) as { data?: Array<{ id?: string }> };
       const models = (json.data ?? [])
         .map((m) => m.id)
@@ -164,6 +170,9 @@ export class OpenAICompatibleProvider implements ModelProvider {
         chunk = JSON.parse(message.data) as OpenAIChunk;
       } catch {
         continue;
+      }
+      if (chunk.error !== undefined && chunk.error !== null) {
+        throw new Error(`Provider ${this.id} gagal: ${formatErrorMessage(chunk.error)}`);
       }
       if (chunk.usage) usage = mapUsage(chunk.usage);
       const choice = chunk.choices?.[0];

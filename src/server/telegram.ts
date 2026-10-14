@@ -20,6 +20,7 @@ import {
   htmlToPlainText,
   renderTelegramChunks,
 } from "./telegram_markdown.js";
+import { formatErrorMessage } from "../util/errors.js";
 
 /**
  * Jembatan Telegram memakai Bot API lewat `fetch` (tanpa dependensi baru) dan
@@ -566,7 +567,7 @@ export class TelegramBridge {
     try {
       await Promise.resolve(this.deps.app.send(text));
     } catch (err) {
-      await this.safeSend(chatId, `Terjadi kesalahan: ${(err as Error).message}`);
+      await this.safeSend(chatId, `Terjadi kesalahan: ${formatErrorMessage(err)}`);
     }
   }
 
@@ -664,7 +665,7 @@ export class TelegramBridge {
       const message = await action();
       if (message) await this.safeSend(chatId, message);
     } catch (err) {
-      await this.safeSend(chatId, `Gagal: ${(err as Error).message}`);
+      await this.safeSend(chatId, `Gagal: ${formatErrorMessage(err)}`);
     }
   }
 
@@ -881,7 +882,7 @@ export class TelegramBridge {
     try {
       check = await this.depsUpdate()(() => undefined, { check: true });
     } catch (err) {
-      await this.safeSend(chatId, `Gagal memeriksa pembaruan: ${(err as Error).message}`);
+      await this.safeSend(chatId, `Gagal memeriksa pembaruan: ${formatErrorMessage(err)}`);
       return;
     }
     if (check.status !== "available") {
@@ -899,7 +900,7 @@ export class TelegramBridge {
     try {
       outcome = await this.depsUpdate()(() => undefined);
     } catch (err) {
-      await this.safeSend(chatId, `Gagal memperbarui: ${(err as Error).message}`);
+      await this.safeSend(chatId, `Gagal memperbarui: ${formatErrorMessage(err)}`);
       return;
     }
     if (outcome.status === "updated") {

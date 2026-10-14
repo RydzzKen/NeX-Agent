@@ -6,6 +6,8 @@
  * pembatalan AbortSignal, dan balasan otomatis untuk `ping`.
  */
 
+import { extractErrorMessage } from "../util/errors.js";
+
 export interface JsonRpcRequest {
   jsonrpc: "2.0";
   id: number | string;
@@ -178,8 +180,10 @@ export class JsonRpcConnection {
     if (!entry) return;
     this.pending.delete(message.id);
     if ("error" in message) {
-      const detail =
-        typeof message.error.data === "string" ? `: ${message.error.data}` : "";
+      // `data` bisa berupa objek; ambil pesannya tanpa menampilkan JSON mentah.
+      const dataText =
+        message.error.data === undefined ? undefined : extractErrorMessage(message.error.data);
+      const detail = dataText && dataText !== message.error.message ? `: ${dataText}` : "";
       entry.reject(
         new Error(`MCP error ${message.error.code}: ${message.error.message}${detail}`),
       );

@@ -14,6 +14,7 @@ import type { ModelProvider, StreamEvent, ToolSpec } from "../providers/provider
 import type { ToolRegistry } from "../tools/registry.js";
 import type { ToolContext, ResolvedPath, WebSearchFn } from "../tools/types.js";
 import { ToolDeniedError, ToolInputError } from "../tools/errors.js";
+import { formatErrorMessage } from "../util/errors.js";
 import type { AccessKind } from "./io.js";
 import type { Workspace } from "../safety/workspace.js";
 import type { Skill } from "../memory/skills.js";
@@ -252,7 +253,7 @@ export class AgentSession {
         // Batal dari pengguna (Ctrl+C) memutus koneksi provider — itu bukan
         // error provider, jadi laporkan sebagai interupsi yang bersih.
         if (signal.aborted) return this.interrupt();
-        const message = (err as Error).message;
+        const message = formatErrorMessage(err, { fallback: "Kesalahan provider tidak diketahui." });
         this.deps.io.error(`Gagal memanggil model: ${message}`);
         this.deps.io.summary("provider_error", message);
         return { stopReason: "provider_error", message, steps: iteration };
@@ -599,6 +600,7 @@ export class AgentSession {
     } catch (err) {
       const denied = err instanceof ToolDeniedError;
       const message = err instanceof Error ? err.message : String(err);
+      const detail = formatErrorMessage(err, { fallback: "kesalahan tidak diketahui" });
       if (!isControl) {
         this.deps.io.stepEnd(stepInfo, {
           status: denied ? "denied" : "error",
@@ -611,10 +613,10 @@ export class AgentSession {
         error: message,
       });
       const content = denied
-        ? `Ditolak: ${message}`
+        ? `Ditolak: ${detail}`
         : err instanceof ToolInputError
           ? message
-          : `Error menjalankan ${call.name}: ${message}`;
+          : `Error menjalankan ${call.name}: ${detail}`;
       return {
         ...base,
         denied,

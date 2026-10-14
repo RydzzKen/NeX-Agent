@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: pembungkus **SkillUI** (`skill_install` + `/skills install`) selesai.
+Terakhir diperbarui: tool `apply_patch`, `/search` lintas sesi, dan pesan error dirapikan (provider/MCP/Web/Telegram).
 
 ## Selesai
 
@@ -23,6 +23,11 @@ Terakhir diperbarui: pembungkus **SkillUI** (`skill_install` + `/skills install`
 - [x] `/serve [stop]` di dalam sesi chat (nyalakan/hentikan web tanpa keluar)
 - [x] Mode LAN (`--lan`/`/serve lan`): cetak URL IPv4 LAN + kode QR untuk ponsel
 - [x] Indikator "sedang bekerja": spinner di CLI (`TerminalIO.busy`) + pill status & indikator di web
+- [x] `/diff` — tinjau perubahan file sesi ini (read-only; pelengkap `/undo`)
+- [x] `nex-agent doctor` — diagnostik lingkungan & konfigurasi (offline, read-only, tak mencetak rahasia)
+- [x] Tool `apply_patch` — edit banyak file/edit sekaligus secara **atomik** (satu konfirmasi diff)
+- [x] `/search <kata>` — cari teks di seluruh sesi (lintas workspace)
+- [x] Pesan error dirapikan: provider (termasuk error di dalam stream) & MCP tak lagi tampil sebagai JSON mentah; Web/Telegram/CLI konsisten
 
 ## Web (chat + terminal di browser)  ← selesai
 

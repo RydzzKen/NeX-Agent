@@ -5,6 +5,7 @@ import { SessionStore } from "./sessions/store.js";
 import { UsageStore, type UsageRange } from "./usage/store.js";
 import { renderCrossSession } from "./cli/usage.js";
 import { ChatApp, ConfigError, type CliOptions } from "./cli/app.js";
+import { renderDoctor, runDoctor } from "./cli/doctor.js";
 import { describeUpdate, describeUpdateSuccess, runUninstall, runUpdate } from "./cli/update.js";
 import { createWebServer, isLoopbackHost, reachableUrl } from "./server/server.js";
 import { ServerConfigError } from "./server/webapp.js";
@@ -77,7 +78,7 @@ async function main(): Promise<void> {
   program
     .name("agent")
     .description("AI Agent CLI — loop agentik, mode Plan/Build, multi-provider")
-    .version("1.7.0", "-v, --version", "tampilkan versi")
+    .version("1.8.0", "-v, --version", "tampilkan versi")
     .argument("[goal]", "tujuan tugas; kosong untuk mode chat interaktif")
     .option("--mode <mode>", "mode awal: plan atau build")
     .option("--model <model>", "model yang dipakai")
@@ -163,6 +164,19 @@ async function main(): Promise<void> {
         const preview = message.content.replace(/\s+/g, " ").slice(0, 100);
         process.stdout.write(`  [${message.role}] ${preview}\n`);
       }
+    });
+
+  program
+    .command("doctor")
+    .description("periksa konfigurasi & lingkungan NeX-Agent (offline, read-only)")
+    .option("--cwd <path>", "direktori kerja yang diperiksa")
+    .action(async (_options: Record<string, unknown>, command: Command) => {
+      const merged = command.optsWithGlobals() as Record<string, unknown>;
+      const result = await runDoctor({
+        ...(merged.cwd ? { workspace: path.resolve(String(merged.cwd)) } : {}),
+      });
+      process.stdout.write(`${renderDoctor(result)}\n`);
+      if (!result.ok) process.exitCode = 1;
     });
 
   program

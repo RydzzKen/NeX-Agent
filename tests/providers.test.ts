@@ -62,6 +62,34 @@ describe("OpenAICompatibleProvider", () => {
       collect(provider.stream({ model: "m", messages: [], tools: [] })),
     ).rejects.toThrow(/HTTP 500/);
   });
+
+  it("melempar error rapi saat gateway membalas error di dalam stream", async () => {
+    const body = sse([{ error: { message: "Rate limit exceeded", type: "rate_limit_error" } }]);
+    const provider = new OpenAICompatibleProvider({
+      id: "custom:9router",
+      label: "Router",
+      baseURL: "http://localhost/v1",
+      fetchImpl: fetchBody(body),
+    });
+    await expect(
+      collect(provider.stream({ model: "m", messages: [], tools: [] })),
+    ).rejects.toThrow(/Provider custom:9router gagal: Rate limit exceeded/);
+  });
+
+  it("membuka JSON error provider agar tidak tampil mentah", async () => {
+    const body = sse([
+      { error: { message: '[429]: {"type":"error","error":{"message":"Kuota habis"}}' } },
+    ]);
+    const provider = new OpenAICompatibleProvider({
+      id: "x",
+      label: "X",
+      baseURL: "http://localhost/v1",
+      fetchImpl: fetchBody(body),
+    });
+    await expect(
+      collect(provider.stream({ model: "m", messages: [], tools: [] })),
+    ).rejects.toThrow(/Kuota habis/);
+  });
 });
 
 describe("AnthropicProvider", () => {
@@ -90,6 +118,18 @@ describe("AnthropicProvider", () => {
     });
     expect(events).toContainEqual({ type: "usage", usage: { input: 12, output: 7, cacheRead: 4, cacheWrite: 0 } });
     expect(events.at(-1)).toEqual({ type: "done", stopReason: "tool_use" });
+  });
+
+  it("melempar error rapi saat server mengirim event error", async () => {
+    const body = sse([{ type: "error", error: { type: "overloaded_error", message: "Overloaded" } }]);
+    const provider = new AnthropicProvider({
+      id: "anthropic",
+      apiKey: "k",
+      fetchImpl: fetchBody(body),
+    });
+    await expect(
+      collect(provider.stream({ model: "m", messages: [], tools: [] })),
+    ).rejects.toThrow(/Provider anthropic gagal: Overloaded/);
   });
 
   it("menggabungkan tool_result berurutan ke satu pesan user", async () => {

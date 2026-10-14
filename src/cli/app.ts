@@ -41,13 +41,15 @@ import {
 } from "../config/config.js";
 import { JsonlLogger, type Logger } from "../logging/logger.js";
 import { SessionStore, deriveTitle, newSessionId, selectSession, type SessionRecord } from "../sessions/store.js";
+import { searchSessions } from "../sessions/search.js";
 import { UsageTracker } from "../usage/tracker.js";
 import { UsageStore, type UsageRange } from "../usage/store.js";
 import { createWebSearch } from "../util/websearch.js";
-import { renderDiff } from "../util/diff.js";
+import { diffStats, renderDiff } from "../util/diff.js";
 import { color } from "../util/color.js";
 import { isPrivateHost } from "../util/network.js";
 import { firstNonEmpty } from "../util/strings.js";
+import { formatErrorMessage } from "../util/errors.js";
 import { todoHeader, todoLines } from "../util/todos.js";
 import { renderCrossSession, renderUsage } from "./usage.js";
 import { runConnect, describeProvider, defaultBaseURL, resolveProviderKey, providerRefFromArgs } from "./connect.js";
@@ -115,10 +117,12 @@ const SLASH_HELP: Array<[string, string]> = [
   ["/build", "pindah ke mode Build (eksekusi)"],
   ["/sessions [clear]", "daftar sesi / hapus semua sesi workspace ini"],
   ["/resume <n>", "lanjut sesi ke-n (atau /resume <id>)"],
+  ["/search <kata>", "cari teks di seluruh sesi"],
   ["/new", "mulai sesi baru"],
   ["/clear", "bersihkan riwayat sesi ini"],
   ["/rename <judul>", "ganti judul sesi"],
   ["/delete [all]", "hapus sesi ini (all = semua sesi workspace)"],
+  ["/diff", "lihat perubahan file sesi ini yang belum di-undo"],
   ["/undo [n]", "batalkan perubahan file (ke sebelum langkah n)"],
   ["/usage [today|week|all|<id>]", "pemakaian token & biaya"],
   ["/permissions [revoke <path>]", "lihat/cabut izin luar workspace"],
@@ -141,6 +145,13 @@ const SLASH_HELP: Array<[string, string]> = [
 function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
+
+const SEARCH_ROLE_LABEL: Record<string, string> = {
+  user: "kamu",
+  assistant: "agen",
+  tool: "tool",
+  system: "sistem",
+};
 
 function exitCodeFor(reason: StopReason): number {
   switch (reason) {
@@ -648,6 +659,9 @@ export class ChatApp {
       case "/resume":
         await this.commandResume(args[0]);
         return "continue";
+      case "/search":
+        await this.commandSearch(args.join(" "));
+        return "continue";
       case "/new":
         await this.commandNew();
         return "continue";
@@ -662,6 +676,9 @@ export class ChatApp {
       case "/delete":
         if (args[0] === "all") await this.clearSessions();
         else await this.commandDelete();
+        return "continue";
+      case "/diff":
+        await this.commandDiff();
         return "continue";
       case "/undo":
         await this.commandUndo(args[0]);
@@ -902,7 +919,7 @@ export class ChatApp {
     try {
       models = await this.provider.listModels();
     } catch (err) {
-      this.io.error(`Gagal memuat model: ${(err as Error).message}`);
+      this.io.error(`Gagal memuat model: ${formatErrorMessage(err)}`);
     }
 
     if (!arg) {
@@ -959,6 +976,45 @@ export class ChatApp {
     });
     process.stdout.write("\n  Gunakan /resume <nomor> untuk melanjutkan sesi.\n");
     process.stdout.write("  /sessions clear (atau /delete all) untuk menghapus semua sesi workspace ini.\n\n");
+  }
+
+  /** Cari teks di seluruh sesi (semua workspace), urut terbaru lebih dulu. */
+  private async commandSearch(query?: string): Promise<void> {
+    const text = (query ?? "").trim();
+    if (!text) {
+      this.io.warn("Pakai: /search <kata>.");
+      return;
+    }
+    const sessions = await this.store.list();
+    const hits = searchSessions(sessions, text);
+    if (hits.length === 0) {
+      this.io.info(`Tidak ada hasil untuk "${text}".`);
+      return;
+    }
+    let total = 0;
+    process.stdout.write(`\nHasil "${text}" (${hits.length} sesi):\n`);
+    for (const hit of hits) {
+      total += hit.count;
+      const active = hit.session.id === this.record.id ? color.green("●") : " ";
+      const other =
+        hit.session.workspace === this.workspace.root
+          ? ""
+          : `  [${path.basename(hit.session.workspace) || hit.session.workspace}]`;
+      process.stdout.write(
+        `  ${active} ${hit.session.updatedAt.slice(0, 16).replace("T", " ")}  ${hit.session.title}${other}\n`,
+      );
+      for (const match of hit.matches) {
+        process.stdout.write(
+          `      ${SEARCH_ROLE_LABEL[match.role] ?? match.role}: ${match.snippet}\n`,
+        );
+      }
+      if (hit.count > hit.matches.length) {
+        process.stdout.write(`      … ${hit.count - hit.matches.length} pesan lain cocok\n`);
+      }
+    }
+    process.stdout.write(
+      `\n  ${total} pesan cocok. Gunakan /resume <id> untuk membuka sesi workspace ini.\n\n`,
+    );
   }
 
   /** Hapus semua sesi workspace ini (termasuk checkpoint-nya) setelah konfirmasi. */
@@ -1079,6 +1135,27 @@ export class ChatApp {
     await this.store.delete(this.record.id);
     this.io.info(`Sesi ${this.record.id} dihapus.`);
     await this.commandNew();
+  }
+
+  private async commandDiff(): Promise<void> {
+    const entries = await this.checkpoints.preview(this.workspace.root);
+    if (entries.length === 0) {
+      this.io.info("Belum ada perubahan file pada sesi ini.");
+      return;
+    }
+    let added = 0;
+    let removed = 0;
+    for (const entry of entries) {
+      const before = entry.before ?? "";
+      const after = entry.after ?? "";
+      const stats = diffStats(before, after);
+      added += stats.added;
+      removed += stats.removed;
+      this.io.diff(renderDiff(before, after, entry.display));
+    }
+    this.io.info(
+      `${entries.length} file berubah (+${added} -${removed}). Gunakan /undo untuk membatalkan.`,
+    );
   }
 
   private async commandUndo(arg?: string): Promise<void> {
@@ -1275,7 +1352,7 @@ export class ChatApp {
         this.io.error(`Gagal menjalankan server web: ${err.message}`);
         return;
       }
-      this.io.error(`Gagal menjalankan server web: ${(err as Error).message}`);
+      this.io.error(`Gagal menjalankan server web: ${formatErrorMessage(err)}`);
       return;
     }
 
@@ -1421,7 +1498,7 @@ export class ChatApp {
           this.io.warn(err.message);
           return;
         }
-        this.io.error(`Gagal menjalankan bot Telegram: ${(err as Error).message}`);
+        this.io.error(`Gagal menjalankan bot Telegram: ${formatErrorMessage(err)}`);
         return;
       }
       const status = await telegramDaemonStatus();
@@ -1732,7 +1809,7 @@ export class ChatApp {
     try {
       removed = await removeMcpServer(name);
     } catch (err) {
-      this.io.warn((err as Error).message);
+      this.io.warn(formatErrorMessage(err));
       return;
     }
     if (!removed) {

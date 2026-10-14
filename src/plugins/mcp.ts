@@ -5,6 +5,7 @@ import { createStdioTransport } from "./stdio.js";
 import { createHttpTransport } from "./http.js";
 import { createSseTransport } from "./sse.js";
 import { formatZodIssues, resolveTemplates, type McpServerConfig } from "./config.js";
+import { extractErrorMessage } from "../util/errors.js";
 
 /**
  * Klien MCP: inisialisasi sesi, daftar tool, dan panggil tool.
@@ -92,6 +93,17 @@ const callResultSchema = z
 
 type ContentItem = z.infer<typeof contentItemSchema>;
 
+/** Ubah nilai tak dikenal menjadi teks ringkas (pesan bila ada, bukan JSON mentah). */
+function summarizeUnknown(value: unknown): string {
+  const message = extractErrorMessage(value);
+  if (message) return message;
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value as Record<string, unknown>);
+    return keys.length ? `[${keys.join(", ")}]` : "[konten kosong]";
+  }
+  return String(value);
+}
+
 function renderContent(item: ContentItem): string {
   if (item.type === "text") return item.text ?? "";
   if (item.type === "image" || item.type === "audio") {
@@ -99,12 +111,20 @@ function renderContent(item: ContentItem): string {
     return `[${item.type} ${item.mimeType ?? "?"} — ${item.data?.length ?? 0} byte base64]`;
   }
   if (item.type === "resource") {
-    const resource = item.resource as { text?: unknown; uri?: unknown } | undefined;
+    const resource = item.resource as
+      | { text?: unknown; uri?: unknown; blob?: unknown; mimeType?: unknown }
+      | undefined;
     if (resource && typeof resource.text === "string") return resource.text;
     if (resource && typeof resource.uri === "string") return `[resource ${resource.uri}]`;
-    return JSON.stringify(item.resource ?? null);
+    if (resource && typeof resource.blob === "string") {
+      const mime = typeof resource.mimeType === "string" ? resource.mimeType : "?";
+      return `[resource ${mime} — ${resource.blob.length} byte base64]`;
+    }
+    return summarizeUnknown(resource);
   }
-  return JSON.stringify(item);
+  // Tipe tak dikenal: tampilkan teksnya bila ada, kalau tidak ringkas kuncinya.
+  if (typeof item.text === "string") return item.text;
+  return summarizeUnknown(item);
 }
 
 export class McpClient {

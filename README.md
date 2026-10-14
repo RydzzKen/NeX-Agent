@@ -36,6 +36,7 @@
 | 🛡️ | **Workspace boundary** | Akses luar workspace & file sensitif butuh konfirmasi |
 | 📝 | **Diff + konfirmasi** | Lihat perubahan dulu sebelum ditulis |
 | ⏪ | **Checkpoint / Undo** | Batalkan perubahan dengan `/undo` |
+| 🔬 | **Tinjau perubahan** | `/diff` melihat perubahan sesi sebelum dibatalkan |
 | 🔀 | **Multi-provider** | Adapter OpenAI-compatible & Anthropic |
 | 🌐 | **Mode Web** | Chat + terminal nyata di browser, dengan QR untuk ponsel |
 | 🤖 | **Bot Telegram** | Daemon mandiri, auto-restart, kontrol dari ponsel |
@@ -152,6 +153,7 @@ Menjalankan dari sumber: `pnpm dev -- "<tujuan>"`.
 | `nex-agent --continue` | Lanjutkan sesi terakhir di workspace ini |
 | `nex-agent usage today` | Rekap pemakaian lintas sesi |
 | `nex-agent logs <id>` | Jejak satu sesi |
+| `nex-agent doctor` | Periksa konfigurasi & lingkungan (offline, read-only) |
 | `nex-agent web` | Buka chat + terminal di browser |
 | `nex-agent telegram` | Bot Telegram sebagai daemon latar belakang |
 | `nex-agent telegram stop` | Hentikan bot (`status`/`restart`/`logs` juga ada) |
@@ -210,7 +212,7 @@ Anda tahu kapan agen masih mengerjakan sesuatu dan kapan sudah berhenti.
 |---|---|
 | 🔌 **Koneksi & model** | `/connect` · `/provider [use\|edit\|hapus <id>]` · `/models [nomor\|0\|nama]` |
 | 🧭 **Mode & izin** | `/plan` · `/build` · `/permissions` · `/allow-all [on\|off]` · `/thinking` · `/markdown` |
-| 🗂️ **Sesi** | `/sessions [clear]` · `/resume <n>` · `/new` · `/clear` · `/rename` · `/delete [all]` · `/undo [n]` |
+| 🗂️ **Sesi** | `/sessions [clear]` · `/resume <n>` · `/search <kata>` · `/new` · `/clear` · `/rename` · `/delete [all]` · `/diff` · `/undo [n]` |
 | 📊 **Info & tugas** | `/usage` · `/todos` · `/help` |
 | 🧩 **Ekstensi** | `/skills` · `/skill <nama>\|off` · `/mcp [add\|remove\|reload\|key\|presets]` |
 | 🌍 **Layanan** | `/web [lan\|stop]` · `/telegram [start\|stop\|restart\|status\|logs\|token\|allow]` |
@@ -229,7 +231,10 @@ mengandung spasi (`/provider hapus 9router local`, boleh juga dikutip). `/connec
 juga menampilkan provider custom tersimpan agar bisa dipakai ulang tanpa mengetik ulang.
 
 `/sessions` menampilkan sesi bernomor (judul diambil otomatis dari pesan
-pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/allow-all` menyalakan
+pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/search <kata>` mencari
+teks (tanpa peduli huruf besar/kecil) di **seluruh** sesi — lintas workspace —
+lalu menampilkan sesi beserta cuplikan pesan yang cocok (`kamu`/`agen`/`tool`);
+buka sesi workspace ini dengan `/resume <id>`. `/allow-all` menyalakan
 mode izinkan-semua tanpa keluar dari sesi. `/web` menyalakan server web
 (chat + terminal) di dalam sesi yang sedang berjalan, memakai workspace, model,
 provider, dan mode aktif; `/web stop` mematikannya. `/telegram` menyalakan bot
@@ -263,6 +268,32 @@ aktif).
 | `2` | ⚙️ Error konfigurasi |
 | `3` | ⛔ Batas langkah/anggaran/pengulangan |
 | `130` | ✋ Diinterupsi |
+
+### 🩺 Diagnostik (`nex-agent doctor`)
+
+```bash
+nex-agent doctor          # periksa konfigurasi & lingkungan
+nex-agent doctor --cwd .  # sekaligus periksa skill di folder tertentu
+```
+
+Perintah ini memeriksa (semua **offline** dan **read-only**, tidak pernah
+mencetak nilai rahasia): versi Node, direktori config bisa ditulis, validitas
+`config.json` & `plugins.json`, izin berkas rahasia (`credentials.json`,
+`memory.json` — harus `600`), ketersediaan provider, serta jumlah skill & sesi.
+Keluaran berupa daftar `✔`/`⚠`/`✖` plus ringkasan; kode keluar `1` bila ada
+pemeriksaan yang gagal.
+
+### 🔬 Tinjau perubahan (`/diff`)
+
+Sebelum membatalkan dengan `/undo`, tinjau dulu apa yang berubah pada sesi ini:
+
+```
+/diff
+```
+
+Perintah ini menampilkan patch perubahan semua berkas yang disentuh sesi ini
+(dibandingkan kondisi paling awal yang tercatat) beserta ringkasan `+/-` per
+berkas dan totalnya. Bersifat read-only, jadi aman dipakai kapan saja.
 
 ---
 
@@ -714,6 +745,24 @@ Keduanya aktif bawaan dan boleh dipakai di mode **Plan**:
 Keduanya melewati `node_modules`, `.git`, `dist`, `coverage`, berkas biner, dan
 berkas lebih dari 2 MB; keluaran dipotong bila melebihi batas.
 
+### 🩹 Edit beberapa file sekaligus (`apply_patch`)
+
+Tool `apply_patch` menerapkan banyak edit (`oldString` → `newString`) ke satu
+atau beberapa berkas dalam **satu langkah**, dan **atomik**: semua path
+diresolusi dan semua `oldString` diverifikasi lebih dulu di memori, sehingga
+bila satu edit saja gagal (berkas hilang, teks tidak ketemu, atau ambigu),
+**tidak ada** berkas yang ditulis. Setelah valid, satu konfirmasi menampilkan
+diff gabungan sebelum berkas disimpan.
+
+- Argumen: `patches[]` (wajib), tiap entri `{ path, edits[] }`; tiap edit
+  `{ oldString, newString, replaceAll? }`.
+- `oldString` harus cocok persis; bila muncul lebih dari sekali dan
+  `replaceAll` tidak diset, seluruh patch ditolak.
+- Beberapa patch untuk berkas yang sama diterapkan berurutan pada teks yang
+  sudah terakumulasi.
+- Risiko `mutate`: diblokir di mode Plan dan butuh konfirmasi. Untuk satu edit
+  sederhana, `edit_file` tetap bisa dipakai.
+
 ### 👥 Subagent (`task`)
 
 Tool `task` menjalankan sebagian pekerjaan di **sesi anak dengan konteks kosong**
@@ -753,7 +802,7 @@ preferensi, bahasa) agar dikenali lintas sesi. Disimpan sebagai
 src/
   core/        # loop agentik, approvals, checkpoint, context, repetition
   providers/   # ModelProvider + adapter (OpenAI-compatible, Anthropic)
-  tools/       # read_file, write_file, edit_file, list_dir, glob, grep, run_shell, web_search, web_fetch, memory, todo_write, skill, skill_write, skill_install, task
+  tools/       # read_file, write_file, edit_file, apply_patch, list_dir, glob, grep, run_shell, web_search, web_fetch, memory, todo_write, skill, skill_write, skill_install, task
   safety/      # workspace, permissions, classifier, policy
   sessions/    # penyimpanan sesi
   usage/       # token, biaya, agregasi

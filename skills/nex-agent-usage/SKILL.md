@@ -108,8 +108,11 @@ agent telegram [start|stop|restart|status|logs|run]
 - File sensitif (`.env`, `credentials.json`, `id_rsa`, `*.pem`, `.ssh/`, `.aws/`,
   `.gnupg/`) **selalu** minta konfirmasi eksplisit, walau `--allow-all`, dan
   ditolak di mode non-interaktif.
+- `/diff` — lihat perubahan file sesi ini (read-only).
 - `/undo [n]` — batalkan perubahan file (kembali ke sebelum langkah n).
 - `/todos` — lihat checklist tugas sesi.
+- Edit banyak file/edit sekaligus: tool `apply_patch` (atomik — bila satu edit
+  gagal, tak ada file yang diubah; satu konfirmasi berisi diff gabungan).
 
 ## 7. Update & hapus
 
@@ -127,8 +130,9 @@ agent uninstall [--purge --yes]
 
 ## 8. Sesi & model
 
-- `/sessions [clear]` daftar/hapus sesi · `/resume <n|id>` lanjut · `/new` sesi baru ·
-  `/clear` bersihkan riwayat · `/rename <judul>` · `/delete [all]`.
+- `/sessions [clear]` daftar/hapus sesi · `/resume <n|id>` lanjut · `/search <kata>`
+  cari teks lintas sesi · `/new` sesi baru · `/clear` bersihkan riwayat ·
+  `/rename <judul>` · `/delete [all]`.
 - `/connect` hubungkan provider · `/provider [use|edit|hapus <id>]` kelola provider
   tersimpan (id `anthropic`/`openai`/`custom:<nama>`; awalan `custom:` boleh dilewat) ·
   `/models [nomor|0|nama]` pilih model (`0` = custom).

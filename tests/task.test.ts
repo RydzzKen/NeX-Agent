@@ -9,8 +9,8 @@ import { trimSummary } from "../src/core/task.js";
 
 describe("task: risk dinamis & registri anak", () => {
   it("riskFor menilai readOnly:true sebagai read", () => {
-    expect(taskTool.riskFor({ prompt: "x", readOnly: true })).toBe("read");
-    expect(taskTool.riskFor({ prompt: "x" })).toBe("mutate");
+    expect(taskTool.riskFor?.({ prompt: "x", readOnly: true })).toBe("read");
+    expect(taskTool.riskFor?.({ prompt: "x" })).toBe("mutate");
     expect(taskTool.risk === "mutate").toBe(true);
   });
 
