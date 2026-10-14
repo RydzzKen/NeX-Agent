@@ -57,6 +57,8 @@ const backspace: RawKey = { name: "backspace", sequence: "\u007f" };
 const enter: RawKey = { name: "return", sequence: "\r" };
 const up: RawKey = { name: "up", sequence: "\u001b[A" };
 const down: RawKey = { name: "down", sequence: "\u001b[B" };
+const ctrlP: RawKey = { name: "p", ctrl: true, sequence: "\u0010" };
+const ctrlN: RawKey = { name: "n", ctrl: true, sequence: "\u000e" };
 const tab: RawKey = { name: "tab", sequence: "\t" };
 
 describe("TuiPrompter: pengetikan", () => {
@@ -149,6 +151,21 @@ describe("TuiPrompter: antrean saat agent sibuk", () => {
     const { prompter } = setup();
     type(prompter, [enter]);
     expect(prompter.takeQueued()).toBeUndefined();
+  });
+
+  it("↑/↓ tetap menggulir walau input berisi draf (tidak memanggil riwayat)", () => {
+    const { prompter, screen } = setup();
+    void prompter.question("› ");
+    type(prompter, ["z", "q", "x"].map(letter));
+    expect(screen.getInputText()).toBe("zqx");
+    expect(prompter.consume(normalizeKey(up))).toBe(false);
+    expect(prompter.consume(normalizeKey(down))).toBe(false);
+  });
+
+  it("↑/↓ menggulir walau tidak ada pertanyaan (agent sedang bekerja)", () => {
+    const { prompter } = setup();
+    expect(prompter.consume(normalizeKey(up))).toBe(false);
+    expect(prompter.consume(normalizeKey(down))).toBe(false);
   });
 
   it("Home/End saat menganggur diteruskan ke dispatcher (scroll)", () => {
@@ -270,8 +287,8 @@ describe("TuiPrompter: menu autocomplete", () => {
   });
 });
 
-describe("TuiPrompter: riwayat input (↑/↓)", () => {
-  it("↑ memanggil ulang pesan sebelumnya, ↓ kembali ke draf", async () => {
+describe("TuiPrompter: riwayat input (Ctrl+P/Ctrl+N)", () => {
+  it("Ctrl+P memanggil ulang pesan sebelumnya, Ctrl+N kembali ke draf", async () => {
     const { screen, prompter } = setup();
     const first = prompter.question("› ");
     type(prompter, ["h", "a", "l", "o"].map(letter));
@@ -279,13 +296,13 @@ describe("TuiPrompter: riwayat input (↑/↓)", () => {
     await expect(first).resolves.toBe("halo");
 
     void prompter.question("› ");
-    expect(type(prompter, [up])).toBe(true);
+    expect(type(prompter, [ctrlP])).toBe(true);
     expect(screen.getInputText()).toBe("halo");
-    expect(type(prompter, [down])).toBe(true);
+    expect(type(prompter, [ctrlN])).toBe(true);
     expect(screen.getInputText()).toBe("");
   });
 
-  it("↑ berulang menelusuri beberapa pesan, ↓ kembali", async () => {
+  it("Ctrl+P berulang menelusuri beberapa pesan, Ctrl+N kembali", async () => {
     const { screen, prompter } = setup();
     const q1 = prompter.question("› ");
     type(prompter, [letter("a")]);
@@ -297,15 +314,15 @@ describe("TuiPrompter: riwayat input (↑/↓)", () => {
     await q2;
 
     void prompter.question("› ");
-    type(prompter, [up]);
+    type(prompter, [ctrlP]);
     expect(screen.getInputText()).toBe("b");
-    type(prompter, [up]);
+    type(prompter, [ctrlP]);
     expect(screen.getInputText()).toBe("a");
-    type(prompter, [down]);
+    type(prompter, [ctrlN]);
     expect(screen.getInputText()).toBe("b");
   });
 
-  it("menyimpan draf dan memulihkannya saat ↓ melewati entri terbaru", async () => {
+  it("menyimpan draf dan memulihkannya saat Ctrl+N melewati entri terbaru", async () => {
     const { screen, prompter } = setup();
     const q = prompter.question("› ");
     type(prompter, ["h", "i"].map(letter));
@@ -314,16 +331,16 @@ describe("TuiPrompter: riwayat input (↑/↓)", () => {
 
     void prompter.question("› ");
     type(prompter, ["d", "r", "a", "f"].map(letter));
-    type(prompter, [up]);
+    type(prompter, [ctrlP]);
     expect(screen.getInputText()).toBe("hi");
-    type(prompter, [down]);
+    type(prompter, [ctrlN]);
     expect(screen.getInputText()).toBe("draf");
   });
 
-  it("tanpa riwayat, ↑ diteruskan untuk menggulir", () => {
+  it("tanpa riwayat, Ctrl+P diteruskan (tidak dikonsumsi)", () => {
     const { prompter } = setup();
     void prompter.question("› ");
-    expect(prompter.consume(normalizeKey(up))).toBe(false);
+    expect(prompter.consume(normalizeKey(ctrlP))).toBe(false);
   });
 
   it("mengetik keluar dari mode telusuri riwayat", async () => {
@@ -334,11 +351,11 @@ describe("TuiPrompter: riwayat input (↑/↓)", () => {
     await q;
 
     void prompter.question("› ");
-    type(prompter, [up]);
+    type(prompter, [ctrlP]);
     expect(screen.getInputText()).toBe("hi");
     type(prompter, [letter("x")]);
     expect(screen.getInputText()).toBe("hix");
-    // Setelah mengetik, tanda telusuri direset: ↓ tidak menarik entri lain.
-    expect(prompter.consume(normalizeKey(down))).toBe(false);
+    // Setelah mengetik, tanda telusuri direset: Ctrl+N tidak menarik entri lain.
+    expect(prompter.consume(normalizeKey(ctrlN))).toBe(false);
   });
 });

@@ -105,7 +105,7 @@ describe("Screen: isi & status", () => {
       return moves.length ? Number(moves[moves.length - 1]![1]) : null;
     };
     const statusRow = rowOf("view:utama");
-    const hintRow = rowOf("Ctrl+C hentikan");
+    const hintRow = rowOf("PgUp/PgDn");
     expect(statusRow).not.toBeNull();
     expect(hintRow).not.toBeNull();
     expect(statusRow).not.toBe(hintRow);
@@ -126,6 +126,26 @@ describe("Screen: isi & status", () => {
     const frame = stripAnsi(writes.join(""));
     expect(frame).toContain("thinking:off");
     expect(frame).not.toContain("thinking:on");
+  });
+
+  it("output baru saat sedang menggulir tidak menyentak ke bawah", () => {
+    const { screen } = makeScreen();
+    screen.start();
+    for (let i = 0; i < 40; i += 1) screen.append("text", `baris-${i}`);
+    screen.scrollBy(10);
+    expect(screen.scrollOffset).toBe(10);
+    screen.append("text", "baru");
+    expect(screen.scrollOffset).toBe(11); // posisi gulir dipertahankan
+  });
+
+  it("output baru tetap di bawah saat tidak menggulir", () => {
+    const { screen } = makeScreen();
+    screen.start();
+    for (let i = 0; i < 40; i += 1) screen.append("text", `baris-${i}`);
+    screen.scrollBy(5);
+    screen.scrollToBottom();
+    screen.append("text", "baru");
+    expect(screen.scrollOffset).toBe(0);
   });
 });
 

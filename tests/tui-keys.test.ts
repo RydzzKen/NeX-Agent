@@ -3,6 +3,7 @@ import { Screen, type ScreenOptions } from "../src/cli/tui/screen.js";
 import { TuiPrompter } from "../src/cli/tui/prompt.js";
 import { TuiIO } from "../src/cli/tui/io.js";
 import { attachTui, type TuiPair } from "../src/cli/tui/index.js";
+import { normalizeKey } from "../src/util/ansi.js";
 
 interface Harness {
   pair: TuiPair;
@@ -91,5 +92,46 @@ describe("TUI: Ctrl+T & Ctrl+Tab", () => {
     screen.emitKey({ name: "undefined", sequence: "\u001b[27;5;9~" });
     expect(toggles.mode).toBe(1);
     expect(screen.getInputText()).toBe("");
+  });
+});
+
+describe("TUI: gulir riwayat chat", () => {
+  it("↑/↓ menggulir walau input berisi draf (belum dikirim)", () => {
+    const { pair, screen } = attach();
+    for (let i = 0; i < 40; i += 1) screen.append("text", `baris-${i}`);
+    screen.scrollToBottom();
+    expect(screen.scrollOffset).toBe(0);
+
+    pair.prompter.consume(normalizeKey({ sequence: "z" }));
+    screen.clearMenu();
+    screen.emitKey({ name: "up", sequence: "\u001b[A" });
+    expect(screen.scrollOffset).toBe(1);
+    screen.emitKey({ name: "down", sequence: "\u001b[B" });
+    expect(screen.scrollOffset).toBe(0);
+    expect(screen.getInputText()).toBe("z");
+  });
+
+  it("tombol gulir khas Termux berfungsi dan tidak bocor ke input", () => {
+    const { screen } = attach();
+    for (let i = 0; i < 40; i += 1) screen.append("text", `b-${i}`);
+    screen.scrollToBottom();
+
+    screen.emitKey({ name: "pageup", sequence: "\u001b[5~" });
+    expect(screen.scrollOffset).toBe(10);
+    screen.emitKey({ name: "pagedown", sequence: "\u001b[6~" });
+    expect(screen.scrollOffset).toBe(0);
+    screen.emitKey({ name: "home", sequence: "\u001b[H" });
+    expect(screen.scrollOffset).toBeGreaterThan(0);
+    screen.emitKey({ name: "end", sequence: "\u001b[F" });
+    expect(screen.scrollOffset).toBe(0);
+    expect(screen.getInputText()).toBe("");
+  });
+
+  it("menggulir tetap jalan saat agent bekerja (tanpa pertanyaan)", () => {
+    const { screen } = attach();
+    for (let i = 0; i < 40; i += 1) screen.append("text", `b-${i}`);
+    screen.scrollToBottom();
+    screen.emitKey({ name: "up", sequence: "\u001b[A" });
+    expect(screen.scrollOffset).toBe(1);
   });
 });

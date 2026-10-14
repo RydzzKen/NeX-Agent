@@ -634,7 +634,12 @@ export class ChatApp {
     this.banner();
     this.io.info("Ketik /help untuk daftar perintah. Ctrl+C menghentikan tugas; dua kali keluar.");
     for (;;) {
-      const prompt = `${color.gray("[")}${this.session.getMode()}${color.gray("]")} › `;
+      // Di TUI, mode sudah tampil di status bar — jangan tampilkan dua kali di prompt.
+      const modeLabel =
+        this.opts.ui === "tui"
+          ? ""
+          : `${color.gray("[")}${this.session.getMode()}${color.gray("]")} `;
+      const prompt = `${modeLabel}› `;
       this.exitArmed = false;
       // Pesan yang dikirim saat agent sibuk (mode TUI) dijalankan lebih dulu.
       const queued = this.prompter.takeQueued?.();
@@ -713,9 +718,11 @@ export class ChatApp {
         return "exit";
       case "/plan":
         this.session.setMode("plan");
+        this.io.modeChanged?.("plan");
         return "continue";
       case "/build":
         this.session.setMode("build");
+        this.io.modeChanged?.("build");
         return "continue";
       case "/connect":
         await this.commandConnect();

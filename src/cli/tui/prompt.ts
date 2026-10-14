@@ -140,13 +140,22 @@ export class TuiPrompter implements PrompterLike {
     }
 
     if ((name === UP || name === DOWN) && !ctrl && !meta) {
+      // Menu autocomplete terbuka: ↑/↓ memilih item.
       if (this.screenMenuOpen()) {
         this.screen.menuSelect(name === UP ? -1 : 1);
         return true;
       }
-      // Telusuri riwayat pesan; bila belum ada riwayat, biarkan dispatcher
-      // menggulir tampilan (PgUp/PgDn/Home/End tetap untuk menggulir).
-      return this.historyMove(name === UP ? -1 : 1);
+      // Selain itu ↑/↓ selalu menggulir riwayat chat — termasuk saat input masih
+      // berisi draf atau agent sedang berpikir. Roda mouse di banyak terminal
+      // (desktop maupun Termux) dikirim sebagai ↑/↓, jadi ikut menggulir.
+      return false;
+    }
+
+    // Ctrl+P / Ctrl+N: telusuri riwayat pesan (ala readline/Emacs). Dipakai
+    // karena ↑/↓ kini untuk menggulir, bukan memanggil riwayat input.
+    if (ctrl && !meta && (name === "p" || name === "n")) {
+      if (!this.screen.inputActive) this.activateInput();
+      return this.historyMove(name === "p" ? -1 : 1);
     }
 
     if (name === BACKSPACE && !ctrl) {
@@ -174,12 +183,14 @@ export class TuiPrompter implements PrompterLike {
       return true;
     }
     if (name === HOME) {
-      if (!engaged) return false;
+      // Input kosong → biarkan dispatcher menggulir ke awal riwayat chat.
+      if (this.screen.getInputText().trim() === "") return false;
       this.screen.caretToStart();
       return true;
     }
     if (name === END) {
-      if (!engaged) return false;
+      // Input kosong → biarkan dispatcher menggulir ke akhir riwayat chat.
+      if (this.screen.getInputText().trim() === "") return false;
       this.screen.caretToEnd();
       return true;
     }

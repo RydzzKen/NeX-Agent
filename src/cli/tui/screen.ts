@@ -328,14 +328,15 @@ export class Screen {
 
   append(kind: LineKind, text: string): void {
     const view = this.views[this.active]!;
-    for (const raw of String(text).split("\n")) {
+    const parts = String(text).split("\n");
+    for (const raw of parts) {
       view.lines.push({ kind, text: kind === "raw" ? raw : paint(kind, raw) });
     }
     view.open = undefined;
     if (view.lines.length > MAX_LINES) {
       view.lines.splice(0, view.lines.length - MAX_LINES);
     }
-    this.scrollToBottom();
+    this.follow(view, parts.length);
     this.redraw();
   }
 
@@ -347,9 +348,11 @@ export class Screen {
   appendStream(kind: LineKind, text: string): void {
     const view = this.views[this.active]!;
     const parts = String(text).split("\n");
+    const partCount = parts.length;
     const first = parts.shift() ?? "";
     const last = view.lines[view.lines.length - 1];
-    if (view.open === kind && last && last.kind === kind) {
+    const continued = view.open === kind && last !== undefined && last.kind === kind;
+    if (continued && last) {
       last.text += kind === "raw" ? first : paint(kind, first);
     } else {
       view.lines.push({ kind, text: kind === "raw" ? first : paint(kind, first) });
@@ -359,7 +362,7 @@ export class Screen {
     if (view.lines.length > MAX_LINES) {
       view.lines.splice(0, view.lines.length - MAX_LINES);
     }
-    this.scrollToBottom();
+    this.follow(view, (continued ? 0 : 1) + (partCount - 1));
     this.redraw();
   }
 
@@ -372,12 +375,13 @@ export class Screen {
   /** Saluran untuk tulis langsung ke stdout (intercept) — selalu ke view utama. */
   appendRaw(text: string): void {
     const main = this.views.find((v) => v.main) ?? this.views[0]!;
-    for (const raw of text.split("\n")) main.lines.push({ kind: "raw", text: raw });
+    const parts = text.split("\n");
+    for (const raw of parts) main.lines.push({ kind: "raw", text: raw });
     main.open = undefined;
     if (main.lines.length > MAX_LINES) {
       main.lines.splice(0, main.lines.length - MAX_LINES);
     }
-    this.scrollToBottom();
+    this.follow(main, parts.length);
     this.redraw();
   }
 
@@ -388,7 +392,7 @@ export class Screen {
     if (view.lines.length > MAX_LINES) {
       view.lines.splice(0, view.lines.length - MAX_LINES);
     }
-    this.scrollToBottom();
+    this.follow(view, 1);
     this.redraw();
   }
 
@@ -399,6 +403,20 @@ export class Screen {
 
   get thinkingVisible(): boolean {
     return this.showThinking;
+  }
+
+  /** Jumlah baris yang digulir dari bawah (0 = paling bawah). */
+  get scrollOffset(): number {
+    return this.views[this.active]!.scroll;
+  }
+
+  /**
+   * Sesuaikan gulir setelah baris baru ditambahkan. Bila pengguna sedang
+   * menggulir ke atas (`scroll > 0`), posisinya dipertahankan supaya output
+   * baru (mis. saat agent berpikir/streaming) tidak menyentak ke bawah.
+   */
+  private follow(view: View, deltaLines: number): void {
+    if (view.scroll > 0 && deltaLines > 0) view.scroll += deltaLines;
   }
 
   scrollBy(delta: number): void {
@@ -533,6 +551,7 @@ export class Screen {
     const contentRows = Math.max(1, statusRow); // baris konten di atas status
     const maxScroll = Math.max(0, all.length - contentRows);
     const sc = Math.min(view.scroll, maxScroll);
+    view.scroll = sc; // jaga posisi tetap dalam rentang (mis. setelah Home/End)
     const end = all.length - sc;
     const start = Math.max(0, end - contentRows);
     const slice = all.slice(start, end);
@@ -606,10 +625,11 @@ export class Screen {
 
   private hint(cols: number): string {
     const hints = [
-      "Ctrl+C hentikan (2× keluar)",
-      "Ctrl+X ↑/↓ ganti view",
+      "↑/↓ PgUp/PgDn gulir riwayat",
+      "Ctrl+P/N riwayat input",
       "Ctrl+T thinking",
-      "Shift+Tab ganti mode",
+      "Shift+Tab mode",
+      "Ctrl+C hentikan (2× keluar)",
     ].join("    ");
     return color.dim(truncateTo(hints, cols));
   }

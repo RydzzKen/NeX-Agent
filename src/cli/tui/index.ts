@@ -38,6 +38,7 @@ export function createTuiPair(opts: TuiPairOptions): TuiPair {
       model: opts.initModel ?? "",
       provider: opts.initProvider ?? "",
     },
+    showThinking: opts.thinking !== false,
   });
   const prompter = new TuiPrompter(screen, opts.commands, opts.cwd);
   const io = new TuiIO(screen, {

@@ -130,6 +130,16 @@ describe("TuiIO: streaming teks & thinking", () => {
     screen.redraw();
     expect(stripAnsi(writes.join(""))).not.toContain("pertamakedua");
   });
+
+  it("setThinking menyinkronkan indikator thinking di status bar", () => {
+    const { io, screen } = setup();
+    screen.start();
+    expect(screen.thinkingVisible).toBe(true);
+    io.setThinking(false);
+    expect(screen.thinkingVisible).toBe(false);
+    io.setThinking(true);
+    expect(screen.thinkingVisible).toBe(true);
+  });
 });
 
 describe("TuiIO: echo pesan pengguna", () => {

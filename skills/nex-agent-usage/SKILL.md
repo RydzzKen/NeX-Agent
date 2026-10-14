@@ -18,7 +18,10 @@ umum, jelaskan langsung dari sini — jangan menjelajah kode.
     menghapusnya, `agent --ui tui` untuk satu sesi saja).
 - **TUI** (layar penuh): `agent tui`. Pintasan: `Shift+Tab` ganti mode,
   `Ctrl+X ↑/↓` ganti view, `Ctrl+T` thinking (status tampil di status bar:
-  `thinking:on`/`thinking:off`), `Ctrl+C` hentikan (2× keluar).
+  `thinking:on`/`thinking:off`), `↑`/`↓` (atau roda mouse/`PgUp`/`PgDn`)
+  menggulir riwayat chat — juga saat input berisi draf atau agent bekerja —
+  `Ctrl+P`/`Ctrl+N` riwayat input, `Ctrl+C` hentikan (2× keluar).
+  Mouse tidak ditangkap agar seleksi teks di Termux tetap jalan.
   Input tetap hidup saat agent bekerja — pesan yang dikirim lewat `Enter` akan
   **diantre** dan dijalankan setelah giliran selesai.
 - Bot Telegram punya subhimpunan sendiri (lihat bawah).

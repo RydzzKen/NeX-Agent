@@ -91,6 +91,8 @@ export class TuiIO implements ChatIO {
 
   setThinking(value: boolean): void {
     this.thinkingOn = value;
+    // Status bar menampilkan thinking:on/off — jaga tetap sinkron dengan /thinking.
+    this.screen.setThinkingVisible(value);
   }
 
   thinkingEnabled(): boolean {
