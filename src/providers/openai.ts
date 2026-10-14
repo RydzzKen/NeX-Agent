@@ -33,7 +33,11 @@ interface OpenAIChunk {
   choices?: Array<{
     delta?: {
       content?: string | null;
+      /** DeepSeek & sebagian gateway OpenAI-compatible. */
       reasoning_content?: string | null;
+      /** OpenRouter dan beberapa gateway lain. */
+      reasoning?: string | null;
+      /** Beberapa gateway memakai `thinking`. */
       thinking?: string | null;
       tool_calls?: OpenAIToolCallDelta[];
     };
@@ -192,7 +196,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       if (typeof delta.content === "string" && delta.content) {
         yield { type: "text", text: delta.content };
       }
-      const reasoning = delta.reasoning_content ?? delta.thinking;
+      const reasoning = delta.reasoning_content ?? delta.reasoning ?? delta.thinking;
       if (typeof reasoning === "string" && reasoning) {
         yield { type: "thinking", text: reasoning };
       }

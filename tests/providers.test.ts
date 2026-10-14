@@ -51,6 +51,31 @@ describe("OpenAICompatibleProvider", () => {
     expect(provider.id).toBe("custom:9router");
   });
 
+  it("memetakan reasoning_content/reasoning/thinking menjadi event thinking", async () => {
+    const body = sse([
+      { choices: [{ delta: { reasoning_content: "pikir " } }] },
+      { choices: [{ delta: { reasoning: "lanjut " } }] },
+      { choices: [{ delta: { thinking: "selesai" } }] },
+      { choices: [{ delta: { content: "jawaban" } }] },
+      { choices: [{ finish_reason: "stop" }] },
+    ]);
+    const provider = new OpenAICompatibleProvider({
+      id: "x",
+      label: "X",
+      baseURL: "http://localhost/v1",
+      fetchImpl: fetchBody(body),
+    });
+
+    const events = await collect(
+      provider.stream({ model: "m", messages: [{ role: "user", content: "hi" }], tools: [] }),
+    );
+
+    expect(events).toContainEqual({ type: "thinking", text: "pikir " });
+    expect(events).toContainEqual({ type: "thinking", text: "lanjut " });
+    expect(events).toContainEqual({ type: "thinking", text: "selesai" });
+    expect(events).toContainEqual({ type: "text", text: "jawaban" });
+  });
+
   it("melempar error saat HTTP gagal", async () => {
     const provider = new OpenAICompatibleProvider({
       id: "x",

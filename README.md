@@ -343,6 +343,13 @@ saat menu autocomplete terbuka, `↑`/`↓` memilih item menu. Supaya roda bisa
 dibedakan dari tombol panah, TUI mengaktifkan pelaporan mouse: seleksi teks
 dengan drag perlu menahan `Shift` (atau pakai seleksi bawaan terminal).
 
+**Thinking.** Baris `think` hanya muncul bila **model/gateway benar-benar
+mengirim** konten reasoning — mis. field `reasoning_content` (DeepSeek),
+`reasoning` (OpenRouter), atau `thinking`. Model non-reasoning (mis. `gpt-4o`,
+Gemini flash-lite) tidak mengirim apa pun, jadi status tetap `thinking:on` tetapi
+tidak ada baris yang tampil. Sakelar `Ctrl+T` / `/thinking` hanya
+menyembunyikan/menampilkan; ia tidak memaksa model berpikir.
+
 **Mengetik saat agent bekerja.** Baris input tetap hidup selama agent berpikir:
 Anda bisa terus mengetik dan menekan `Enter` untuk **mengantre** pesan. Pesan
 antre dijalankan otomatis setelah giliran berjalan selesai (ditandai `⏳ antre`),
