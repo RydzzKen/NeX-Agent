@@ -1,7 +1,7 @@
 # Catatan Perintah: `/skills install` & `/mcp add`
 
 Cheat sheet untuk memasang **skill** (via SkillUI) dan menambah **server MCP**.
-Berlaku untuk NeX-Agent v1.9.0. Semua perintah diketik di dalam sesi (REPL),
+Berlaku untuk NeX-Agent v1.9.1. Semua perintah diketik di dalam sesi (REPL),
 bukan di shell. Untuk daftar lengkap perintah lain, ketik `/help`.
 
 - [1. `/skills install` — pasang skill dari situs/repo/folder](#1-skills-install--pasang-skill-dari-situsrepofolder)

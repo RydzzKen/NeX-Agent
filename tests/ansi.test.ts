@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isCtrlTab,
+  isPrintableText,
   normalizeKey,
   stripAnsi,
   truncateTo,
@@ -62,6 +63,24 @@ describe("ansi: truncateTo", () => {
   it("menghitung lebar tampilan saat memotong teks ber-pewarna", () => {
     const out = truncateTo(`${RED}abcdef${RESET}`, 4);
     expect(stripAnsi(out)).toBe("abc…");
+  });
+});
+
+describe("ansi: isPrintableText", () => {
+  it("menerima huruf, angka, dan simbol", () => {
+    expect(isPrintableText("a")).toBe(true);
+    expect(isPrintableText("A")).toBe(true);
+    expect(isPrintableText("/")).toBe(true);
+    expect(isPrintableText(" ")).toBe(true);
+    expect(isPrintableText("a1/~")).toBe(true);
+  });
+
+  it("menolak teks kosong dan karakter kontrol/escape", () => {
+    expect(isPrintableText("")).toBe(false);
+    expect(isPrintableText("\u001b[A")).toBe(false);
+    expect(isPrintableText("\r")).toBe(false);
+    expect(isPrintableText("\t")).toBe(false);
+    expect(isPrintableText("\u007f")).toBe(false);
   });
 });
 

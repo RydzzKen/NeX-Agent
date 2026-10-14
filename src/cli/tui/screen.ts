@@ -218,7 +218,9 @@ export class Screen {
 
   insertInput(ch: string): void {
     const { text, caret, mask, prompt } = this.input;
-    if (!mask) this.setInput(text.slice(0, caret) + ch + text.slice(caret), caret + ch.length, mask, prompt);
+    // Tetap sisipkan walau `mask` aktif: mask hanya menyembunyikan tampilan,
+    // bukan melarang pengetikan (mis. prompt API key lewat `secretQuestion`).
+    this.setInput(text.slice(0, caret) + ch + text.slice(caret), caret + ch.length, mask, prompt);
   }
 
   deleteInput(): void {

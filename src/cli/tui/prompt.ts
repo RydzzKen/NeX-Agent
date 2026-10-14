@@ -1,4 +1,4 @@
-import { isCtrlTab, stripAnsi, type Key } from "../../util/ansi.js";
+import { isCtrlTab, isPrintableText, stripAnsi, type Key } from "../../util/ansi.js";
 import { PROMPT_EOF, type PrompterLike } from "../prompt.js";
 import { completeLine } from "../complete.js";
 import type { Screen } from "./screen.js";
@@ -158,14 +158,11 @@ export class TuiPrompter implements PrompterLike {
       return true;
     }
 
-    // Karakter yang dapat dicetak (readline tidak memberi `name` untuk ini).
-    if (!ctrl && !meta && name === undefined && sequence.length > 0) {
+    // Karakter yang dapat dicetak. readline mengisi `name` untuk huruf/angka
+    // (mis. "a" → name "a", "A" → name "a"), jadi JANGAN mengandalkan `name`;
+    // pakai `sequence` mentah yang mempertahankan huruf besar/kecil dan simbol.
+    if (!ctrl && !meta && isPrintableText(sequence)) {
       this.screen.insertInput(sequence);
-      this.refreshMenu();
-      return true;
-    }
-    if (!ctrl && !meta && name === "space" && sequence === " ") {
-      this.screen.insertInput(" ");
       this.refreshMenu();
       return true;
     }

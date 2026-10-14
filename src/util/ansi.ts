@@ -146,6 +146,19 @@ export function isCtrlTab(key: Key): boolean {
   return key.name === "tab" && (key.ctrl || CTRL_TAB_SEQUENCES.has(key.sequence));
 }
 
+/**
+ * True bila teks hanya berisi karakter yang dapat dicetak (bukan kontrol/escape).
+ * Dipakai untuk membedakan input pengguna dari urutan tombol khusus.
+ */
+export function isPrintableText(text: string): boolean {
+  if (text.length === 0) return false;
+  for (const ch of text) {
+    const code = ch.codePointAt(0)!;
+    if (code < 0x20 || code === 0x7f) return false;
+  }
+  return true;
+}
+
 /** Potong teks ke maksimum kolom tampilan, sisipkan "…". */
 export function truncateTo(text: string, max: number): string {
   if (visibleWidth(text) <= max) return text;
