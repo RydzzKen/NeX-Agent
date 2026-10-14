@@ -55,6 +55,8 @@ const space: RawKey = { name: "space", sequence: " " };
 const backspace: RawKey = { name: "backspace", sequence: "\u007f" };
 const enter: RawKey = { name: "return", sequence: "\r" };
 const up: RawKey = { name: "up", sequence: "\u001b[A" };
+const down: RawKey = { name: "down", sequence: "\u001b[B" };
+const tab: RawKey = { name: "tab", sequence: "\t" };
 
 describe("TuiPrompter: pengetikan", () => {
   it("mengetik huruf kecil masuk ke input", () => {
@@ -206,5 +208,47 @@ describe("TuiPrompter: menu autocomplete", () => {
     void prompter.question("› ");
     for (const ch of "/mcp ") type(prompter, [symbol(ch)]);
     expect(screen.getMenuSelected()).toBe("add");
+  });
+
+  it("Tab memilih item folder yang disorot lalu masuk ke isinya", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    for (const ch of "Pr") type(prompter, [symbol(ch)]);
+    expect(screen.getMenuSelected()).toBe("Project/");
+    type(prompter, [tab]);
+    expect(screen.getInputText()).toBe("Project/");
+    expect(screen.getMenuSelected()).toBe("Project/Sub/");
+    type(prompter, [tab]);
+    expect(screen.getInputText()).toBe("Project/Sub/");
+  });
+
+  it("Tab memilih perintah slash yang disorot", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    type(prompter, [symbol("/")]);
+    expect(screen.getMenuSelected()).toBe("/help");
+    type(prompter, [tab]);
+    expect(screen.getInputText()).toBe("/help");
+    expect(screen.getMenuSelected()).toBeUndefined();
+  });
+
+  it("panah memindah sorotan, lalu Tab memilih item itu", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    type(prompter, [symbol("P")]);
+    expect(screen.getMenuSelected()).toBe("Pemandangan/");
+    type(prompter, [down]);
+    expect(screen.getMenuSelected()).toBe("Project/");
+    type(prompter, [tab]);
+    expect(screen.getInputText()).toBe("Project/");
+  });
+
+  it("Tab memilih subperintah yang disorot", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    for (const ch of "/mcp ") type(prompter, [symbol(ch)]);
+    expect(screen.getMenuSelected()).toBe("add");
+    type(prompter, [tab]);
+    expect(screen.getInputText()).toBe("/mcp add");
   });
 });

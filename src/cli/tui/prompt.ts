@@ -277,9 +277,11 @@ export class TuiPrompter implements PrompterLike {
       this.screen.clearMenu();
       return;
     }
-    // Tab berulang: putar pilihan pada menu yang sudah terbuka.
-    if (this.screenMenuOpen()) {
-      this.screen.menuSelect(1);
+    // Menu sudah terbuka: Tab memilih item yang sedang disorot (folder/perintah),
+    // seperti memilih dari daftar. Pindah item dengan ↑/↓.
+    const selected = this.screen.getMenuSelected();
+    if (selected) {
+      this.applyCompletion(selected);
       return;
     }
     const { matches } = this.currentMenu();
