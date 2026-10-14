@@ -8,6 +8,7 @@ import { normalizeKey } from "../src/util/ansi.js";
 interface Harness {
   pair: TuiPair;
   screen: Screen;
+  writes: string[];
   toggles: { mode: number; thinking: number };
 }
 
@@ -18,7 +19,16 @@ afterEach(() => {
 
 /** Bangun pair TUI palsu (tanpa stdin/stdout sungguhan) + dispatcher terpasang. */
 function attach(): Harness {
-  const out = { write: () => true, columns: 60, rows: 20, on: () => {} };
+  const writes: string[] = [];
+  const out = {
+    write: (s: string | Uint8Array) => {
+      writes.push(String(s));
+      return true;
+    },
+    columns: 60,
+    rows: 20,
+    on: () => {},
+  };
   const stdin = { isTTY: false, setRawMode: () => {}, on: () => {}, removeAllListeners: () => {} };
   const screen = new Screen({
     stdin: stdin as unknown as ScreenOptions["stdin"],
@@ -35,7 +45,16 @@ function attach(): Harness {
     },
   });
   cleanups.push(detach);
-  return { pair, screen, toggles };
+  return { pair, screen, writes, toggles };
+}
+
+/** Teks yang terakhir disalin lewat OSC 52 (atau undefined bila tak ada). */
+function copiedText(writes: string[]): string | undefined {
+  for (let i = writes.length - 1; i >= 0; i -= 1) {
+    const match = /\u001b\]52;c;([A-Za-z0-9+/=]*)\u0007/.exec(writes[i]!);
+    if (match) return Buffer.from(match[1]!, "base64").toString("utf8");
+  }
+  return undefined;
 }
 
 describe("TUI: Ctrl+T & Ctrl+Tab", () => {
@@ -155,5 +174,59 @@ describe("TUI: gulir riwayat chat (roda mouse)", () => {
     screen.emitKey({ name: "end", sequence: "\u001b[F" });
     expect(screen.scrollOffset).toBe(0);
     expect(screen.getInputText()).toBe("");
+  });
+});
+
+describe("TUI: seleksi teks mouse (seret kiri) + salin OSC 52", () => {
+  /** Siapkan layar dengan 30 baris dan gulir ke dasar; kosongkan buffer tulis. */
+  function setup(): Harness {
+    const h = attach();
+    h.screen.start();
+    h.screen.clearView();
+    for (let i = 0; i < 30; i += 1) h.screen.append("text", `baris-${i}`);
+    h.screen.scrollToBottom();
+    h.writes.length = 0;
+    return h;
+  }
+
+  it("seret dalam satu baris menyalin potongan kolom terpilih", () => {
+    const { screen, writes } = setup();
+    screen.emitKey({ sequence: "\u001b[<0;1;1M" }); // tekan kiri di kolom 1, baris 1
+    screen.emitKey({ sequence: "\u001b[<32;5;1M" }); // seret ke kolom 5
+    screen.emitKey({ sequence: "\u001b[<0;5;1m" }); // lepas
+    // Baris 1 (dasar layar) = baris ke-13; kolom 1..5 = "baris".
+    expect(copiedText(writes)).toBe("baris");
+  });
+
+  it("seret lintas baris menyalin beberapa baris dengan newline", () => {
+    const { screen, writes } = setup();
+    screen.emitKey({ sequence: "\u001b[<0;1;1M" });
+    screen.emitKey({ sequence: "\u001b[<32;3;2M" });
+    screen.emitKey({ sequence: "\u001b[<0;3;2m" });
+    expect(copiedText(writes)).toBe("baris-13\nbar");
+  });
+
+  it("klik tanpa geser tidak menyalin apa pun", () => {
+    const { screen, writes } = setup();
+    screen.emitKey({ sequence: "\u001b[<0;2;2M" });
+    screen.emitKey({ sequence: "\u001b[<0;2;2m" });
+    expect(copiedText(writes)).toBeUndefined();
+  });
+
+  it("menekan tombol membatalkan seleksi yang tersorot", () => {
+    const { screen } = setup();
+    screen.emitKey({ sequence: "\u001b[<0;1;1M" });
+    screen.emitKey({ sequence: "\u001b[<32;5;1M" });
+    expect(screen.hasSelection).toBe(true);
+    screen.emitKey({ name: "a", sequence: "a" });
+    expect(screen.hasSelection).toBe(false);
+  });
+
+  it("seret ke atas (mundur) menormalkan urutan baris", () => {
+    const { screen, writes } = setup();
+    screen.emitKey({ sequence: "\u001b[<0;3;2M" }); // tekan di baris bawah
+    screen.emitKey({ sequence: "\u001b[<32;1;1M" }); // seret ke atas
+    screen.emitKey({ sequence: "\u001b[<0;1;1m" });
+    expect(copiedText(writes)).toBe("baris-13\nbar");
   });
 });

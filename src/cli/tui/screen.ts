@@ -1,7 +1,17 @@
 import type { Writable } from "node:stream";
 import readline from "node:readline";
 import { color } from "../../util/color.js";
-import { normalizeKey, stripAnsi, truncateTo, visibleWidth, wrapAnsi, type Key } from "../../util/ansi.js";
+import {
+  highlightColumns,
+  normalizeKey,
+  sliceByColumns,
+  stripAnsi,
+  truncateTo,
+  visibleWidth,
+  wrapAnsi,
+  type Key,
+} from "../../util/ansi.js";
+import { OSC52_MAX_BYTES, osc52Sequence, wrapForMultiplexer } from "../../util/clipboard.js";
 
 /** Jenis baris; dipakai untuk pewarnaan dan filter (thinking). */
 export type LineKind =
@@ -103,6 +113,15 @@ export class Screen {
   private spinnerTick = 0;
   private spinnerTimer?: ReturnType<typeof setInterval>;
 
+  // Seleksi mouse (dalam indeks baris-bungkus `all` + kolom tampilan 0-based).
+  private sel?: { aLine: number; aCol: number; fLine: number; fCol: number };
+  private selecting = false;
+  private lastAll: string[] = [];
+  private lastStart = 0;
+  private lastContentRows = 0;
+  private notice?: string;
+  private noticeTimer?: ReturnType<typeof setTimeout>;
+
   constructor(opts: ScreenOptions) {
     this.stdin = opts.stdin;
     this.stdout = opts.stdout;
@@ -129,10 +148,12 @@ export class Screen {
     if (this.stdout === process.stdout) {
       this.write("\u001b[?1049h"); // alternate screen
       this.write("\u001b[?25l"); // sembunyikan kursor
-      // Aktifkan pelaporan mouse (mode 1000) dengan koordinat SGR (mode 1006):
-      // roda mouse dikirim sebagai event terpisah sehingga bisa dipetakan ke
-      // gulir transkrip, sementara tombol ↑/↓ tetap untuk riwayat input.
+      // Aktifkan pelaporan mouse (mode 1000) + gerak saat tombol ditahan
+      // (mode 1002) dengan koordinat SGR (mode 1006): roda dipetakan ke gulir
+      // transkrip, seret tombol kiri menyeleksi teks, dan tombol ↑/↓ tetap
+      // untuk riwayat input.
       this.write("\u001b[?1000h");
+      this.write("\u001b[?1002h");
       this.write("\u001b[?1006h");
       this.installIntercept();
       process.stdout.on?.("resize", () => this.redraw());
@@ -158,8 +179,12 @@ export class Screen {
     this.started = false;
     if (this.spinnerTimer) clearInterval(this.spinnerTimer);
     if (this.drawTimer) clearTimeout(this.drawTimer);
+    if (this.noticeTimer) clearTimeout(this.noticeTimer);
     this.spinnerTimer = undefined;
     this.drawTimer = undefined;
+    this.noticeTimer = undefined;
+    this.sel = undefined;
+    this.selecting = false;
     if (this.emitKeypress) {
       this.stdin.removeAllListeners("keypress");
       this.stdin.setRawMode(false);
@@ -167,6 +192,7 @@ export class Screen {
     if (this.stdout === process.stdout) {
       this.restoreIntercept();
       this.write("\u001b[?1006l"); // matikan mode SGR mouse
+      this.write("\u001b[?1002l"); // matikan pelaporan gerak
       this.write("\u001b[?1000l"); // matikan pelaporan mouse
       this.write("\u001b[?25h"); // tampilkan kursor
       this.write("\u001b[?1049l"); // kembali ke buffer utama
@@ -437,6 +463,118 @@ export class Screen {
     this.redraw();
   }
 
+  // ---- seleksi teks ----
+
+  /** True bila ada seleksi aktif (sedang dipilih atau sudah dipilih). */
+  get hasSelection(): boolean {
+    return this.sel !== undefined;
+  }
+
+  /**
+   * Mulai seleksi pada sel layar (`x`,`y`; 1-based). Koordinat di luar area
+   * konten diabaikan (baris status/hint/input tidak bisa dipilih).
+   */
+  beginSelection(x: number, y: number): void {
+    if (y < 1 || y > this.lastContentRows) {
+      this.clearSelection();
+      return;
+    }
+    const col = Math.max(0, x - 1);
+    const line = this.lastStart + (y - 1);
+    this.sel = { aLine: line, aCol: col, fLine: line, fCol: col };
+    this.selecting = true;
+    this.setNotice(undefined);
+    this.redraw();
+  }
+
+  /** Perbarui ujung seleksi selama tombol digeser (mode 1002). */
+  updateSelection(x: number, y: number): void {
+    if (!this.sel || !this.selecting) return;
+    const yy = Math.max(1, Math.min(y, Math.max(1, this.lastContentRows)));
+    this.sel.fLine = this.lastStart + (yy - 1);
+    this.sel.fCol = Math.max(0, x - 1);
+    this.redraw();
+  }
+
+  /**
+   * Akhiri seleksi: salin teks terpilih ke clipboard lewat OSC 52. Klik tanpa
+   * geser (seleksi satu sel / kosong) dianggap bukan seleksi.
+   */
+  endSelection(): void {
+    if (!this.sel || !this.selecting) return;
+    this.selecting = false;
+    const { aLine, aCol, fLine, fCol } = this.sel;
+    if (aLine === fLine && aCol === fCol) {
+      this.clearSelection();
+      return;
+    }
+    const text = this.selectedText();
+    if (text.length === 0) {
+      this.clearSelection();
+      return;
+    }
+    this.copyToClipboard(text);
+    this.setNotice(`✓ ${text.length} karakter disalin`);
+    this.redraw();
+  }
+
+  /** Buang seleksi (mis. saat pengguna mengetik). */
+  clearSelection(): void {
+    if (!this.sel) return;
+    this.sel = undefined;
+    this.selecting = false;
+    this.redraw();
+  }
+
+  /** Teks polos dari rentang seleksi saat ini (dinormalisasi atas→bawah). */
+  private selectedText(): string {
+    const sel = this.sel;
+    if (!sel) return "";
+    let { aLine, aCol, fLine, fCol } = sel;
+    if (fLine < aLine || (fLine === aLine && fCol < aCol)) {
+      [aLine, fLine] = [fLine, aLine];
+      [aCol, fCol] = [fCol, aCol];
+    }
+    const out: string[] = [];
+    for (let li = aLine; li <= fLine; li += 1) {
+      const line = this.lastAll[li];
+      if (line === undefined) continue;
+      const width = visibleWidth(line);
+      const from = li === aLine ? aCol : 0;
+      const last = Math.max(0, width - 1);
+      const to = li === fLine ? Math.min(fCol, last) : last;
+      if (to < from) continue;
+      out.push(sliceByColumns(line, from, to));
+    }
+    return out.join("\n");
+  }
+
+  /** Tulis teks ke clipboard terminal (OSC 52, dibungkus untuk tmux/screen). */
+  private copyToClipboard(text: string): void {
+    if (text.length === 0) return;
+    let seq = osc52Sequence(text);
+    if (seq.length > OSC52_MAX_BYTES) return; // terlalu panjang; jangan kirim
+    seq = wrapForMultiplexer(seq);
+    this.write(seq);
+  }
+
+  /** Setel pesan sementara (mis. "disalin"); otomatis hilang setelah 2,5 detik. */
+  private setNotice(text?: string): void {
+    if (this.noticeTimer) {
+      clearTimeout(this.noticeTimer);
+      this.noticeTimer = undefined;
+    }
+    this.notice = text;
+    if (text) {
+      this.noticeTimer = setTimeout(() => {
+        this.notice = undefined;
+        this.noticeTimer = undefined;
+        this.redraw();
+      }, 2500);
+      (this.noticeTimer as { unref?: () => void }).unref?.();
+    }
+  }
+
   viewForward(): string {
     if (this.views.length <= 1) return this.currentViewId();
     this.active = (this.active + 1) % this.views.length;
@@ -563,8 +701,17 @@ export class Screen {
     const start = Math.max(0, end - contentRows);
     const slice = all.slice(start, end);
 
+    // Simpan tata letak supaya seleksi mouse (peristiwa sesudah draw) bisa
+    // memetakan baris layar → baris konten.
+    this.lastAll = all;
+    this.lastStart = start;
+    this.lastContentRows = contentRows;
+
     const buffer: string[] = ["\u001b[40m\u001b[2J\u001b[H"];
-    for (const line of slice) buffer.push(padLine(truncateTo(line, cols), cols));
+    for (let i = 0; i < slice.length; i += 1) {
+      const line = this.applySelection(start + i, slice[i]!);
+      buffer.push(padLine(truncateTo(line, cols), cols));
+    }
 
     // Menu autocomplete tepat di atas input (jendela bergulir mengikuti pilihan).
     if (this.menu) {
@@ -603,6 +750,24 @@ export class Screen {
     this.write(buffer.join("") + "\u001b[0m");
   }
 
+  /** Sorot bagian baris yang termasuk seleksi (bila ada). */
+  private applySelection(lineIndex: number, line: string): string {
+    const sel = this.sel;
+    if (!sel) return line;
+    let { aLine, aCol, fLine, fCol } = sel;
+    if (fLine < aLine || (fLine === aLine && fCol < aCol)) {
+      [aLine, fLine] = [fLine, aLine];
+      [aCol, fCol] = [fCol, aCol];
+    }
+    if (lineIndex < aLine || lineIndex > fLine) return line;
+    const width = visibleWidth(line);
+    const c0 = lineIndex === aLine ? aCol : 0;
+    const last = Math.max(0, width - 1);
+    const c1 = lineIndex === fLine ? Math.min(fCol, last) : last;
+    if (c1 < c0) return line;
+    return highlightColumns(line, c0, c1);
+  }
+
   /** Semua baris view (sudah difilter + dibungkus), dari atas ke bawah. */
   private wrappedAll(view: View, cols: number): string[] {
     const wrapped: string[] = [];
@@ -631,8 +796,10 @@ export class Screen {
   }
 
   private hint(cols: number): string {
+    if (this.notice) return color.brightGreen(truncateTo(this.notice, cols));
     const hints = [
       "roda/PgUp/PgDn gulir",
+      "seret = pilih & salin",
       "↑/↓ riwayat input",
       "Ctrl+T thinking",
       "Shift+Tab mode",

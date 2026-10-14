@@ -323,6 +323,7 @@ Ingin TUI jadi bawaan? Jalankan `nex-agent default tui` sekali — mulai sekaran
 | `Ctrl+T` | Tampilkan/sembunyikan thinking — keadaan tampil di status bar (`thinking:on`/`thinking:off`) |
 | `↑`/`↓` | Panggil ulang riwayat input (pesan sebelumnya/berikutnya); saat menu autocomplete terbuka, memilih item menu |
 | roda mouse · `PgUp`/`PgDn` | Gulir riwayat chat — **selalu** bisa, termasuk saat input berisi draf dan agent sedang bekerja |
+| seret klik kiri | Pilih teks di riwayat chat; saat dilepas otomatis disalin ke clipboard (OSC 52). Tahan `Shift` saat menyeret untuk seleksi bawaan terminal |
 | `Home`/`End` | Gulir ke awal/akhir riwayat chat (saat baris input kosong; bila tidak, memindah kursor) |
 | `Ctrl+P` / `Ctrl+N` | Alias riwayat input (untuk terminal tanpa tombol panah) |
 | `Tab` | Pilih item yang disorot di menu autocomplete (perintah/folder/berkas) |
@@ -340,8 +341,17 @@ saat agent sedang berpikir/streaming. Output baru tidak akan menyentak Anda ke
 bawah saat sedang menggulir; kembali ke dasar dengan `End`/`PgDn`. Sementara itu
 `↑`/`↓` tetap memanggil **riwayat input** seperti shell (termasuk saat ada draf);
 saat menu autocomplete terbuka, `↑`/`↓` memilih item menu. Supaya roda bisa
-dibedakan dari tombol panah, TUI mengaktifkan pelaporan mouse: seleksi teks
-dengan drag perlu menahan `Shift` (atau pakai seleksi bawaan terminal).
+dibedakan dari tombol panah, TUI mengaktifkan pelaporan mouse; seret klik kiri
+dipakai untuk memilih & menyalin teks (lihat di bawah).
+
+**Seleksi & salin.** Tahan **klik kiri lalu seret** di area riwayat chat untuk
+menyeleksi teks; begitu tombol dilepas, teks terpilih otomatis disalin ke
+clipboard lewat OSC 52. Didukung iTerm2, kitty, WezTerm, Alacritty, Windows
+Terminal, dan Termux. Bila terminal tidak mendukung OSC 52 (mis. GNOME
+Terminal/VTE), tahan `Shift` saat menyeret untuk memakai **seleksi bawaan
+terminal**, lalu salin dengan pintasan terminal. Di Termux, long-press juga tetap
+memunculkan menu seleksi bawaan. Menekan tombol apa pun membatalkan sorotan
+seleksi.
 
 **Thinking.** Baris `think` hanya muncul bila **model/gateway benar-benar
 mengirim** konten reasoning — mis. field `reasoning_content` (DeepSeek),

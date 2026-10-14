@@ -64,11 +64,22 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
   const { screen, prompter, io } = pair;
   let chord = false;
 
-  // Roda mouse menggulir transkrip. Karena pelaporan mouse aktif, roda bisa
-  // dibedakan dari tombol ↑/↓ yang tetap dipakai untuk riwayat input.
+  // Roda mouse menggulir transkrip; seret tombol kiri menyeleksi teks (disalin
+  // ke clipboard lewat OSC 52 saat dilepas). Karena pelaporan mouse aktif, roda
+  // bisa dibedakan dari tombol ↑/↓ yang tetap dipakai untuk riwayat input.
   const handleMouse = (event: SgrMouseEvent): void => {
-    if (event.wheelUp) screen.scrollBy(3);
-    else if (event.wheelDown) screen.scrollBy(-3);
+    if (event.wheelUp) {
+      screen.scrollBy(3);
+      return;
+    }
+    if (event.wheelDown) {
+      screen.scrollBy(-3);
+      return;
+    }
+    if (screen.overlayActive || !event.left) return;
+    if (event.motion) screen.updateSelection(event.x, event.y);
+    else if (event.press) screen.beginSelection(event.x, event.y);
+    else screen.endSelection();
   };
 
   const handleGlobal = (key: Key): void => {
@@ -109,6 +120,8 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
   };
 
   const dispatch = (key: Key): void => {
+    // Menekan tombol membatalkan sorotan seleksi (biar tidak "nyangkut").
+    screen.clearSelection();
     if (screen.overlayActive) {
       io.handleOverlayKey(key);
       return;

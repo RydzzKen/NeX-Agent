@@ -184,12 +184,16 @@ export function decodeOtherKeys(sequence: string): Key | null {
 export const SGR_MOUSE_PREFIX = "\u001b[<";
 
 export interface SgrMouseEvent {
-  /** Kode tombol xterm (bit mask; roda = bit 64). */
+  /** Kode tombol xterm (bit mask; roda = bit 64, gerak = bit 32). */
   button: number;
   /** Roda digulir ke atas. */
   wheelUp: boolean;
   /** Roda digulir ke bawah. */
   wheelDown: boolean;
+  /** Tombol kiri ditekan/dilepas (bukan roda). */
+  left: boolean;
+  /** Event gerak saat tombol ditahan (butuh mode 1002/1003). */
+  motion: boolean;
   /** Kolom/baris (1-based). */
   x: number;
   y: number;
@@ -212,14 +216,77 @@ export function decodeSgrMouse(sequence: string): SgrMouseEvent | null {
   if (!match) return null;
   const button = Number(match[1]);
   const isWheel = (button & 64) === 64;
+  const isMotion = (button & 32) === 32;
   return {
     button,
     wheelUp: isWheel && (button & 1) === 0,
     wheelDown: isWheel && (button & 1) === 1,
+    left: !isWheel && (button & 3) === 0,
+    motion: isMotion,
     x: Number(match[2]),
     y: Number(match[3]),
     press: match[4] === "M",
   };
+}
+
+/**
+ * Ambil potongan teks tampilan pada rentang kolom `[from, to]` (inklusif,
+ * 0-based). Escape ANSI dibuang; karakter lebar (CJK) dihitung 2 kolom.
+ */
+export function sliceByColumns(text: string, from: number, to: number): string {
+  if (to < from) return "";
+  const plain = stripAnsi(text);
+  let out = "";
+  let col = 0;
+  for (const ch of plain) {
+    const w = ch === "\t" ? 4 : charWidth(ch);
+    const startCol = col;
+    const endCol = col + w - 1;
+    col += w;
+    if (endCol < from) continue;
+    if (startCol > to) break;
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * Bungkus rentang kolom `[from, to]` (inklusif) dengan video terbalik
+ * (`\u001b[7m`/`\u001b[27m`) sambil mempertahankan warna/atribut lain. Escape
+ * ANSI tidak dihitung sebagai kolom. Dipakai untuk menyorot seleksi mouse.
+ */
+export function highlightColumns(text: string, from: number, to: number): string {
+  if (to < from) return text;
+  let out = "";
+  let col = 0;
+  let on = false;
+  let i = 0;
+  while (i < text.length) {
+    if (text[i] === "\u001b") {
+      const match = /^\u001b\[[0-9;?]*[ -/]*[@-~]/.exec(text.slice(i));
+      if (!match) break;
+      out += match[0];
+      i += match[0].length;
+      continue;
+    }
+    const ch = String.fromCodePoint(text.codePointAt(i)!);
+    const w = ch === "\t" ? 4 : charWidth(ch);
+    const startCol = col;
+    const endCol = col + w - 1;
+    const selected = endCol >= from && startCol <= to;
+    if (selected && !on) {
+      out += "\u001b[7m";
+      on = true;
+    } else if (!selected && on) {
+      out += "\u001b[27m";
+      on = false;
+    }
+    out += ch;
+    col += w;
+    i += ch.length;
+  }
+  if (on) out += "\u001b[27m";
+  return out;
 }
 
 /**

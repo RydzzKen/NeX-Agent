@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   decodeOtherKeys,
   decodeSgrMouse,
+  highlightColumns,
   isCtrlTab,
   isOtherKeysPartial,
   isPrintableText,
   isSgrMousePartial,
   normalizeKey,
+  sliceByColumns,
   stripAnsi,
   truncateTo,
   visibleWidth,
@@ -180,5 +182,59 @@ describe("ansi: mouse SGR (roda)", () => {
     expect(isSgrMousePartial("\u001b[<64;10;5M")).toBe(false);
     expect(isSgrMousePartial("6")).toBe(false);
     expect(isSgrMousePartial("\u001b[A")).toBe(false);
+  });
+
+  it("mengenali tekan/seret/lepas tombol kiri", () => {
+    const press = decodeSgrMouse("\u001b[<0;3;4M");
+    expect(press?.left).toBe(true);
+    expect(press?.motion).toBe(false);
+    expect(press?.press).toBe(true);
+
+    const drag = decodeSgrMouse("\u001b[<32;3;4M");
+    expect(drag?.left).toBe(true);
+    expect(drag?.motion).toBe(true);
+    expect(drag?.press).toBe(true);
+
+    const release = decodeSgrMouse("\u001b[<0;3;4m");
+    expect(release?.left).toBe(true);
+    expect(release?.motion).toBe(false);
+    expect(release?.press).toBe(false);
+
+    // Klik kanan (kode 2) bukan tombol kiri.
+    expect(decodeSgrMouse("\u001b[<2;3;4M")?.left).toBe(false);
+    // Roda bukan tombol kiri maupun gerak.
+    expect(decodeSgrMouse("\u001b[<64;3;4M")?.left).toBe(false);
+    expect(decodeSgrMouse("\u001b[<64;3;4M")?.motion).toBe(false);
+  });
+});
+
+describe("ansi: potong & sorot kolom", () => {
+  it("sliceByColumns mengambil rentang kolom inklusif", () => {
+    expect(sliceByColumns("hello world", 0, 4)).toBe("hello");
+    expect(sliceByColumns("hello world", 6, 10)).toBe("world");
+    expect(sliceByColumns("hello", 2, 2)).toBe("l");
+    expect(sliceByColumns("hello", 4, 1)).toBe("");
+    // Escape ANSI tidak dihitung sebagai kolom.
+    expect(sliceByColumns("\u001b[31mabc\u001b[0mdef", 2, 4)).toBe("cde");
+  });
+
+  it("sliceByColumns menghitung karakter lebar (CJK) sebagai 2 kolom", () => {
+    // "あい" = 4 kolom; "xあ" → kolom 0 = x, 1..2 = あ.
+    expect(sliceByColumns("xあy", 1, 2)).toBe("あ");
+    expect(sliceByColumns("xあy", 0, 0)).toBe("x");
+    expect(sliceByColumns("xあy", 3, 3)).toBe("y");
+  });
+
+  it("highlightColumns membungkus rentang kolom dengan video terbalik", () => {
+    expect(highlightColumns("abcdef", 1, 3)).toBe("a\u001b[7mbcd\u001b[27mef");
+    expect(highlightColumns("abcdef", 0, 5)).toBe("\u001b[7mabcdef\u001b[27m");
+    expect(highlightColumns("abcdef", 2, 2)).toBe("ab\u001b[7mc\u001b[27mdef");
+    // Rentang di luar teks tidak mengubah apa pun.
+    expect(highlightColumns("abc", 5, 9)).toBe("abc");
+  });
+
+  it("highlightColumns mempertahankan warna dan menghitung escape bukan kolom", () => {
+    const out = highlightColumns("\u001b[31mabc\u001b[0m", 1, 1);
+    expect(out).toBe("\u001b[31ma\u001b[7mb\u001b[27mc\u001b[0m");
   });
 });

@@ -360,3 +360,35 @@ describe("Screen: view", () => {
     expect(seen).toContain("up");
   });
 });
+
+describe("Screen: seleksi teks", () => {
+  it("menyorot kolom terpilih dan menyalinnya saat seleksi berakhir", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    screen.clearView();
+    for (let i = 0; i < 20; i += 1) screen.append("text", `line-${i}`);
+    screen.scrollToBottom();
+    writes.length = 0;
+
+    screen.beginSelection(1, 1);
+    screen.updateSelection(4, 1);
+    expect(screen.hasSelection).toBe(true);
+    // Frame terakhir memuat penanda video terbalik (sorotan).
+    expect(writes[writes.length - 1]).toContain("\u001b[7m");
+
+    screen.endSelection();
+    const match = /\u001b\]52;c;([A-Za-z0-9+/=]*)\u0007/.exec(writes.join(""));
+    expect(match).toBeTruthy();
+    expect(Buffer.from(match![1]!, "base64").toString("utf8")).toBe("line");
+  });
+
+  it("klik satu sel tidak menghidupkan seleksi setelah dilepas", () => {
+    const { screen } = makeScreen();
+    screen.start();
+    screen.append("text", "halo");
+    screen.scrollToBottom();
+    screen.beginSelection(1, 1);
+    screen.endSelection();
+    expect(screen.hasSelection).toBe(false);
+  });
+});

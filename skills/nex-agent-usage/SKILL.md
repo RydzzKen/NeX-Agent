@@ -21,9 +21,11 @@ umum, jelaskan langsung dari sini — jangan menjelajah kode.
   `thinking:on`/`thinking:off`), **roda mouse**/`PgUp`/`PgDn` menggulir riwayat
   chat — selalu bisa, juga saat input berisi draf atau agent bekerja — sedangkan
   `↑`/`↓` memanggil riwayat input (alias `Ctrl+P`/`Ctrl+N`), `Ctrl+C` hentikan
-  (2× keluar). Pelaporan mouse aktif, jadi seleksi teks dengan drag perlu `Shift`.
-  Input tetap hidup saat agent bekerja — pesan yang dikirim lewat `Enter` akan
-  **diantre** dan dijalankan setelah giliran selesai.
+  (2× keluar). Pelaporan mouse aktif: **seret klik kiri** untuk memilih teks di
+  riwayat — saat dilepas otomatis disalin lewat OSC 52 (terminal tanpa OSC 52:
+  pakai `Shift`+seret untuk seleksi bawaan). Input tetap hidup saat agent
+  bekerja — pesan yang dikirim lewat `Enter` akan **diantre** dan dijalankan
+  setelah giliran selesai.
 - Bot Telegram punya subhimpunan sendiri (lihat bawah).
 
 ## 1. Mode Plan / Build
