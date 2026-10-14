@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   decodeOtherKeys,
+  decodeSgrMouse,
   isCtrlTab,
   isOtherKeysPartial,
   isPrintableText,
+  isSgrMousePartial,
   normalizeKey,
   stripAnsi,
   truncateTo,
@@ -148,5 +150,35 @@ describe("ansi: normalisasi key", () => {
 
   it("Shift+Tab bukan Ctrl+Tab", () => {
     expect(isCtrlTab(normalizeKey({ name: "tab", shift: true, sequence: "\u001b[Z" }))).toBe(false);
+  });
+});
+
+describe("ansi: mouse SGR (roda)", () => {
+  it("mendeteksi roda naik dan turun", () => {
+    const up = decodeSgrMouse("\u001b[<64;10;5M");
+    expect(up?.wheelUp).toBe(true);
+    expect(up?.wheelDown).toBe(false);
+    expect(up?.button).toBe(64);
+    expect(up?.x).toBe(10);
+    expect(up?.y).toBe(5);
+    expect(up?.press).toBe(true);
+
+    const down = decodeSgrMouse("\u001b[<65;10;5M");
+    expect(down?.wheelDown).toBe(true);
+    expect(down?.wheelUp).toBe(false);
+  });
+
+  it("mengabaikan urutan yang bukan mouse atau bukan roda", () => {
+    expect(decodeSgrMouse("\u001b[A")).toBeNull();
+    expect(decodeSgrMouse("\u001b[<0;10;5M")?.wheelUp).toBe(false);
+    expect(decodeSgrMouse("\u001b[<0;10;5M")?.wheelDown).toBe(false);
+  });
+
+  it("menandai fragmen mouse yang terpecah", () => {
+    expect(isSgrMousePartial("\u001b[<")).toBe(true);
+    expect(isSgrMousePartial("\u001b[<64;10;5")).toBe(true);
+    expect(isSgrMousePartial("\u001b[<64;10;5M")).toBe(false);
+    expect(isSgrMousePartial("6")).toBe(false);
+    expect(isSgrMousePartial("\u001b[A")).toBe(false);
   });
 });

@@ -145,14 +145,14 @@ export class TuiPrompter implements PrompterLike {
         this.screen.menuSelect(name === UP ? -1 : 1);
         return true;
       }
-      // Selain itu ↑/↓ selalu menggulir riwayat chat — termasuk saat input masih
-      // berisi draf atau agent sedang berpikir. Roda mouse di banyak terminal
-      // (desktop maupun Termux) dikirim sebagai ↑/↓, jadi ikut menggulir.
-      return false;
+      // Menu tertutup: ↑/↓ memanggil riwayat pesan (seperti shell), termasuk
+      // saat input masih berisi draf. Menggulir transkrip memakai roda mouse,
+      // PgUp/PgDn, atau Home/End.
+      return this.historyMove(name === UP ? -1 : 1);
     }
 
-    // Ctrl+P / Ctrl+N: telusuri riwayat pesan (ala readline/Emacs). Dipakai
-    // karena ↑/↓ kini untuk menggulir, bukan memanggil riwayat input.
+    // Ctrl+P / Ctrl+N: alias readline/Emacs untuk riwayat pesan (agar tetap
+    // bisa dipakai tanpa tombol panah).
     if (ctrl && !meta && (name === "p" || name === "n")) {
       if (!this.screen.inputActive) this.activateInput();
       return this.historyMove(name === "p" ? -1 : 1);

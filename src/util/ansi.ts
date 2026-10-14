@@ -180,6 +180,48 @@ export function decodeOtherKeys(sequence: string): Key | null {
   };
 }
 
+/** Awalan urutan mouse SGR xterm (mode 1006): `ESC [ <`. */
+export const SGR_MOUSE_PREFIX = "\u001b[<";
+
+export interface SgrMouseEvent {
+  /** Kode tombol xterm (bit mask; roda = bit 64). */
+  button: number;
+  /** Roda digulir ke atas. */
+  wheelUp: boolean;
+  /** Roda digulir ke bawah. */
+  wheelDown: boolean;
+  /** Kolom/baris (1-based). */
+  x: number;
+  y: number;
+  /** True = tombol ditekan; false = dilepas. */
+  press: boolean;
+}
+
+/** True bila urutan adalah fragmen mouse SGR yang belum lengkap. */
+export function isSgrMousePartial(sequence: string): boolean {
+  return sequence.startsWith(SGR_MOUSE_PREFIX) && !/[Mm]$/.test(sequence);
+}
+
+/**
+ * Terjemahkan urutan lengkap mouse SGR xterm (`CSI < b ; x ; y M|m`) menjadi
+ * event. Mengembalikan `null` bila bukan polanya. Roda (bit 64) dipetakan ke
+ * `wheelUp` (kode genap) / `wheelDown` (kode ganjil).
+ */
+export function decodeSgrMouse(sequence: string): SgrMouseEvent | null {
+  const match = /^\u001b\[<(\d+);(\d+);(\d+)([Mm])$/.exec(sequence);
+  if (!match) return null;
+  const button = Number(match[1]);
+  const isWheel = (button & 64) === 64;
+  return {
+    button,
+    wheelUp: isWheel && (button & 1) === 0,
+    wheelDown: isWheel && (button & 1) === 1,
+    x: Number(match[2]),
+    y: Number(match[3]),
+    press: match[4] === "M",
+  };
+}
+
 /**
  * True bila teks hanya berisi karakter yang dapat dicetak (bukan kontrol/escape).
  * Dipakai untuk membedakan input pengguna dari urutan tombol khusus.

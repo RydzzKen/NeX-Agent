@@ -1,4 +1,12 @@
-import { decodeOtherKeys, isCtrlTab, isOtherKeysPartial, type Key } from "../../util/ansi.js";
+import {
+  decodeOtherKeys,
+  decodeSgrMouse,
+  isCtrlTab,
+  isOtherKeysPartial,
+  isSgrMousePartial,
+  type Key,
+  type SgrMouseEvent,
+} from "../../util/ansi.js";
 import { Screen } from "./screen.js";
 import { TuiPrompter } from "./prompt.js";
 import { TuiIO } from "./io.js";
@@ -56,6 +64,13 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
   const { screen, prompter, io } = pair;
   let chord = false;
 
+  // Roda mouse menggulir transkrip. Karena pelaporan mouse aktif, roda bisa
+  // dibedakan dari tombol ↑/↓ yang tetap dipakai untuk riwayat input.
+  const handleMouse = (event: SgrMouseEvent): void => {
+    if (event.wheelUp) screen.scrollBy(3);
+    else if (event.wheelDown) screen.scrollBy(-3);
+  };
+
   const handleGlobal = (key: Key): void => {
     const { name, ctrl } = key;
 
@@ -87,9 +102,7 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
       screen.setThinkingVisible(!screen.thinkingVisible);
       return;
     }
-    if (name === "up") screen.scrollBy(1);
-    else if (name === "down") screen.scrollBy(-1);
-    else if (name === "pageup") screen.scrollBy(10);
+    if (name === "pageup") screen.scrollBy(10);
     else if (name === "pagedown") screen.scrollBy(-10);
     else if (name === "home") screen.scrollBy(Number.MAX_SAFE_INTEGER);
     else if (name === "end") screen.scrollToBottom();
@@ -117,7 +130,30 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
   // menjadi beberapa event. Rakit kembali agar Ctrl+Tab berfungsi dan sisa
   // karakter (mis. "9~") tidak bocor ke baris input.
   let otherBuf = "";
+  // readline juga memecah urutan mouse SGR (`ESC [ <`, digit-digit, lalu M/m).
+  // Rakit kembali supaya roda mouse terbaca (bukan bocor sebagai ketikan).
+  let mouseBuf = "";
   screen.setKeyHandler((key) => {
+    if (mouseBuf) {
+      mouseBuf += key.sequence;
+      if (!/[Mm]$/.test(mouseBuf)) {
+        if (mouseBuf.length > 32) mouseBuf = "";
+        return;
+      }
+      const event = decodeSgrMouse(mouseBuf);
+      mouseBuf = "";
+      if (event) handleMouse(event);
+      return;
+    }
+    const mouseEvent = decodeSgrMouse(key.sequence);
+    if (mouseEvent) {
+      handleMouse(mouseEvent);
+      return;
+    }
+    if (isSgrMousePartial(key.sequence)) {
+      mouseBuf = key.sequence;
+      return;
+    }
     if (otherBuf) {
       otherBuf += key.sequence;
       if (!otherBuf.endsWith("~")) {

@@ -321,10 +321,10 @@ Ingin TUI jadi bawaan? Jalankan `nex-agent default tui` sekali — mulai sekaran
 | `Shift+Tab` · `Ctrl+Tab` | Ganti mode Plan ⇄ Build (`Shift+Tab` andal di semua terminal; `Ctrl+Tab` tergantung dukungan terminal) |
 | `Ctrl+X` lalu `↑`/`↓` | Pindah view (utama ⇄ subagent) |
 | `Ctrl+T` | Tampilkan/sembunyikan thinking — keadaan tampil di status bar (`thinking:on`/`thinking:off`) |
-| `↑`/`↓` · roda mouse | Gulir riwayat chat (berlaku juga saat input masih berisi draf atau agent sedang bekerja) |
-| `PgUp`/`PgDn` · `Home`/`End` | Gulir riwayat chat (ke atas/bawah, ke awal/akhir) |
-| `Ctrl+P` / `Ctrl+N` | Panggil ulang pesan sebelumnya / berikutnya (riwayat input) |
-| `↑`/`↓` (menu terbuka) | Pilih item menu autocomplete |
+| `↑`/`↓` | Panggil ulang riwayat input (pesan sebelumnya/berikutnya); saat menu autocomplete terbuka, memilih item menu |
+| roda mouse · `PgUp`/`PgDn` | Gulir riwayat chat — **selalu** bisa, termasuk saat input berisi draf dan agent sedang bekerja |
+| `Home`/`End` | Gulir ke awal/akhir riwayat chat (saat baris input kosong; bila tidak, memindah kursor) |
+| `Ctrl+P` / `Ctrl+N` | Alias riwayat input (untuk terminal tanpa tombol panah) |
 | `Tab` | Pilih item yang disorot di menu autocomplete (perintah/folder/berkas) |
 | `Ctrl+C` | Hentikan tugas berjalan (2× keluar) |
 | `Ctrl+D` | Keluar (saat input kosong) |
@@ -334,13 +334,14 @@ view aktif, dan `thinking:on`/`thinking:off`, plus indikator `bekerja…` saat
 sibuk) dan baris hint pintasan. Keduanya berada di baris terpisah sehingga
 status selalu terlihat.
 
-**Menggulir riwayat chat.** `↑`/`↓` dan roda mouse **selalu** menggulir transkrip
-— termasuk saat baris input masih berisi draf yang belum dikirim dan saat agent
-sedang berpikir/streaming. Output baru tidak akan menyentak Anda ke bawah saat
-sedang menggulir; kembali ke dasar dengan `End`/`PgDn` atau `↓` sampai mentok.
-Karena `↑`/`↓` dipakai untuk menggulir, riwayat input dipanggil dengan
-`Ctrl+P` (lebih lama) / `Ctrl+N` (lebih baru); saat menu autocomplete terbuka,
-`↑`/`↓` memilih item menu.
+**Menggulir & riwayat input.** **Roda mouse** dan `PgUp`/`PgDn` selalu menggulir
+transkrip — termasuk saat baris input masih berisi draf yang belum dikirim dan
+saat agent sedang berpikir/streaming. Output baru tidak akan menyentak Anda ke
+bawah saat sedang menggulir; kembali ke dasar dengan `End`/`PgDn`. Sementara itu
+`↑`/`↓` tetap memanggil **riwayat input** seperti shell (termasuk saat ada draf);
+saat menu autocomplete terbuka, `↑`/`↓` memilih item menu. Supaya roda bisa
+dibedakan dari tombol panah, TUI mengaktifkan pelaporan mouse: seleksi teks
+dengan drag perlu menahan `Shift` (atau pakai seleksi bawaan terminal).
 
 **Mengetik saat agent bekerja.** Baris input tetap hidup selama agent berpikir:
 Anda bisa terus mengetik dan menekan `Enter` untuk **mengantre** pesan. Pesan
@@ -357,11 +358,12 @@ handler `exit`. Semua flag CLI biasa (`--model`, `--provider`, `--resume`,
 `--cwd`, dsb.) juga berlaku pada perintah `tui`. Perintah ini memerlukan
 terminal sungguhan (TTY); di pipe/CI otomatis jatuh ke mode chat biasa.
 
-Di **Termux (Android)**, TUI sengaja **tidak** menangkap mouse: gulir memakai
-tombol `↑`/`↓`, `PgUp`/`PgDn`, atau `Home`/`End` (termasuk dari baris tombol
-tambahan Termux), sehingga seleksi teks/salin tetap normal. Riwayat input lewat
-`Ctrl+P`/`Ctrl+N`. Bila keyboard menutupi layar, putar/atur ulang lebar terminal
-agar TUI menggambar ulang (`SIGWINCH`).
+Di **Termux (Android)**, roda/swipe umumnya dikirim sebagai event mouse dan ikut
+menggulir transkrip; bila tidak, gulir memakai `PgUp`/`PgDn`/`Home`/`End` (bisa
+ditambahkan ke baris tombol tambahan Termux). Seleksi teks tetap lewat
+long-press. Riwayat input memakai `↑`/`↓` (atau `Ctrl+P`/`Ctrl+N`). Bila keyboard
+menutupi layar, putar/atur ulang lebar terminal agar TUI menggambar ulang
+(`SIGWINCH`).
 
 ---
 

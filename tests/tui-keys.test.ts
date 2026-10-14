@@ -95,23 +95,53 @@ describe("TUI: Ctrl+T & Ctrl+Tab", () => {
   });
 });
 
-describe("TUI: gulir riwayat chat", () => {
-  it("↑/↓ menggulir walau input berisi draf (belum dikirim)", () => {
-    const { pair, screen } = attach();
+describe("TUI: gulir riwayat chat (roda mouse)", () => {
+  it("roda naik/turun menggulir transkrip", () => {
+    const { screen } = attach();
     for (let i = 0; i < 40; i += 1) screen.append("text", `baris-${i}`);
     screen.scrollToBottom();
     expect(screen.scrollOffset).toBe(0);
 
+    screen.emitKey({ sequence: "\u001b[<64;10;5M" }); // roda naik
+    expect(screen.scrollOffset).toBe(3);
+    screen.emitKey({ sequence: "\u001b[<65;10;5M" }); // roda turun
+    expect(screen.scrollOffset).toBe(0);
+  });
+
+  it("merakit urutan mouse yang dipecah readline (tidak bocor ke input)", () => {
+    const { screen } = attach();
+    for (let i = 0; i < 40; i += 1) screen.append("text", `b-${i}`);
+    screen.scrollToBottom();
+    // readline memecah `ESC [ < 6 4 ; 1 0 ; 5 M` menjadi beberapa event.
+    for (const part of ["\u001b[<", "6", "4", ";", "1", "0", ";", "5", "M"]) {
+      screen.emitKey({ sequence: part });
+    }
+    expect(screen.scrollOffset).toBe(3);
+    expect(screen.getInputText()).toBe("");
+  });
+
+  it("roda menggulir walau input berisi draf dan agent bekerja", () => {
+    const { pair, screen } = attach();
+    for (let i = 0; i < 40; i += 1) screen.append("text", `b-${i}`);
+    screen.scrollToBottom();
     pair.prompter.consume(normalizeKey({ sequence: "z" }));
     screen.clearMenu();
-    screen.emitKey({ name: "up", sequence: "\u001b[A" });
-    expect(screen.scrollOffset).toBe(1);
-    screen.emitKey({ name: "down", sequence: "\u001b[B" });
-    expect(screen.scrollOffset).toBe(0);
+
+    screen.emitKey({ sequence: "\u001b[<64;10;5M" });
+    expect(screen.scrollOffset).toBe(3);
     expect(screen.getInputText()).toBe("z");
   });
 
-  it("tombol gulir khas Termux berfungsi dan tidak bocor ke input", () => {
+  it("↑/↓ tidak lagi menggulir (dipakai untuk riwayat input)", () => {
+    const { screen } = attach();
+    for (let i = 0; i < 40; i += 1) screen.append("text", `b-${i}`);
+    screen.scrollToBottom();
+    screen.emitKey({ name: "up", sequence: "\u001b[A" });
+    screen.emitKey({ name: "down", sequence: "\u001b[B" });
+    expect(screen.scrollOffset).toBe(0);
+  });
+
+  it("tombol gulir khas Termux (PgUp/PgDn/Home/End) berfungsi dan tidak bocor ke input", () => {
     const { screen } = attach();
     for (let i = 0; i < 40; i += 1) screen.append("text", `b-${i}`);
     screen.scrollToBottom();
@@ -125,13 +155,5 @@ describe("TUI: gulir riwayat chat", () => {
     screen.emitKey({ name: "end", sequence: "\u001b[F" });
     expect(screen.scrollOffset).toBe(0);
     expect(screen.getInputText()).toBe("");
-  });
-
-  it("menggulir tetap jalan saat agent bekerja (tanpa pertanyaan)", () => {
-    const { screen } = attach();
-    for (let i = 0; i < 40; i += 1) screen.append("text", `b-${i}`);
-    screen.scrollToBottom();
-    screen.emitKey({ name: "up", sequence: "\u001b[A" });
-    expect(screen.scrollOffset).toBe(1);
   });
 });

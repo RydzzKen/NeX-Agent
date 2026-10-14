@@ -94,7 +94,7 @@ describe("TuiPrompter: pengetikan", () => {
     expect(screen.getInputText()).toBe("ab");
   });
 
-  it("tombol panah tidak dikonsumsi (diteruskan untuk scroll)", () => {
+  it("panah tanpa riwayat tidak dikonsumsi (diteruskan ke dispatcher)", () => {
     const { prompter } = setup();
     void prompter.question("› ");
     expect(prompter.consume(normalizeKey(up))).toBe(false);
@@ -153,19 +153,12 @@ describe("TuiPrompter: antrean saat agent sibuk", () => {
     expect(prompter.takeQueued()).toBeUndefined();
   });
 
-  it("↑/↓ tetap menggulir walau input berisi draf (tidak memanggil riwayat)", () => {
+  it("↑/↓ tanpa riwayat diteruskan ke dispatcher (tidak diketik)", () => {
     const { prompter, screen } = setup();
     void prompter.question("› ");
-    type(prompter, ["z", "q", "x"].map(letter));
-    expect(screen.getInputText()).toBe("zqx");
     expect(prompter.consume(normalizeKey(up))).toBe(false);
     expect(prompter.consume(normalizeKey(down))).toBe(false);
-  });
-
-  it("↑/↓ menggulir walau tidak ada pertanyaan (agent sedang bekerja)", () => {
-    const { prompter } = setup();
-    expect(prompter.consume(normalizeKey(up))).toBe(false);
-    expect(prompter.consume(normalizeKey(down))).toBe(false);
+    expect(screen.getInputText()).toBe("");
   });
 
   it("Home/End saat menganggur diteruskan ke dispatcher (scroll)", () => {
@@ -287,7 +280,56 @@ describe("TuiPrompter: menu autocomplete", () => {
   });
 });
 
-describe("TuiPrompter: riwayat input (Ctrl+P/Ctrl+N)", () => {
+describe("TuiPrompter: riwayat input (↑/↓ dan Ctrl+P/N)", () => {
+  it("↑ memanggil ulang pesan sebelumnya, ↓ kembali ke draf", async () => {
+    const { screen, prompter } = setup();
+    const first = prompter.question("› ");
+    type(prompter, ["h", "a", "l", "o"].map(letter));
+    type(prompter, [enter]);
+    await expect(first).resolves.toBe("halo");
+
+    void prompter.question("› ");
+    expect(type(prompter, [up])).toBe(true);
+    expect(screen.getInputText()).toBe("halo");
+    expect(type(prompter, [down])).toBe(true);
+    expect(screen.getInputText()).toBe("");
+  });
+
+  it("↑ berulang menelusuri beberapa pesan, ↓ kembali", async () => {
+    const { screen, prompter } = setup();
+    const q1 = prompter.question("› ");
+    type(prompter, [letter("a")]);
+    type(prompter, [enter]);
+    await q1;
+    const q2 = prompter.question("› ");
+    type(prompter, [letter("b")]);
+    type(prompter, [enter]);
+    await q2;
+
+    void prompter.question("› ");
+    type(prompter, [up]);
+    expect(screen.getInputText()).toBe("b");
+    type(prompter, [up]);
+    expect(screen.getInputText()).toBe("a");
+    type(prompter, [down]);
+    expect(screen.getInputText()).toBe("b");
+  });
+
+  it("↑ memanggil riwayat walau input berisi draf", async () => {
+    const { screen, prompter } = setup();
+    const first = prompter.question("› ");
+    type(prompter, ["h", "i"].map(letter));
+    type(prompter, [enter]);
+    await first;
+
+    void prompter.question("› ");
+    type(prompter, ["d", "r", "a", "f"].map(letter));
+    expect(type(prompter, [up])).toBe(true);
+    expect(screen.getInputText()).toBe("hi");
+    expect(type(prompter, [down])).toBe(true);
+    expect(screen.getInputText()).toBe("draf");
+  });
+
   it("Ctrl+P memanggil ulang pesan sebelumnya, Ctrl+N kembali ke draf", async () => {
     const { screen, prompter } = setup();
     const first = prompter.question("› ");

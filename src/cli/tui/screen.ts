@@ -129,6 +129,11 @@ export class Screen {
     if (this.stdout === process.stdout) {
       this.write("\u001b[?1049h"); // alternate screen
       this.write("\u001b[?25l"); // sembunyikan kursor
+      // Aktifkan pelaporan mouse (mode 1000) dengan koordinat SGR (mode 1006):
+      // roda mouse dikirim sebagai event terpisah sehingga bisa dipetakan ke
+      // gulir transkrip, sementara tombol ↑/↓ tetap untuk riwayat input.
+      this.write("\u001b[?1000h");
+      this.write("\u001b[?1006h");
       this.installIntercept();
       process.stdout.on?.("resize", () => this.redraw());
     }
@@ -161,6 +166,8 @@ export class Screen {
     }
     if (this.stdout === process.stdout) {
       this.restoreIntercept();
+      this.write("\u001b[?1006l"); // matikan mode SGR mouse
+      this.write("\u001b[?1000l"); // matikan pelaporan mouse
       this.write("\u001b[?25h"); // tampilkan kursor
       this.write("\u001b[?1049l"); // kembali ke buffer utama
     }
@@ -625,8 +632,8 @@ export class Screen {
 
   private hint(cols: number): string {
     const hints = [
-      "↑/↓ PgUp/PgDn gulir riwayat",
-      "Ctrl+P/N riwayat input",
+      "roda/PgUp/PgDn gulir",
+      "↑/↓ riwayat input",
       "Ctrl+T thinking",
       "Shift+Tab mode",
       "Ctrl+C hentikan (2× keluar)",
