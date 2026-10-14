@@ -140,7 +140,7 @@ export class Screen {
       });
     }
     const main = this.views.find((v) => v.main) ?? this.views[0]!;
-    main.lines.push({ kind: "info", text: color.brightGreen("TUI siap") + " " + color.cyan("— Ketik pesan atau /help. Gunakan Ctrl+X ↑/↓ untuk ganti view, Ctrl+Tab ganti mode.") });
+    main.lines.push({ kind: "info", text: color.brightGreen("TUI siap") + " " + color.cyan("— Ketik pesan atau /help. Gunakan Ctrl+X ↑/↓ untuk ganti view, Shift+Tab ganti mode.") });
     if (main.lines.length > MAX_LINES) {
       main.lines.splice(0, main.lines.length - MAX_LINES);
     }
@@ -608,7 +608,7 @@ export class Screen {
       "Ctrl+C hentikan (2× keluar)",
       "Ctrl+X ↑/↓ ganti view",
       "Ctrl+T thinking",
-      "Ctrl+Tab ganti mode",
+      "Shift+Tab ganti mode",
     ].join("    ");
     return color.dim(truncateTo(hints, cols));
   }

@@ -133,7 +133,7 @@ export class TuiPrompter implements PrompterLike {
       return true;
     }
 
-    if (name === TAB && !ctrl && !meta) {
+    if (name === TAB && !ctrl && !meta && !key.shift) {
       if (!engaged) return false;
       this.tabComplete();
       return true;

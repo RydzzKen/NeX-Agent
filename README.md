@@ -309,7 +309,7 @@ nex-agent tui --mode plan     # mulai di mode Plan
 
 | Tombol | Fungsi |
 |---|---|
-| `Ctrl+Tab` | Ganti mode Plan ⇄ Build |
+| `Shift+Tab` · `Ctrl+Tab` | Ganti mode Plan ⇄ Build (`Shift+Tab` andal di semua terminal; `Ctrl+Tab` tergantung dukungan terminal) |
 | `Ctrl+X` lalu `↑`/`↓` | Pindah view (utama ⇄ subagent) |
 | `Ctrl+T` | Tampilkan/sembunyikan thinking |
 | `↑`/`↓` | Pilih item menu autocomplete (saat menu terbuka) atau panggil ulang pesan sebelumnya (saat menu tertutup) |

@@ -135,15 +135,49 @@ export function normalizeKey(key: {
   const meta = key.meta === true;
   const shift = key.shift === true;
   const sequence = key.sequence ?? "";
+  // readline memberi `name: "undefined"` (string) untuk urutan escape yang tak
+  // dikenali — perlakukan sebagai tanpa nama agar pemetaan di bawah aktif.
   let name = key.name;
-  if (!name && ctrl && sequence === "\t") name = "tab";
+  if (name === "undefined" || name === "") name = undefined;
   if (!name && CTRL_TAB_SEQUENCES.has(sequence)) name = "tab";
+  if (!name && ctrl && sequence === "\t") name = "tab";
   return { name, ctrl, meta, shift, sequence };
 }
 
 /** True bila key merupakan Ctrl+Tab (apa pun bagaimana terminal mengirimnya). */
 export function isCtrlTab(key: Key): boolean {
-  return key.name === "tab" && (key.ctrl || CTRL_TAB_SEQUENCES.has(key.sequence));
+  // Cek urutan mentah lebih dulu: readline kadang memberi `name` yang aneh
+  // ("undefined") sehingga pengecekan berbasis nama saja tidak cukup.
+  if (CTRL_TAB_SEQUENCES.has(key.sequence)) return true;
+  return key.name === "tab" && key.ctrl;
+}
+
+/** Awalan urutan `modifyOtherKeys` xterm: `CSI 27 ; <mod> ; <kode> ~`. */
+export const OTHER_KEYS_PREFIX = "\u001b[27;";
+
+/** True bila urutan adalah fragmen `modifyOtherKeys` yang belum lengkap. */
+export function isOtherKeysPartial(sequence: string): boolean {
+  return sequence.startsWith(OTHER_KEYS_PREFIX) && !sequence.endsWith("~");
+}
+
+/**
+ * Terjemahkan urutan lengkap `CSI 27 ; <mod> ; <kode> ~` (format
+ * `modifyOtherKeys` xterm) menjadi `Key`. Mengembalikan `null` bila bukan
+ * polanya. Kode 9 (Tab) dipetakan ke `tab`; kode lain dibiarkan tanpa nama
+ * dengan urutan mentah (non-cetak) agar tidak bocor ke baris input.
+ */
+export function decodeOtherKeys(sequence: string): Key | null {
+  const match = /^\u001b\[27;(\d+);(\d+)~$/.exec(sequence);
+  if (!match) return null;
+  const bits = Number(match[1]) - 1;
+  const code = Number(match[2]);
+  return {
+    name: code === 9 ? "tab" : undefined,
+    ctrl: (bits & 4) !== 0,
+    shift: (bits & 1) !== 0,
+    meta: (bits & 2) !== 0,
+    sequence,
+  };
 }
 
 /**

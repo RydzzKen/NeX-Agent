@@ -1,4 +1,4 @@
-import { isCtrlTab, type Key } from "../../util/ansi.js";
+import { decodeOtherKeys, isCtrlTab, isOtherKeysPartial, type Key } from "../../util/ansi.js";
 import { Screen } from "./screen.js";
 import { TuiPrompter } from "./prompt.js";
 import { TuiIO } from "./io.js";
@@ -24,7 +24,7 @@ export interface TuiPair {
 }
 
 export interface TuiHooks {
-  /** Ganti mode Plan/Build (Ctrl+Tab). */
+  /** Ganti mode Plan/Build (Ctrl+Tab / Shift+Tab). */
   toggleMode: () => void;
 }
 
@@ -66,6 +66,12 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
       hooks.toggleMode();
       return;
     }
+    // Shift+Tab: alternatif andal untuk ganti mode (Ctrl+Tab tidak dikirim oleh
+    // banyak terminal). readline mengurainya bersih sebagai tab + shift.
+    if (name === "tab" && key.shift && !ctrl) {
+      hooks.toggleMode();
+      return;
+    }
     if (ctrl && name === "x") {
       chord = true;
       return;
@@ -88,7 +94,7 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
     else if (name === "end") screen.scrollToBottom();
   };
 
-  screen.setKeyHandler((key) => {
+  const dispatch = (key: Key): void => {
     if (screen.overlayActive) {
       io.handleOverlayKey(key);
       return;
@@ -104,6 +110,34 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
     // `handleGlobal`.
     if (prompter.consume(key)) return;
     handleGlobal(key);
+  };
+
+  // readline memecah urutan `modifyOtherKeys` xterm (`ESC [ 27 ; mod ; kode ~`)
+  // menjadi beberapa event. Rakit kembali agar Ctrl+Tab berfungsi dan sisa
+  // karakter (mis. "9~") tidak bocor ke baris input.
+  let otherBuf = "";
+  screen.setKeyHandler((key) => {
+    if (otherBuf) {
+      otherBuf += key.sequence;
+      if (!otherBuf.endsWith("~")) {
+        if (otherBuf.length > 32) otherBuf = "";
+        return;
+      }
+      const decoded = decodeOtherKeys(otherBuf);
+      otherBuf = "";
+      if (decoded) dispatch(decoded);
+      return;
+    }
+    const complete = decodeOtherKeys(key.sequence);
+    if (complete) {
+      dispatch(complete);
+      return;
+    }
+    if (isOtherKeysPartial(key.sequence)) {
+      otherBuf = key.sequence;
+      return;
+    }
+    dispatch(key);
   });
 
   screen.start();

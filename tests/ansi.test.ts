@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  decodeOtherKeys,
   isCtrlTab,
+  isOtherKeysPartial,
   isPrintableText,
   normalizeKey,
   stripAnsi,
@@ -106,5 +108,45 @@ describe("ansi: normalisasi key", () => {
     expect(key.name).toBe("up");
     expect(key.sequence).toBe("\u001b[A");
     expect(key.ctrl).toBe(false);
+  });
+
+  it("mengenali Ctrl+Tab walau readline memberi name 'undefined' (string)", () => {
+    // Bentuk nyata dari readline untuk urutan CSI yang tak dikenali.
+    const key = normalizeKey({ name: "undefined", ctrl: true, sequence: "\u001b[9;5~" });
+    expect(key.name).toBe("tab");
+    expect(isCtrlTab(key)).toBe(true);
+  });
+
+  it("isCtrlTab berdasar urutan mentah walau name bukan 'tab'", () => {
+    expect(isCtrlTab(normalizeKey({ sequence: "\u001b[1;5I" }))).toBe(true);
+    expect(isCtrlTab(normalizeKey({ sequence: "\u001b[1;5z" }))).toBe(true);
+    expect(isCtrlTab(normalizeKey({ sequence: "\u001b[27;5;9~" }))).toBe(true);
+  });
+
+  it("decodeOtherKeys memetakan CSI 27;5;9~ ke Ctrl+Tab", () => {
+    const key = decodeOtherKeys("\u001b[27;5;9~");
+    expect(key?.name).toBe("tab");
+    expect(key?.ctrl).toBe(true);
+    expect(key?.shift).toBe(false);
+    expect(isOtherKeysPartial("\u001b[27;5;9~")).toBe(false);
+  });
+
+  it("isOtherKeysPartial menandai fragmen yang terpecah", () => {
+    expect(isOtherKeysPartial("\u001b[27;5;")).toBe(true);
+    expect(isOtherKeysPartial("\u001b[27;5;9")).toBe(true);
+    expect(isOtherKeysPartial("9")).toBe(false);
+    expect(isOtherKeysPartial("\u001b[A")).toBe(false);
+  });
+
+  it("decodeOtherKeys mengabaikan kode non-Tab tanpa bocor ke input", () => {
+    // Kode 13 (Enter) tetap non-cetak agar tidak diketik sebagai teks.
+    const key = decodeOtherKeys("\u001b[27;5;13~");
+    expect(key).not.toBeNull();
+    expect(key?.name).toBeUndefined();
+    expect(isPrintableText(key!.sequence)).toBe(false);
+  });
+
+  it("Shift+Tab bukan Ctrl+Tab", () => {
+    expect(isCtrlTab(normalizeKey({ name: "tab", shift: true, sequence: "\u001b[Z" }))).toBe(false);
   });
 });
