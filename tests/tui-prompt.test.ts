@@ -184,4 +184,27 @@ describe("TuiPrompter: menu autocomplete", () => {
     for (const ch of "Project/") type(prompter, [symbol(ch)]);
     expect(screen.getMenuSelected()).toBe("Project/Sub/");
   });
+
+  it("kata acak diikuti spasi tidak memunculkan daftar folder", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    for (const ch of "halo ") type(prompter, [symbol(ch)]);
+    expect(screen.getMenuSelected()).toBeUndefined();
+  });
+
+  it("spasi setelah kata kunci folder tetap menutup daftar", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    for (const ch of "Project") type(prompter, [symbol(ch)]);
+    expect(screen.getMenuSelected()).toBe("Project/");
+    type(prompter, [space]);
+    expect(screen.getMenuSelected()).toBeUndefined();
+  });
+
+  it("subperintah tetap muncul setelah '/mcp '", () => {
+    const { screen, prompter } = setup(tempDir());
+    void prompter.question("› ");
+    for (const ch of "/mcp ") type(prompter, [symbol(ch)]);
+    expect(screen.getMenuSelected()).toBe("add");
+  });
 });

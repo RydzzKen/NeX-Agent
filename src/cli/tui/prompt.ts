@@ -1,7 +1,7 @@
 import { color } from "../../util/color.js";
 import { isCtrlTab, isPrintableText, stripAnsi, type Key } from "../../util/ansi.js";
 import { PROMPT_EOF, type PrompterLike } from "../prompt.js";
-import { completeLine } from "../complete.js";
+import { completeLine, SUBCOMMANDS } from "../complete.js";
 import type { Screen } from "./screen.js";
 
 /** Nama tombol readline yang relevan untuk input TUI. */
@@ -245,7 +245,14 @@ export class TuiPrompter implements PrompterLike {
     // Jangan tampilkan daftar saat input kosong: daftar folder/path hanya
     // berguna ketika pengguna sedang mengetik kata kunci. Tanpa ini, menekan
     // Backspace pada input kosong akan memunculkan seluruh isi folder.
-    if (this.screen.getInputText().trim() === "") {
+    const text = this.screen.getInputText();
+    if (text.trim() === "") {
+      this.screen.clearMenu();
+      return;
+    }
+    // Token terakhir kosong (mis. setelah spasi) juga tidak ada yang dicari —
+    // kecuali konteks subperintah seperti `/mcp ` yang memang mendaftar opsi.
+    if (this.lastToken(text) === "" && !this.isSubcommandContext(text)) {
       this.screen.clearMenu();
       return;
     }
@@ -253,8 +260,20 @@ export class TuiPrompter implements PrompterLike {
     this.screen.setMenu(token, matches);
   }
 
+  /** Kata terakhir (setelah spasi terakhir) yang sedang diketik. */
+  private lastToken(text: string): string {
+    return text.slice(text.lastIndexOf(" ") + 1);
+  }
+
+  /** True bila input berada di posisi argumen subperintah (mis. `/mcp `). */
+  private isSubcommandContext(text: string): boolean {
+    const parts = text.trimStart().split(/\s+/);
+    return parts.length === 2 && parts[0]!.startsWith("/") && SUBCOMMANDS[parts[0]!] !== undefined;
+  }
+
   private tabComplete(): void {
-    if (this.screen.getInputText().trim() === "") {
+    const text = this.screen.getInputText();
+    if (text.trim() === "" || (this.lastToken(text) === "" && !this.isSubcommandContext(text))) {
       this.screen.clearMenu();
       return;
     }
