@@ -526,30 +526,36 @@ export class Screen {
 
     const all = this.wrappedAll(view, cols);
     const menuHeight = this.menu ? Math.min(this.menu.matches.length, MAX_MENU) : 0;
-    const contentRows = rows - menuHeight - 2; // status(1) + input(1)
+    const inputRow = rows - 1;
+    const hintRow = inputRow - 1;
+    const menuTop = hintRow - menuHeight;
+    const statusRow = menuTop - 1;
+    const contentRows = Math.max(1, statusRow); // baris konten di atas status
     const maxScroll = Math.max(0, all.length - contentRows);
     const sc = Math.min(view.scroll, maxScroll);
     const end = all.length - sc;
     const start = Math.max(0, end - contentRows);
     const slice = all.slice(start, end);
 
-    const inputRow = rows - 1;
-    const statusRow = inputRow - menuHeight - 1;
     const buffer: string[] = ["\u001b[40m\u001b[2J\u001b[H"];
     for (const line of slice) buffer.push(padLine(truncateTo(line, cols), cols));
 
-    // Menu autocomplete di atas input (jendela bergulir mengikuti pilihan).
+    // Menu autocomplete tepat di atas input (jendela bergulir mengikuti pilihan).
     if (this.menu) {
       const total = this.menu.matches.length;
       const visible = Math.min(total, MAX_MENU);
       const offset = Math.max(0, Math.min(this.menu.offset, Math.max(0, total - visible)));
       const items = this.menu.matches.slice(offset, offset + visible);
-      for (let i = 0; i < MAX_MENU; i++) {
-        const it = i < items.length ? items[i]! : "";
+      for (let i = 0; i < visible; i++) {
+        const it = items[i]!;
         const styled = offset + i === this.menu.selected ? color.inverse(it) : color.dim(it);
-        buffer.push(`\u001b[${statusRow + 1 + i + 1};1H` + padLine(truncateTo(styled, cols), cols));
+        buffer.push(`\u001b[${menuTop + 1 + i};1H` + padLine(truncateTo(styled, cols), cols));
       }
     }
+
+    // Status (mode/model/view/thinking) dan hint pada baris terpisah.
+    buffer.push(`\u001b[${statusRow + 1};1H` + padLine(truncateTo(this.renderStatusLine(statusRow, cols), cols), cols));
+    buffer.push(`\u001b[${hintRow + 1};1H` + padLine(truncateTo(this.hint(cols), cols), cols));
 
     const inputText = this.input.mask ? "*".repeat(this.input.text.length) : this.input.text;
     const caret = Math.min(this.input.caret, inputText.length);
@@ -561,10 +567,6 @@ export class Screen {
     const renderedInput = `${color.cyan(this.input.prompt)}${markerLeft}${layout.before}${color.inverse(layout.at)}${layout.after}${markerRight}`;
     const spinner = this.status.busy ? color.brightGreen(SPINNER[this.spinnerTick % SPINNER.length]!) : " ";
     buffer.push(`\u001b[${inputRow + 1};1H` + spinner + " " + padLine(truncateTo(renderedInput, cols - 2), cols - 2));
-
-    // Status + hint.
-    buffer.push(`\u001b[${statusRow + 1};1H` + padLine(truncateTo(this.renderStatusLine(statusRow, cols), cols), cols));
-    buffer.push(`\u001b[${statusRow + 1};1H` + this.hint(cols));
 
     // Kursor mengikuti jendela input (tetap terlihat walau input panjang).
     const caretCol = Math.min(
@@ -589,15 +591,14 @@ export class Screen {
     return wrapped;
   }
 
-  private renderStatus(row: number, cols: number): string {
-    return `\u001b[${row + 1};1H` + padLine(truncateTo(this.renderStatusLine(row, cols), cols), cols);
-  }
-
   private renderStatusLine(_row: number, cols: number): string {
     const s = this.status;
     const mode = s.mode === "build" ? "BUILD" : "PLAN";
     const view = this.views[this.active]!.main ? "utama" : this.views[this.active]!.name;
-    const left = `${color.bold(color.yellow(mode))} ${s.model ? color.green(s.model) : ""}${s.provider ? color.cyan(`@${s.provider}`) : ""} · ${color.brightGreen(`view:${view}`)}`;
+    const thinking = this.showThinking
+      ? color.brightGreen("thinking:on")
+      : color.dim("thinking:off");
+    const left = `${color.bold(color.yellow(mode))} ${s.model ? color.green(s.model) : ""}${s.provider ? color.cyan(`@${s.provider}`) : ""} · ${color.brightGreen(`view:${view}`)} · ${thinking}`;
     const right = s.busy ? color.cyan("bekerja…") : "";
     const full = left + (right ? "  " + right : "");
     return truncateTo(full, cols);

@@ -320,12 +320,17 @@ Ingin TUI jadi bawaan? Jalankan `nex-agent default tui` sekali — mulai sekaran
 |---|---|
 | `Shift+Tab` · `Ctrl+Tab` | Ganti mode Plan ⇄ Build (`Shift+Tab` andal di semua terminal; `Ctrl+Tab` tergantung dukungan terminal) |
 | `Ctrl+X` lalu `↑`/`↓` | Pindah view (utama ⇄ subagent) |
-| `Ctrl+T` | Tampilkan/sembunyikan thinking |
+| `Ctrl+T` | Tampilkan/sembunyikan thinking — keadaan tampil di status bar (`thinking:on`/`thinking:off`) |
 | `↑`/`↓` | Pilih item menu autocomplete (saat menu terbuka) atau panggil ulang pesan sebelumnya (saat menu tertutup) |
 | `PgUp`/`PgDn` · `Home`/`End` | Gulir riwayat chat |
 | `Tab` | Pilih item yang disorot di menu autocomplete (perintah/folder/berkas) |
 | `Ctrl+C` | Hentikan tugas berjalan (2× keluar) |
 | `Ctrl+D` | Keluar (saat input kosong) |
+
+**Status bar & hint.** Di atas input ada baris status (`BUILD`/`PLAN`, model,
+view aktif, dan `thinking:on`/`thinking:off`, plus indikator `bekerja…` saat
+sibuk) dan baris hint pintasan. Keduanya berada di baris terpisah sehingga
+status selalu terlihat.
 
 **Mengetik saat agent bekerja.** Baris input tetap hidup selama agent berpikir:
 Anda bisa terus mengetik dan menekan `Enter` untuk **mengantre** pesan. Pesan

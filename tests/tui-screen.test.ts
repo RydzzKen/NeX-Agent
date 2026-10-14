@@ -90,6 +90,43 @@ describe("Screen: isi & status", () => {
     screen.redraw();
     expect(writes.join("")).toContain("PLAN");
   });
+
+  it("status bar dan hint berada di baris berbeda (status tidak tertimpa)", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    writes.length = 0;
+    screen.redraw();
+    const frame = writes.join("");
+    // Baris target = nomor pada escape cursor terakhir sebelum teks itu ditulis.
+    const rowOf = (needle: string): number | null => {
+      const idx = frame.indexOf(needle);
+      if (idx < 0) return null;
+      const moves = [...frame.slice(0, idx).matchAll(/\u001b\[(\d+);1H/g)];
+      return moves.length ? Number(moves[moves.length - 1]![1]) : null;
+    };
+    const statusRow = rowOf("view:utama");
+    const hintRow = rowOf("Ctrl+C hentikan");
+    expect(statusRow).not.toBeNull();
+    expect(hintRow).not.toBeNull();
+    expect(statusRow).not.toBe(hintRow);
+    // Indikator thinking berada di baris status, bukan tertimpa hint.
+    expect(rowOf("thinking:on")).toBe(statusRow);
+  });
+
+  it("menampilkan indikator thinking aktif/nonaktif di status bar", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    writes.length = 0;
+    screen.redraw();
+    expect(stripAnsi(writes.join(""))).toContain("thinking:on");
+
+    screen.setThinkingVisible(false);
+    writes.length = 0;
+    screen.redraw();
+    const frame = stripAnsi(writes.join(""));
+    expect(frame).toContain("thinking:off");
+    expect(frame).not.toContain("thinking:on");
+  });
 });
 
 describe("Screen: streaming", () => {

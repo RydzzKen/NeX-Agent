@@ -17,7 +17,8 @@ umum, jelaskan langsung dari sini — jangan menjelajah kode.
     `agent default cli` mengembalikannya ke readline (`agent default reset`
     menghapusnya, `agent --ui tui` untuk satu sesi saja).
 - **TUI** (layar penuh): `agent tui`. Pintasan: `Shift+Tab` ganti mode,
-  `Ctrl+X ↑/↓` ganti view, `Ctrl+T` thinking, `Ctrl+C` hentikan (2× keluar).
+  `Ctrl+X ↑/↓` ganti view, `Ctrl+T` thinking (status tampil di status bar:
+  `thinking:on`/`thinking:off`), `Ctrl+C` hentikan (2× keluar).
   Input tetap hidup saat agent bekerja — pesan yang dikirim lewat `Enter` akan
   **diantre** dan dijalankan setelah giliran selesai.
 - Bot Telegram punya subhimpunan sendiri (lihat bawah).
