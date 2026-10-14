@@ -89,7 +89,7 @@ export class Screen {
   private origWrite?: WriteFn;
 
   private input = { text: "", caret: 0, mask: false, active: false, prompt: "" };
-  private menu?: { token: string; matches: string[]; selected: number };
+  private menu?: { token: string; matches: string[]; selected: number; offset: number };
   private overlay?: OverlayContent;
   private overlayInput = "";
 
@@ -256,7 +256,7 @@ export class Screen {
   }
 
   setMenu(token: string, matches: string[]): void {
-    this.menu = matches.length > 0 ? { token, matches, selected: 0 } : undefined;
+    this.menu = matches.length > 0 ? { token, matches, selected: 0, offset: 0 } : undefined;
     this.redraw();
   }
 
@@ -268,7 +268,15 @@ export class Screen {
   menuSelect(delta: number): void {
     if (!this.menu || this.menu.matches.length === 0) return;
     const n = this.menu.matches.length;
+    const visible = Math.min(n, MAX_MENU);
     this.menu.selected = (this.menu.selected + delta + n) % n;
+    // Geser jendela agar item terpilih selalu terlihat (menu ikut bergulir).
+    if (this.menu.selected < this.menu.offset) {
+      this.menu.offset = this.menu.selected;
+    } else if (this.menu.selected >= this.menu.offset + visible) {
+      this.menu.offset = this.menu.selected - visible + 1;
+    }
+    this.menu.offset = Math.max(0, Math.min(this.menu.offset, Math.max(0, n - visible)));
     this.redraw();
   }
 
@@ -491,12 +499,15 @@ export class Screen {
     const buffer: string[] = ["\u001b[40m\u001b[2J\u001b[H"];
     for (const line of slice) buffer.push(padLine(truncateTo(line, cols), cols));
 
-    // Menu autocomplete di atas input.
+    // Menu autocomplete di atas input (jendela bergulir mengikuti pilihan).
     if (this.menu) {
-      const items = this.menu.matches.slice(0, MAX_MENU);
+      const total = this.menu.matches.length;
+      const visible = Math.min(total, MAX_MENU);
+      const offset = Math.max(0, Math.min(this.menu.offset, Math.max(0, total - visible)));
+      const items = this.menu.matches.slice(offset, offset + visible);
       for (let i = 0; i < MAX_MENU; i++) {
         const it = i < items.length ? items[i]! : "";
-        const styled = i === this.menu.selected ? color.inverse(it) : color.dim(it);
+        const styled = offset + i === this.menu.selected ? color.inverse(it) : color.dim(it);
         buffer.push(`\u001b[${statusRow + 1 + i + 1};1H` + padLine(truncateTo(styled, cols), cols));
       }
     }

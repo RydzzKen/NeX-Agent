@@ -128,6 +128,35 @@ describe("Screen: input", () => {
     expect(screen.getMenuSelected()).toBe("/help");
   });
 
+  it("menu bergulir sehingga pilihan ke-7+ tetap terlihat", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    const items = Array.from({ length: 10 }, (_, i) => `item${i}`);
+    screen.setMenu("tok", items);
+    for (let i = 0; i < 7; i++) screen.menuSelect(1);
+    expect(screen.getMenuSelected()).toBe("item7");
+    writes.length = 0;
+    screen.redraw();
+    const frame = writes.join("");
+    expect(frame).toContain("item7"); // pilihan terlihat
+    expect(frame).not.toContain("item0"); // sudah tergulir keluar
+    expect(frame).toContain("item2"); // jendela bergeser
+  });
+
+  it("menu bergulir ke atas saat memilih dari bawah (bungkus)", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    const items = Array.from({ length: 10 }, (_, i) => `item${i}`);
+    screen.setMenu("tok", items);
+    screen.menuSelect(-1); // 0 → 9 (bungkus ke belakang)
+    expect(screen.getMenuSelected()).toBe("item9");
+    writes.length = 0;
+    screen.redraw();
+    const frame = writes.join("");
+    expect(frame).toContain("item9");
+    expect(frame).not.toContain("item0");
+  });
+
   it("tidak keluar layar saat input panjang (horizontal scroll)", () => {
     const { screen, writes } = makeScreen();
     screen.start();

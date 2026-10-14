@@ -312,7 +312,8 @@ nex-agent tui --mode plan     # mulai di mode Plan
 | `Ctrl+Tab` | Ganti mode Plan ⇄ Build |
 | `Ctrl+X` lalu `↑`/`↓` | Pindah view (utama ⇄ subagent) |
 | `Ctrl+T` | Tampilkan/sembunyikan thinking |
-| `↑`/`↓` · `PgUp`/`PgDn` · `Home`/`End` | Gulir riwayat (saat baris input kosong) |
+| `↑`/`↓` | Pilih item menu autocomplete (saat menu terbuka) atau gulir riwayat |
+| `PgUp`/`PgDn` · `Home`/`End` | Gulir riwayat (saat baris input kosong) |
 | `Tab` | Lengkapi perintah `/slash` atau path berkas/folder |
 | `Ctrl+C` | Hentikan tugas berjalan (2× keluar) |
 | `Ctrl+D` | Keluar (saat input kosong) |
@@ -322,7 +323,9 @@ Anda bisa terus mengetik dan menekan `Enter` untuk **mengantre** pesan. Pesan
 antre dijalankan otomatis setelah giliran berjalan selesai (ditandai `⏳ antre`),
 jadi layar tidak beku. Input yang lebih panjang dari lebar terminal otomatis
 digulir horizontal (`‹`/`›`) dan kursor tetap terlihat. Menu autocomplete path
-muncul begitu Anda mulai menulis nama berkas/folder (tidak perlu menunggu `/`).
+muncul begitu Anda mulai menulis nama berkas/folder (tidak perlu menunggu `/`);
+gunakan `↑`/`↓` untuk memilih, dan daftar ikut bergulir bila kandidatnya lebih
+dari 6.
 
 Terminal dipulihkan otomatis saat keluar — termasuk pada `Ctrl+C` kedua — lewat
 handler `exit`. Semua flag CLI biasa (`--model`, `--provider`, `--resume`,
