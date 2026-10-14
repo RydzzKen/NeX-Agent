@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Screen, type ScreenOptions } from "../src/cli/tui/screen.js";
 import { TuiIO } from "../src/cli/tui/io.js";
-import { normalizeKey } from "../src/util/ansi.js";
+import { normalizeKey, stripAnsi } from "../src/util/ansi.js";
 
 interface FakeStdout {
   write: (chunk: string) => boolean;
@@ -76,6 +76,59 @@ describe("TuiIO: overlay rahasia", () => {
     const pending = io.requestSecret({ kind: "ssh", detail: "ssh host", reason: "butuh ssh" });
     io.handleOverlayKey(key({ name: "escape", sequence: "\u001b" }));
     await expect(pending).resolves.toBeNull();
+  });
+});
+
+describe("TuiIO: streaming teks & thinking", () => {
+  function setupCapture(): { io: TuiIO; screen: Screen; writes: string[] } {
+    const writes: string[] = [];
+    const out: FakeStdout = {
+      write: (chunk: string) => {
+        writes.push(chunk);
+        return true;
+      },
+      columns: 60,
+      rows: 20,
+      on: () => {},
+    };
+    const stdin = { isTTY: false, setRawMode: () => {}, on: () => {}, removeAllListeners: () => {} };
+    const screen = new Screen({
+      stdin: stdin as unknown as ScreenOptions["stdin"],
+      stdout: out as unknown as ScreenOptions["stdout"],
+    });
+    return { io: new TuiIO(screen, { thinking: true }), screen, writes };
+  }
+
+  it("chunk thinking berurutan tampil dalam satu baris", () => {
+    const { io, screen, writes } = setupCapture();
+    screen.start();
+    for (const c of ["Let", " me", " summarize", "."]) io.thinking(c);
+    writes.length = 0;
+    screen.redraw();
+    expect(stripAnsi(writes.join(""))).toContain("Let me summarize.");
+  });
+
+  it("teks (markdown nonaktif) juga menyambung antar chunk", () => {
+    const { io, screen, writes } = setupCapture();
+    screen.start();
+    io.setMarkdown(false);
+    io.text("halo");
+    io.text(" dunia");
+    io.textEnd();
+    writes.length = 0;
+    screen.redraw();
+    expect(stripAnsi(writes.join(""))).toContain("halo dunia");
+  });
+
+  it("blok thinking yang dipisah endStream tidak menyambung", () => {
+    const { io, screen, writes } = setupCapture();
+    screen.start();
+    io.thinking("pertama");
+    io.thinkingEnd();
+    io.thinking("kedua");
+    writes.length = 0;
+    screen.redraw();
+    expect(stripAnsi(writes.join(""))).not.toContain("pertamakedua");
   });
 });
 

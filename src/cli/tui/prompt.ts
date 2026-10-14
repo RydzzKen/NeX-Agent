@@ -31,6 +31,12 @@ export class TuiPrompter implements PrompterLike {
   private queue: string[] = [];
   /** Prompt terakhir, dipakai untuk menghidupkan baris input saat menganggur. */
   private lastPrompt = "› ";
+  /** Riwayat pesan yang sudah dikirim/diantre (terlama → terbaru). */
+  private history: string[] = [];
+  /** Posisi saat menelusuri riwayat; `undefined` = tidak sedang menelusuri. */
+  private historyIndex?: number;
+  /** Draf input yang disimpan saat mulai menelusuri riwayat (untuk ↓ kembali). */
+  private historyDraft = "";
 
   constructor(
     private readonly screen: Screen,
@@ -84,6 +90,9 @@ export class TuiPrompter implements PrompterLike {
   }
 
   private ask(query: string, secret: boolean): Promise<string> {
+    // Sudah ditutup (mis. Ctrl+C dua kali di tengah modul seperti /connect):
+    // jangan menggantung. Kembalikan EOF agar REPL berhenti dan layar ditutup.
+    if (this.closed) return Promise.resolve(PROMPT_EOF);
     const prompt = stripAnsi(query).replace(/\n/g, " ").trim() || "› ";
     if (!secret) this.lastPrompt = `${prompt} `;
     this.screen.clearMenu();
@@ -135,7 +144,9 @@ export class TuiPrompter implements PrompterLike {
         this.screen.menuSelect(name === UP ? -1 : 1);
         return true;
       }
-      return false; // biarkan dispatcher: scroll view
+      // Telusuri riwayat pesan; bila belum ada riwayat, biarkan dispatcher
+      // menggulir tampilan (PgUp/PgDn/Home/End tetap untuk menggulir).
+      return this.historyMove(name === UP ? -1 : 1);
     }
 
     if (name === BACKSPACE && !ctrl) {
@@ -195,6 +206,7 @@ export class TuiPrompter implements PrompterLike {
     if (!ctrl && !meta && isPrintableText(sequence)) {
       if (!engaged) this.activateInput();
       this.screen.insertInput(sequence);
+      this.historyIndex = undefined; // mengetik keluar dari mode telusuri riwayat
       this.refreshMenu();
       return true;
     }
@@ -216,9 +228,58 @@ export class TuiPrompter implements PrompterLike {
       this.screen.clearInput();
       return;
     }
+    this.remember(text);
+    this.historyIndex = undefined;
     this.queue.push(text);
     this.screen.clearInput();
     this.screen.appendRaw(`${color.cyan("⏳ antre")} ${color.dim(`(ke-${this.queue.length})`)} ${text}`);
+  }
+
+  /** Catat satu baris ke riwayat input (untuk dipanggil ulang dengan ↑/↓). */
+  private remember(text: string): void {
+    if (text.trim() === "") return;
+    if (this.history[this.history.length - 1] === text) return;
+    this.history.push(text);
+    if (this.history.length > 200) this.history.shift();
+  }
+
+  /**
+   * Telusuri riwayat input. `delta` −1 = lebih lama (↑), +1 = lebih baru (↓).
+   * Mengembalikan `false` bila tidak ada riwayat / baris input tidak aktif,
+   * supaya dispatcher bisa menggulir tampilan.
+   */
+  private historyMove(delta: -1 | 1): boolean {
+    if (this.history.length === 0) return false;
+    const engaged = this.pending !== undefined || this.screen.inputActive;
+    if (!engaged) return false;
+
+    if (delta === -1) {
+      if (this.historyIndex === undefined) {
+        this.historyDraft = this.screen.getInputText();
+        this.historyIndex = this.history.length - 1;
+      } else if (this.historyIndex > 0) {
+        this.historyIndex -= 1;
+      } else {
+        return true; // sudah di entri paling lama
+      }
+    } else {
+      if (this.historyIndex === undefined) return false;
+      if (this.historyIndex < this.history.length - 1) {
+        this.historyIndex += 1;
+      } else {
+        // Lewat entri terbaru: kembalikan draf semula.
+        this.historyIndex = undefined;
+        this.setInputText(this.historyDraft);
+        return true;
+      }
+    }
+    this.setInputText(this.history[this.historyIndex]!);
+    return true;
+  }
+
+  private setInputText(text: string): void {
+    this.screen.setInput(text, text.length, false, this.screen.getInputPrompt());
+    this.screen.clearMenu();
   }
 
   private screenMenuOpen(): boolean {
@@ -231,6 +292,8 @@ export class TuiPrompter implements PrompterLike {
     const text = this.screen.getInputText();
     this.screen.clearMenu();
     this.screen.clearInput();
+    if (value === undefined) this.remember(text);
+    this.historyIndex = undefined;
     if (p) p.resolve(value ?? text);
   }
 

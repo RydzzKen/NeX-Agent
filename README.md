@@ -312,8 +312,8 @@ nex-agent tui --mode plan     # mulai di mode Plan
 | `Ctrl+Tab` | Ganti mode Plan ⇄ Build |
 | `Ctrl+X` lalu `↑`/`↓` | Pindah view (utama ⇄ subagent) |
 | `Ctrl+T` | Tampilkan/sembunyikan thinking |
-| `↑`/`↓` | Pilih item menu autocomplete (saat menu terbuka) atau gulir riwayat |
-| `PgUp`/`PgDn` · `Home`/`End` | Gulir riwayat (saat baris input kosong) |
+| `↑`/`↓` | Pilih item menu autocomplete (saat menu terbuka) atau panggil ulang pesan sebelumnya (saat menu tertutup) |
+| `PgUp`/`PgDn` · `Home`/`End` | Gulir riwayat chat |
 | `Tab` | Pilih item yang disorot di menu autocomplete (perintah/folder/berkas) |
 | `Ctrl+C` | Hentikan tugas berjalan (2× keluar) |
 | `Ctrl+D` | Keluar (saat input kosong) |
@@ -326,7 +326,9 @@ digulir horizontal (`‹`/`›`) dan kursor tetap terlihat. Menu autocomplete pa
 muncul begitu Anda mulai menulis nama berkas/folder (tidak perlu menunggu `/`);
 gunakan `↑`/`↓` untuk berpindah item, lalu `Tab` (atau `Enter`) untuk memilihnya.
 Memilih folder otomatis membuka isinya, jadi `Tab` berulang menelusuri folder.
-Daftar ikut bergulir bila kandidatnya lebih dari 6.
+Daftar ikut bergulir bila kandidatnya lebih dari 6. Saat menu tertutup, `↑`/`↓`
+memanggil ulang pesan yang pernah Anda kirim (seperti shell); untuk menggulir
+riwayat chat gunakan `PgUp`/`PgDn` atau `Home`/`End`.
 
 Terminal dipulihkan otomatis saat keluar — termasuk pada `Ctrl+C` kedua — lewat
 handler `exit`. Semua flag CLI biasa (`--model`, `--provider`, `--resume`,

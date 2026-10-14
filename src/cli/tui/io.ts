@@ -57,7 +57,7 @@ export class TuiIO implements ChatIO {
     if (this.markdownOn) {
       this.textBuffer += chunk;
     } else {
-      this.screen.append("text", chunk);
+      this.screen.appendStream("text", chunk);
     }
   }
 
@@ -68,14 +68,17 @@ export class TuiIO implements ChatIO {
       const rendered = renderMarkdown(buffered);
       this.screen.append("raw", rendered);
     }
+    // Tutup baris streaming agar blok berikutnya mulai di baris baru.
+    this.screen.endStream();
   }
 
   thinking(chunk: string): void {
-    if (this.thinkingOn) this.screen.append("think", chunk);
+    if (this.thinkingOn) this.screen.appendStream("think", chunk);
   }
 
   thinkingEnd(): void {
-    // selesai: tidak ada yang perlu ditambahkan ke buffer.
+    // Tutup baris thinking agar blok berikutnya tidak menyambung ke baris ini.
+    this.screen.endStream();
   }
 
   setMarkdown(value: boolean): void {

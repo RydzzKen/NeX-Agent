@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { Screen, type ScreenOptions } from "../src/cli/tui/screen.js";
 import { TuiPrompter } from "../src/cli/tui/prompt.js";
+import { PROMPT_EOF } from "../src/cli/prompt.js";
 import { normalizeKey } from "../src/util/ansi.js";
 
 /** Bentuk `Key` persis seperti yang dikirim readline (lihat perilaku nyata). */
@@ -250,5 +251,94 @@ describe("TuiPrompter: menu autocomplete", () => {
     expect(screen.getMenuSelected()).toBe("add");
     type(prompter, [tab]);
     expect(screen.getInputText()).toBe("/mcp add");
+  });
+
+  it("pertanyaan setelah close tidak menggantung: langsung EOF", async () => {
+    const { prompter } = setup(tempDir());
+    const first = prompter.question("› ");
+    prompter.close();
+    // Pertanyaan yang sedang berjalan (mis. di tengah /connect) dijawab EOF…
+    await expect(first).resolves.toBe(PROMPT_EOF);
+    // …dan pertanyaan berikutnya juga, agar REPL berhenti (tidak beku).
+    await expect(prompter.question("› ")).resolves.toBe(PROMPT_EOF);
+  });
+
+  it("consume setelah close tidak lagi memakan tombol", () => {
+    const { prompter } = setup(tempDir());
+    prompter.close();
+    expect(prompter.consume(normalizeKey({ sequence: "a" }))).toBe(false);
+  });
+});
+
+describe("TuiPrompter: riwayat input (↑/↓)", () => {
+  it("↑ memanggil ulang pesan sebelumnya, ↓ kembali ke draf", async () => {
+    const { screen, prompter } = setup();
+    const first = prompter.question("› ");
+    type(prompter, ["h", "a", "l", "o"].map(letter));
+    type(prompter, [enter]);
+    await expect(first).resolves.toBe("halo");
+
+    void prompter.question("› ");
+    expect(type(prompter, [up])).toBe(true);
+    expect(screen.getInputText()).toBe("halo");
+    expect(type(prompter, [down])).toBe(true);
+    expect(screen.getInputText()).toBe("");
+  });
+
+  it("↑ berulang menelusuri beberapa pesan, ↓ kembali", async () => {
+    const { screen, prompter } = setup();
+    const q1 = prompter.question("› ");
+    type(prompter, [letter("a")]);
+    type(prompter, [enter]);
+    await q1;
+    const q2 = prompter.question("› ");
+    type(prompter, [letter("b")]);
+    type(prompter, [enter]);
+    await q2;
+
+    void prompter.question("› ");
+    type(prompter, [up]);
+    expect(screen.getInputText()).toBe("b");
+    type(prompter, [up]);
+    expect(screen.getInputText()).toBe("a");
+    type(prompter, [down]);
+    expect(screen.getInputText()).toBe("b");
+  });
+
+  it("menyimpan draf dan memulihkannya saat ↓ melewati entri terbaru", async () => {
+    const { screen, prompter } = setup();
+    const q = prompter.question("› ");
+    type(prompter, ["h", "i"].map(letter));
+    type(prompter, [enter]);
+    await q;
+
+    void prompter.question("› ");
+    type(prompter, ["d", "r", "a", "f"].map(letter));
+    type(prompter, [up]);
+    expect(screen.getInputText()).toBe("hi");
+    type(prompter, [down]);
+    expect(screen.getInputText()).toBe("draf");
+  });
+
+  it("tanpa riwayat, ↑ diteruskan untuk menggulir", () => {
+    const { prompter } = setup();
+    void prompter.question("› ");
+    expect(prompter.consume(normalizeKey(up))).toBe(false);
+  });
+
+  it("mengetik keluar dari mode telusuri riwayat", async () => {
+    const { screen, prompter } = setup();
+    const q = prompter.question("› ");
+    type(prompter, ["h", "i"].map(letter));
+    type(prompter, [enter]);
+    await q;
+
+    void prompter.question("› ");
+    type(prompter, [up]);
+    expect(screen.getInputText()).toBe("hi");
+    type(prompter, [letter("x")]);
+    expect(screen.getInputText()).toBe("hix");
+    // Setelah mengetik, tanda telusuri direset: ↓ tidak menarik entri lain.
+    expect(prompter.consume(normalizeKey(down))).toBe(false);
   });
 });

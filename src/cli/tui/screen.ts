@@ -38,6 +38,8 @@ interface View {
   lines: Array<{ kind: LineKind; text: string }>;
   /** Baris tergulung ke atas dari dasar konten (0 = dasar). */
   scroll: number;
+  /** Jenis baris terakhir yang masih "terbuka" untuk sambungan streaming. */
+  open?: LineKind;
 }
 
 export interface ScreenOptions {
@@ -329,6 +331,7 @@ export class Screen {
     for (const raw of String(text).split("\n")) {
       view.lines.push({ kind, text: kind === "raw" ? raw : paint(kind, raw) });
     }
+    view.open = undefined;
     if (view.lines.length > MAX_LINES) {
       view.lines.splice(0, view.lines.length - MAX_LINES);
     }
@@ -336,10 +339,41 @@ export class Screen {
     this.redraw();
   }
 
+  /**
+   * Tambahkan potongan **streaming**: lanjutkan baris terakhir bila jenisnya
+   * sama (mis. token thinking berurutan tidak lagi menjadi satu baris per kata),
+   * dan mulai baris baru hanya saat potongan mengandung `\n`.
+   */
+  appendStream(kind: LineKind, text: string): void {
+    const view = this.views[this.active]!;
+    const parts = String(text).split("\n");
+    const first = parts.shift() ?? "";
+    const last = view.lines[view.lines.length - 1];
+    if (view.open === kind && last && last.kind === kind) {
+      last.text += kind === "raw" ? first : paint(kind, first);
+    } else {
+      view.lines.push({ kind, text: kind === "raw" ? first : paint(kind, first) });
+    }
+    for (const p of parts) view.lines.push({ kind, text: kind === "raw" ? p : paint(kind, p) });
+    view.open = kind;
+    if (view.lines.length > MAX_LINES) {
+      view.lines.splice(0, view.lines.length - MAX_LINES);
+    }
+    this.scrollToBottom();
+    this.redraw();
+  }
+
+  /** Tutup baris streaming aktif: blok berikutnya mulai di baris baru. */
+  endStream(): void {
+    const view = this.views[this.active]!;
+    view.open = undefined;
+  }
+
   /** Saluran untuk tulis langsung ke stdout (intercept) — selalu ke view utama. */
   appendRaw(text: string): void {
     const main = this.views.find((v) => v.main) ?? this.views[0]!;
     for (const raw of text.split("\n")) main.lines.push({ kind: "raw", text: raw });
+    main.open = undefined;
     if (main.lines.length > MAX_LINES) {
       main.lines.splice(0, main.lines.length - MAX_LINES);
     }
@@ -350,6 +384,7 @@ export class Screen {
   lineBreak(): void {
     const view = this.views[this.active]!;
     view.lines.push({ kind: "divider", text: "" });
+    view.open = undefined;
     if (view.lines.length > MAX_LINES) {
       view.lines.splice(0, view.lines.length - MAX_LINES);
     }
@@ -432,6 +467,7 @@ export class Screen {
   clearView(): void {
     this.views[this.active]!.lines = [];
     this.views[this.active]!.scroll = 0;
+    this.views[this.active]!.open = undefined;
     this.redraw();
   }
 

@@ -93,6 +93,12 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
       io.handleOverlayKey(key);
       return;
     }
+    // Kord `Ctrl+X` diikuti ↑/↓ harus sampai ke dispatcher (ganti view), jadi
+    // jangan biarkan `consume` memakannya sebagai riwayat/scroll.
+    if (chord) {
+      handleGlobal(key);
+      return;
+    }
     // `consume` menangani baris input; saat agent sibuk pesan akan diantre
     // sehingga layar tidak beku. Sisa tombol global (Ctrl+C, scroll, …) lewat
     // `handleGlobal`.

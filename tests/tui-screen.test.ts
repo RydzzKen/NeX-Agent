@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { layoutInput, Screen, type ScreenOptions } from "../src/cli/tui/screen.js";
+import { stripAnsi } from "../src/util/ansi.js";
 
 interface FakeStdout {
   write: (chunk: string) => boolean;
@@ -88,6 +89,54 @@ describe("Screen: isi & status", () => {
     writes.length = 0;
     screen.redraw();
     expect(writes.join("")).toContain("PLAN");
+  });
+});
+
+describe("Screen: streaming", () => {
+  it("appendStream menyambung potongan kata jadi satu baris (bukan satu kata per baris)", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    for (const c of ["Let", " me", " present", " the", " contents", "."]) {
+      screen.appendStream("think", c);
+    }
+    writes.length = 0;
+    screen.redraw();
+    const visible = stripAnsi(writes.join(""));
+    expect(visible).toContain("Let me present the contents.");
+  });
+
+  it("appendStream mulai baris baru saat potongan memuat '\\n'", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    screen.appendStream("text", "baris1\nbaris2");
+    writes.length = 0;
+    screen.redraw();
+    const visible = stripAnsi(writes.join(""));
+    expect(visible).toContain("baris1");
+    expect(visible).toContain("baris2");
+    expect(visible).not.toContain("baris1baris2");
+  });
+
+  it("endStream memisahkan dua blok dengan jenis sama", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    screen.appendStream("text", "aaa");
+    screen.endStream();
+    screen.appendStream("text", "bbb");
+    writes.length = 0;
+    screen.redraw();
+    expect(stripAnsi(writes.join(""))).not.toContain("aaabbb");
+  });
+
+  it("append biasa menutup baris streaming sebelumnya", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    screen.appendStream("text", "aaa");
+    screen.append("info", "info");
+    screen.appendStream("text", "bbb");
+    writes.length = 0;
+    screen.redraw();
+    expect(stripAnsi(writes.join(""))).not.toContain("aaabbb");
   });
 });
 
