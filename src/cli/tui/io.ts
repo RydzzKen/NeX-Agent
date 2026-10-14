@@ -123,6 +123,11 @@ export class TuiIO implements ChatIO {
     this.screen.lineBreak();
   }
 
+  /** Tampilkan pesan pengguna di riwayat (baris input dihapus saat submit). */
+  userMessage(text: string): void {
+    this.screen.append("user", `› ${text}`);
+  }
+
   info(message: string): void {
     this.screen.append("info", `ℹ ${message}`);
   }

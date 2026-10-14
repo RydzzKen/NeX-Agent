@@ -11,6 +11,7 @@ export type LineKind =
   | "info"
   | "warn"
   | "error"
+  | "user"
   | "raw"
   | "divider";
 
@@ -65,6 +66,8 @@ function paint(kind: LineKind, text: string): string {
       return color.yellow(text);
     case "error":
       return color.red(text);
+    case "user":
+      return color.bold(color.cyan(text));
     default:
       return text;
   }

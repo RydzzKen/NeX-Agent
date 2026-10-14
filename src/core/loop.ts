@@ -417,6 +417,7 @@ export class AgentSession {
               id: event.call.id,
               name: event.call.name,
               arguments: event.call.arguments,
+              ...(event.call.extraContent ? { extraContent: event.call.extraContent } : {}),
             });
             break;
           case "usage":

@@ -63,6 +63,81 @@ describe("OpenAICompatibleProvider", () => {
     ).rejects.toThrow(/HTTP 500/);
   });
 
+  it("menyimpan extra_content (thought_signature) dari tool call Gemini", async () => {
+    const sig = { google: { thought_signature: "SIG-1" } };
+    const body = sse([
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: "call_1", type: "function", function: { name: "list_dir" }, extra_content: sig },
+              ],
+            },
+          },
+        ],
+      },
+      { choices: [{ delta: { tool_calls: [{ index: 0, function: { arguments: '{"path":"."}' } }] } }] },
+      { choices: [{ finish_reason: "tool_calls" }] },
+    ]);
+    const provider = new OpenAICompatibleProvider({
+      id: "custom:gemini",
+      label: "gemini",
+      baseURL: "http://localhost/v1",
+      fetchImpl: fetchBody(body),
+    });
+
+    const events = await collect(
+      provider.stream({ model: "m", messages: [{ role: "user", content: "hi" }], tools: [] }),
+    );
+
+    expect(events).toContainEqual({
+      type: "tool_call",
+      call: { id: "call_1", name: "list_dir", arguments: '{"path":"."}', extraContent: sig },
+    });
+  });
+
+  it("mengirim ulang extra_content pada request berikutnya, dan tidak menambahkannya bila tak ada", async () => {
+    let sentBody: string | undefined;
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      sentBody = init?.body as string;
+      return new Response(sse([{ choices: [{ finish_reason: "stop" }] }]), { status: 200 });
+    }) as unknown as typeof fetch;
+    const provider = new OpenAICompatibleProvider({
+      id: "x",
+      label: "X",
+      baseURL: "http://localhost/v1",
+      fetchImpl,
+    });
+
+    await collect(
+      provider.stream({
+        model: "m",
+        messages: [
+          { role: "user", content: "hi" },
+          {
+            role: "assistant",
+            content: "",
+            toolCalls: [
+              { id: "t1", name: "list_dir", arguments: "{}", extraContent: { google: { thought_signature: "SIG" } } },
+              { id: "t2", name: "read_file", arguments: "{}" },
+            ],
+          },
+          { role: "tool", toolCallId: "t1", name: "list_dir", content: "ok" },
+          { role: "tool", toolCallId: "t2", name: "read_file", content: "ok" },
+        ],
+        tools: [],
+      }),
+    );
+
+    const parsed = JSON.parse(sentBody ?? "{}") as {
+      messages: Array<{ role: string; tool_calls?: Array<Record<string, unknown>> }>;
+    };
+    const asst = parsed.messages.find((m) => m.role === "assistant");
+    expect(asst?.tool_calls?.[0]?.extra_content).toEqual({ google: { thought_signature: "SIG" } });
+    expect(asst?.tool_calls?.[1]).not.toHaveProperty("extra_content");
+  });
+
   it("melempar error rapi saat gateway membalas error di dalam stream", async () => {
     const body = sse([{ error: { message: "Rate limit exceeded", type: "rate_limit_error" } }]);
     const provider = new OpenAICompatibleProvider({

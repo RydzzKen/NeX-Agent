@@ -78,3 +78,32 @@ describe("TuiIO: overlay rahasia", () => {
     await expect(pending).resolves.toBeNull();
   });
 });
+
+describe("TuiIO: echo pesan pengguna", () => {
+  it("menampilkan pesan pengguna di riwayat, bukan hanya di baris input", () => {
+    const writes: string[] = [];
+    const out: FakeStdout = {
+      write: (chunk: string) => {
+        writes.push(chunk);
+        return true;
+      },
+      columns: 60,
+      rows: 20,
+      on: () => {},
+    };
+    const stdin = { isTTY: false, setRawMode: () => {}, on: () => {}, removeAllListeners: () => {} };
+    const screen = new Screen({
+      stdin: stdin as unknown as ScreenOptions["stdin"],
+      stdout: out as unknown as ScreenOptions["stdout"],
+    });
+    const io = new TuiIO(screen);
+    screen.start();
+    writes.length = 0;
+
+    io.userMessage("halo dunia");
+
+    const frame = writes.join("");
+    expect(frame).toContain("halo dunia");
+    expect(frame).toContain("›");
+  });
+});

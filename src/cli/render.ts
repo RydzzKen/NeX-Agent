@@ -37,6 +37,11 @@ const STATUS_SYMBOL: Record<StepOutcome["status"], string> = {
 export interface ChatIO extends AgentIO {
   /** Baris kosong penanda blok output baru setelah prompt/akhir giliran. */
   lineBreak(): void;
+  /**
+   * Tampilkan pesan yang baru dikirim pengguna di riwayat percakapan. Dipakai
+   * TUI (yang membersihkan baris input saat submit) agar pesan tetap terlihat.
+   */
+  userMessage?(text: string): void;
   setThinking(value: boolean): void;
   thinkingEnabled(): boolean;
   setMarkdown(value: boolean): void;

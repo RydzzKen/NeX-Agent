@@ -646,6 +646,7 @@ export class ChatApp {
       }
       const controller = new AbortController();
       this.activeController = controller;
+      this.io.userMessage?.(line);
       this.io.lineBreak();
       this.prompter.pause();
       this.io.busy?.(true);

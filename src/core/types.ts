@@ -14,6 +14,13 @@ export interface ToolCallRequest {
   name: string;
   /** JSON mentah dari model; divalidasi di eksekutor. */
   arguments: string;
+  /**
+   * Data tambahan buram yang dikirim provider bersama tool call (mis. tanda
+   * tangan `extra_content.google.thought_signature` dari Gemini). Wajib
+   * dikembalikan apa adanya saat mengirim ulang riwayat; provider lain tidak
+   * mengisinya sehingga aman diabaikan.
+   */
+  extraContent?: Record<string, unknown>;
 }
 
 /** Hasil satu tool call. Selalu ada tepat satu per ToolCallRequest. */

@@ -323,4 +323,33 @@ describe("loop agentik (kriteria penerimaan)", () => {
       await harness.cleanup();
     }
   });
+
+  it("mempertahankan extraContent (thought_signature) pada riwayat tool call", async () => {
+    const extra = { google: { thought_signature: "SIG-A" } };
+    const harness = await createHarness({
+      script: [
+        {
+          toolCalls: [
+            {
+              id: "c1",
+              name: "read_file",
+              arguments: JSON.stringify({ path: "a.txt" }),
+              extraContent: extra,
+            },
+          ],
+        },
+        { text: "selesai" },
+      ],
+    });
+    try {
+      await fs.writeFile(path.join(harness.workspaceRoot, "a.txt"), "hi");
+      await harness.run();
+      const assistant = harness.session
+        .getHistory()
+        .find((m) => m.role === "assistant" && (m.toolCalls?.length ?? 0) > 0);
+      expect(assistant?.toolCalls?.[0]?.extraContent).toEqual(extra);
+    } finally {
+      await harness.cleanup();
+    }
+  });
 });

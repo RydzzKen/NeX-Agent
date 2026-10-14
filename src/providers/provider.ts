@@ -22,6 +22,11 @@ export interface StreamToolCall {
   name: string;
   /** JSON mentah. */
   arguments: string;
+  /**
+   * Data tambahan buram dari provider yang harus dipertahankan pada riwayat
+   * (mis. `extra_content` Gemini berisi thought_signature).
+   */
+  extraContent?: Record<string, unknown>;
 }
 
 export type StreamEvent =

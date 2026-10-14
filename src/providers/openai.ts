@@ -20,6 +20,11 @@ interface OpenAIToolCallDelta {
   id?: string;
   type?: string;
   function?: { name?: string; arguments?: string };
+  /**
+   * Ekstensi provider (mis. Gemini): `{ google: { thought_signature } }`.
+   * Harus disimpan dan dikirim ulang apa adanya pada request berikutnya.
+   */
+  extra_content?: Record<string, unknown>;
 }
 
 interface OpenAIChunk {
@@ -71,6 +76,9 @@ function toOpenAIMessages(
           id: call.id,
           type: "function",
           function: { name: call.name, arguments: call.arguments },
+          // Kembalikan ekstensi provider (mis. thought_signature Gemini) apa
+          // adanya; provider yang tidak mengirimnya tidak terpengaruh.
+          ...(call.extraContent ? { extra_content: call.extraContent } : {}),
         })),
       };
     }
@@ -159,7 +167,10 @@ export class OpenAICompatibleProvider implements ModelProvider {
       throw new Error(formatHttpError(this.id, response.status, text));
     }
 
-    const toolCalls = new Map<number, { id: string; name: string; args: string }>();
+    const toolCalls = new Map<
+      number,
+      { id: string; name: string; args: string; extra?: Record<string, unknown> }
+    >();
     let finishReason = "stop";
     let usage: TokenUsage | undefined;
 
@@ -192,6 +203,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
           if (call.id) existing.id = call.id;
           if (call.function?.name) existing.name += call.function.name;
           if (call.function?.arguments) existing.args += call.function.arguments;
+          if (call.extra_content) existing.extra = call.extra_content;
           toolCalls.set(index, existing);
         }
       }
@@ -201,7 +213,12 @@ export class OpenAICompatibleProvider implements ModelProvider {
     for (const [, call] of [...toolCalls.entries()].sort((a, b) => a[0] - b[0])) {
       yield {
         type: "tool_call",
-        call: { id: call.id || `call_${Date.now()}`, name: call.name, arguments: call.args || "{}" },
+        call: {
+          id: call.id || `call_${Date.now()}`,
+          name: call.name,
+          arguments: call.args || "{}",
+          ...(call.extra ? { extraContent: call.extra } : {}),
+        },
       };
     }
     if (usage) yield { type: "usage", usage };

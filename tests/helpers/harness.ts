@@ -18,7 +18,7 @@ import { UsageTracker } from "../../src/usage/tracker.js";
 export interface ScriptedTurn {
   text?: string;
   thinking?: string;
-  toolCalls?: Array<{ id?: string; name: string; arguments: string }>;
+  toolCalls?: Array<{ id?: string; name: string; arguments: string; extraContent?: Record<string, unknown> }>;
   usage?: Partial<TokenUsage>;
   stop?: "stop" | "tool_use" | "length";
 }
@@ -50,7 +50,12 @@ export class FakeProvider implements ModelProvider {
       const call = turn.toolCalls![i]!;
       yield {
         type: "tool_call",
-        call: { id: call.id ?? `call_${index}_${i}`, name: call.name, arguments: call.arguments },
+        call: {
+          id: call.id ?? `call_${index}_${i}`,
+          name: call.name,
+          arguments: call.arguments,
+          ...(call.extraContent ? { extraContent: call.extraContent } : {}),
+        },
       };
     }
     yield { type: "usage", usage: { input: 10, output: 5, cacheRead: 0, cacheWrite: 0, ...turn.usage } };
