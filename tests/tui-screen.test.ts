@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Screen, type ScreenOptions } from "../src/cli/tui/screen.js";
+import { layoutInput, Screen, type ScreenOptions } from "../src/cli/tui/screen.js";
 
 interface FakeStdout {
   write: (chunk: string) => boolean;
@@ -126,6 +126,62 @@ describe("Screen: input", () => {
     expect(screen.getMenuSelected()).toBe("/diff");
     screen.menuSelect(-1);
     expect(screen.getMenuSelected()).toBe("/help");
+  });
+
+  it("tidak keluar layar saat input panjang (horizontal scroll)", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    const long = "kata-".repeat(40); // 200 karakter > 40 kolom
+    screen.setInput(long, long.length, false, "› ");
+    const frame = writes.join("");
+    // Hanya jendela (≤ lebar) yang tampil, bukan seluruh 200 karakter.
+    const visible = frame.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, "");
+    expect(visible).not.toContain(long);
+    // Kursor tetap berada di dalam layar.
+    const move = /;([0-9]+)H/g;
+    let m: RegExpExecArray | null;
+    while ((m = move.exec(frame)) !== null) {
+      expect(Number(m[1])).toBeLessThanOrEqual(40);
+    }
+  });
+});
+
+describe("Screen: layoutInput", () => {
+  const width = (s: { before: string; at: string; after: string }): number =>
+    s.before.length + s.at.length + s.after.length;
+
+  it("menampilkan seluruh teks pendek tanpa penanda potong", () => {
+    const l = layoutInput("hello", 5, 20);
+    expect(l.before).toBe("hello");
+    expect(l.at).toBe(" ");
+    expect(l.after).toBe("");
+    expect(l.clippedLeft).toBe(false);
+    expect(l.clippedRight).toBe(false);
+  });
+
+  it("menggeser jendela agar kursor di ujung kanan tetap terlihat", () => {
+    const l = layoutInput("abcdefghij", 10, 6);
+    expect(l.clippedLeft).toBe(true);
+    expect(l.at).toBe(" ");
+    expect(width(l)).toBeLessThanOrEqual(6);
+    // Karakter terakhir sebelum kursor ikut tampil.
+    expect(l.before.endsWith("j")).toBe(true);
+  });
+
+  it("menjaga kursor tetap berada di dalam jendela saat di tengah", () => {
+    const text = "abcdefghij";
+    for (let caret = 0; caret <= text.length; caret++) {
+      const l = layoutInput(text, caret, 6);
+      expect(width(l)).toBeLessThanOrEqual(6);
+      // `at` mewakili karakter pada posisi kursor (atau spasi di ujung).
+      if (caret < text.length) expect(l.at).toBe(text[caret]);
+    }
+  });
+
+  it("menandai potongan di kanan bila masih ada teks setelah jendela", () => {
+    const l = layoutInput("abcdefghij", 1, 6);
+    expect(l.clippedLeft).toBe(false);
+    expect(l.clippedRight).toBe(true);
   });
 });
 

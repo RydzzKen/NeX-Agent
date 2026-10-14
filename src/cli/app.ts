@@ -634,7 +634,9 @@ export class ChatApp {
     for (;;) {
       const prompt = `${color.gray("[")}${this.session.getMode()}${color.gray("]")} › `;
       this.exitArmed = false;
-      const line = (await this.prompter.question(`\n${prompt}`)).trim();
+      // Pesan yang dikirim saat agent sibuk (mode TUI) dijalankan lebih dulu.
+      const queued = this.prompter.takeQueued?.();
+      const line = (queued !== undefined ? queued : await this.prompter.question(`\n${prompt}`)).trim();
       if (line === PROMPT_EOF) break;
       if (line === "") continue;
       if (line.startsWith("/")) {

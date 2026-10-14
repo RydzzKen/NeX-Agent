@@ -15,6 +15,8 @@ umum, jelaskan langsung dari sini — jangan menjelajah kode.
 - **CLI** (`agent ...`, alias `nex-agent`) dijalankan di shell.
 - **TUI** (layar penuh): `agent tui`. Pintasan: `Ctrl+Tab` ganti mode,
   `Ctrl+X ↑/↓` ganti view, `Ctrl+T` thinking, `Ctrl+C` hentikan (2× keluar).
+  Input tetap hidup saat agent bekerja — pesan yang dikirim lewat `Enter` akan
+  **diantre** dan dijalankan setelah giliran selesai.
 - Bot Telegram punya subhimpunan sendiri (lihat bawah).
 
 ## 1. Mode Plan / Build

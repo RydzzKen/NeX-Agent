@@ -11,6 +11,8 @@ export interface PrompterLike {
   resume(): void;
   secretQuestion(query: string, mask?: string): Promise<string>;
   onInterrupt(handler: () => void): void;
+  /** Ambil pesan yang diantre (opsional; hanya TUI yang mengantre). */
+  takeQueued?(): string | undefined;
 }
 
 export interface PrompterOptions {

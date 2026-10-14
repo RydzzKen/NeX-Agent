@@ -93,7 +93,10 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
       io.handleOverlayKey(key);
       return;
     }
-    if (prompter.hasPending && prompter.consume(key)) return;
+    // `consume` menangani baris input; saat agent sibuk pesan akan diantre
+    // sehingga layar tidak beku. Sisa tombol global (Ctrl+C, scroll, …) lewat
+    // `handleGlobal`.
+    if (prompter.consume(key)) return;
     handleGlobal(key);
   });
 

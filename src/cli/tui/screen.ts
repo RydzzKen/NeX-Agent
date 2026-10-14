@@ -210,8 +210,15 @@ export class Screen {
     return this.input.prompt;
   }
 
+  /** True bila baris input sedang terfokus (bisa diketik). */
+  get inputActive(): boolean {
+    return this.input.active;
+  }
+
   clearInput(): void {
     this.input.active = false;
+    this.input.text = "";
+    this.input.caret = 0;
     this.menu = undefined;
     this.redraw();
   }
@@ -496,10 +503,12 @@ export class Screen {
 
     const inputText = this.input.mask ? "*".repeat(this.input.text.length) : this.input.text;
     const caret = Math.min(this.input.caret, inputText.length);
-    const before = inputText.slice(0, caret);
-    const at = inputText.slice(caret, caret + 1) || " ";
-    const after = inputText.slice(caret + 1);
-    const renderedInput = `${color.cyan(this.input.prompt)}${before}${color.inverse(at)}${after}`;
+    const promptW = visibleWidth(this.input.prompt);
+    const avail = Math.max(1, cols - 2 - promptW);
+    const layout = layoutInput(inputText, caret, avail);
+    const markerLeft = layout.clippedLeft ? color.dim("‹") : "";
+    const markerRight = layout.clippedRight ? color.dim("›") : "";
+    const renderedInput = `${color.cyan(this.input.prompt)}${markerLeft}${layout.before}${color.inverse(layout.at)}${layout.after}${markerRight}`;
     const spinner = this.status.busy ? color.brightGreen(SPINNER[this.spinnerTick % SPINNER.length]!) : " ";
     buffer.push(`\u001b[${inputRow + 1};1H` + spinner + " " + padLine(truncateTo(renderedInput, cols - 2), cols - 2));
 
@@ -507,8 +516,11 @@ export class Screen {
     buffer.push(`\u001b[${statusRow + 1};1H` + padLine(truncateTo(this.renderStatusLine(statusRow, cols), cols), cols));
     buffer.push(`\u001b[${statusRow + 1};1H` + this.hint(cols));
 
-    // Kursor di ujung input.
-    const caretCol = Math.min(2 + visibleWidth(this.input.prompt) + visibleWidth(before) + 1, cols);
+    // Kursor mengikuti jendela input (tetap terlihat walau input panjang).
+    const caretCol = Math.min(
+      2 + promptW + (layout.clippedLeft ? 1 : 0) + visibleWidth(layout.before) + 1,
+      cols,
+    );
     buffer.push(`\u001b[${inputRow + 1};${caretCol}H`);
     this.write(buffer.join("") + "\u001b[0m");
   }
@@ -585,4 +597,40 @@ function padLine(text: string, width: number): string {
   const w = visibleWidth(stripAnsi(text));
   if (w >= width) return text;
   return text + " ".repeat(width - w);
+}
+
+export interface InputLayout {
+  /** Teks sebelum kursor yang terlihat. */
+  before: string;
+  /** Karakter pada posisi kursor (spasi bila kursor di ujung). */
+  at: string;
+  /** Teks setelah kursor yang terlihat. */
+  after: string;
+  /** Ada bagian terpotong di kiri kursor. */
+  clippedLeft: boolean;
+  /** Ada bagian terpotong di kanan jendela. */
+  clippedRight: boolean;
+}
+
+/**
+ * Hitung jendela horizontal untuk baris input agar kursor selalu terlihat saat
+ * teks lebih panjang dari `width` (input panjang tidak lagi keluar layar).
+ * Murni supaya mudah diuji.
+ */
+export function layoutInput(text: string, caret: number, width: number): InputLayout {
+  const w = Math.max(1, width);
+  const len = text.length;
+  const pos = Math.max(0, Math.min(caret, len));
+  // Sisakan sampai 2 kolom untuk penanda potong '‹'/'›'.
+  const inner = Math.max(1, w - 2);
+  let start = Math.max(0, pos - inner + 1);
+  if (start + inner > len) start = Math.max(0, len - inner);
+  const end = Math.min(len, start + inner);
+  return {
+    before: text.slice(start, pos),
+    at: text.slice(pos, pos + 1) || " ",
+    after: text.slice(pos + 1, end),
+    clippedLeft: start > 0,
+    clippedRight: end < len,
+  };
 }

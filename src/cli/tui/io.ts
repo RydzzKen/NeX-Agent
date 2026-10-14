@@ -1,7 +1,7 @@
 import { color } from "../../util/color.js";
 import { renderMarkdown } from "../../util/markdown.js";
 import { todoHeader, todoLines } from "../../util/todos.js";
-import { truncateTo, type Key } from "../../util/ansi.js";
+import { isPrintableText, truncateTo, type Key } from "../../util/ansi.js";
 import type {
   ConfirmDecision,
   ConfirmRequest,
@@ -179,7 +179,7 @@ export class TuiIO implements ChatIO {
         ["n", "no"],
         ["a", "all"],
       ]),
-      first: "yes",
+      first: "y",
     });
     return (decision === "yes" || decision === "all" ? decision : "no") as ConfirmDecision;
   }
@@ -203,7 +203,7 @@ export class TuiIO implements ChatIO {
         ["y", "yes"],
         ["n", "no"],
       ]),
-      first: "no",
+      first: "n",
     });
     return decision === "yes";
   }
@@ -223,7 +223,7 @@ export class TuiIO implements ChatIO {
         ["y", "yes"],
         ["n", "no"],
       ]),
-      first: "no",
+      first: "n",
     });
     return decision === "yes";
   }
@@ -250,7 +250,7 @@ export class TuiIO implements ChatIO {
       if (key.name === "return") this.resolveOverlay(this.screen.getOverlayInput());
       else if (key.name === "escape") this.resolveOverlay(null);
       else if (key.name === "backspace") this.screen.popOverlayChar();
-      else if (!key.ctrl && !key.meta && key.name === undefined && key.sequence.length > 0) {
+      else if (!key.ctrl && !key.meta && isPrintableText(key.sequence)) {
         this.screen.pushOverlayChar(key.sequence);
       }
       return;
@@ -258,8 +258,10 @@ export class TuiIO implements ChatIO {
 
     if (key.name === "return") this.resolveOverlay(o.accept.get(o.first) ?? null);
     else if (key.name === "escape") this.resolveOverlay(null);
-    else if (!key.ctrl && !key.meta && key.name === undefined && key.sequence.length === 1) {
-      const value = o.accept.get(key.sequence);
+    else if (!key.ctrl && !key.meta && isPrintableText(key.sequence) && key.sequence.length === 1) {
+      // readline mengisi `name` untuk huruf (mis. "y" → name "y"), jadi cocokkan
+      // dari `sequence` — bukan mengandalkan `name === undefined`.
+      const value = o.accept.get(key.sequence.toLowerCase());
       if (value !== undefined) this.resolveOverlay(value);
     }
   }

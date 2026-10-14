@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: mode TUI layar penuh (`nex-agent tui`) dirapikan & diuji.
+Terakhir diperbarui: TUI — input hidup saat agent bekerja (antrean pesan) + gulir horizontal input panjang.
 
 ## Selesai
 
@@ -28,7 +28,7 @@ Terakhir diperbarui: mode TUI layar penuh (`nex-agent tui`) dirapikan & diuji.
 - [x] Tool `apply_patch` — edit banyak file/edit sekaligus secara **atomik** (satu konfirmasi diff)
 - [x] `/search <kata>` — cari teks di seluruh sesi (lintas workspace)
 - [x] Pesan error dirapikan: provider (termasuk error di dalam stream) & MCP tak lagi tampil sebagai JSON mentah; Web/Telegram/CLI konsisten
-- [x] **Mode TUI** (`nex-agent tui`) — layar penuh: alt-screen, status bar, view subagent, overlay konfirmasi/rahasia, pintasan tombol (`src/cli/tui/*`, `src/util/ansi.ts`)
+- [x] **Mode TUI** (`nex-agent tui`) — layar penuh: alt-screen, status bar, view subagent, overlay konfirmasi/rahasia, pintasan tombol, gulir horizontal input, antrean pesan saat agent sibuk (`src/cli/tui/*`, `src/util/ansi.ts`)
 
 ## Web (chat + terminal di browser)  ← selesai
 

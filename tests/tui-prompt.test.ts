@@ -97,3 +97,43 @@ describe("TuiPrompter: input rahasia", () => {
     await expect(pending).resolves.toBe("s3cr3t");
   });
 });
+
+describe("TuiPrompter: antrean saat agent sibuk", () => {
+  it("mengetik tanpa pertanyaan menganggur tetap masuk ke input", () => {
+    const { screen, prompter } = setup();
+    expect(prompter.hasPending).toBe(false);
+    type(prompter, [letter("h"), letter("i")]);
+    expect(screen.getInputText()).toBe("hi");
+  });
+
+  it("Enter tanpa pertanyaan mengantre pesan dan mengosongkan input", () => {
+    const { screen, prompter } = setup();
+    type(prompter, [letter("h"), letter("a"), letter("i")]);
+    type(prompter, [enter]);
+    expect(prompter.takeQueued()).toBe("hai");
+    expect(prompter.takeQueued()).toBeUndefined();
+    expect(screen.getInputText()).toBe("");
+  });
+
+  it("antrean dikembalikan sesuai urutan kirim", () => {
+    const { prompter } = setup();
+    type(prompter, [letter("a")]);
+    type(prompter, [enter]);
+    type(prompter, [letter("b")]);
+    type(prompter, [enter]);
+    expect(prompter.takeQueued()).toBe("a");
+    expect(prompter.takeQueued()).toBe("b");
+  });
+
+  it("Enter kosong saat menganggur tidak mengantre apa pun", () => {
+    const { prompter } = setup();
+    type(prompter, [enter]);
+    expect(prompter.takeQueued()).toBeUndefined();
+  });
+
+  it("Home/End saat menganggur diteruskan ke dispatcher (scroll)", () => {
+    const { prompter } = setup();
+    expect(prompter.consume(normalizeKey({ name: "home", sequence: "\u001b[H" }))).toBe(false);
+    expect(prompter.consume(normalizeKey({ name: "end", sequence: "\u001b[F" }))).toBe(false);
+  });
+});
