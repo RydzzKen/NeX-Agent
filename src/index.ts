@@ -36,6 +36,36 @@ function parseMode(value: string): Mode {
   return value;
 }
 
+/** Petakan opsi commander ke `CliOptions` (dipakai mode CLI dan TUI). */
+function toCliOptions(
+  options: Record<string, unknown>,
+  goal?: string,
+  extra?: Partial<CliOptions>,
+): CliOptions {
+  return {
+    ...(goal ? { goal } : {}),
+    ...(options.mode ? { mode: parseMode(options.mode as string) } : {}),
+    ...(options.model ? { model: options.model as string } : {}),
+    ...(options.provider ? { provider: options.provider as string } : {}),
+    ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps as number } : {}),
+    ...(options.maxCost !== undefined ? { maxCost: options.maxCost as number } : {}),
+    ...(options.yes ? { yes: true } : {}),
+    ...(options.allowAll ? { allowAll: true } : {}),
+    ...(options.resume ? { resume: options.resume as string } : {}),
+    ...(options.continue ? { continue: true } : {}),
+    ...(options.cwd ? { cwd: options.cwd as string } : {}),
+    ...(Array.isArray(options.allowPath) && options.allowPath.length
+      ? { allowPath: options.allowPath as string[] }
+      : {}),
+    thinking: options.thinking !== false,
+    ...(options.markdown === false ? { markdown: false } : {}),
+    ...(options.skills === false ? { skills: false } : {}),
+    ...(options.debug ? { debug: true } : {}),
+    ...(options.json ? { json: true } : {}),
+    ...extra,
+  };
+}
+
 /** Argumen CLI yang diteruskan ke worker bot Telegram (daemon/supervisor). */
 function telegramWorkerArgs(merged: Record<string, unknown>): string[] {
   const args: string[] = [];
@@ -78,7 +108,7 @@ async function main(): Promise<void> {
   program
     .name("agent")
     .description("AI Agent CLI — loop agentik, mode Plan/Build, multi-provider")
-    .version("1.8.0", "-v, --version", "tampilkan versi")
+    .version("1.9.0", "-v, --version", "tampilkan versi")
     .argument("[goal]", "tujuan tugas; kosong untuk mode chat interaktif")
     .option("--mode <mode>", "mode awal: plan atau build")
     .option("--model <model>", "model yang dipakai")
@@ -97,31 +127,43 @@ async function main(): Promise<void> {
     .option("--debug", "log debug")
     .option("--json", "keluaran JSON per baris")
     .action(async (goal: string | undefined, options: Record<string, unknown>) => {
-      const opts: CliOptions = {
-        ...(goal ? { goal } : {}),
-        ...(options.mode ? { mode: parseMode(options.mode as string) } : {}),
-        ...(options.model ? { model: options.model as string } : {}),
-        ...(options.provider ? { provider: options.provider as string } : {}),
-        ...(options.maxSteps !== undefined ? { maxSteps: options.maxSteps as number } : {}),
-        ...(options.maxCost !== undefined ? { maxCost: options.maxCost as number } : {}),
-        ...(options.yes ? { yes: true } : {}),
-        ...(options.allowAll ? { allowAll: true } : {}),
-        ...(options.resume ? { resume: options.resume as string } : {}),
-        ...(options.continue ? { continue: true } : {}),
-        ...(options.cwd ? { cwd: options.cwd as string } : {}),
-        ...(Array.isArray(options.allowPath) && options.allowPath.length
-          ? { allowPath: options.allowPath as string[] }
-          : {}),
-        thinking: options.thinking !== false,
-        ...(options.markdown === false ? { markdown: false } : {}),
-        ...(options.skills === false ? { skills: false } : {}),
-        ...(options.debug ? { debug: true } : {}),
-        ...(options.json ? { json: true } : {}),
-      };
+      const opts = toCliOptions(options, goal);
 
       const app = await ChatApp.create(opts);
       const code = goal ? await app.runGoal(goal) : await app.runRepl();
       process.exitCode = code;
+    });
+
+  program
+    .command("tui")
+    .description("antarmuka TUI layar penuh; CLI readline tetap default")
+    .option("--mode <mode>", "mode awal: plan atau build")
+    .option("--model <model>", "model yang dipakai")
+    .option("--provider <provider>", "provider yang dipakai")
+    .option("--max-steps <n>", "batas langkah", (v) => Number.parseInt(v, 10))
+    .option("--max-cost <n>", "anggaran biaya (USD)", (v) => Number.parseFloat(v))
+    .option("--yes", "setujui semua kategori konfirmasi (bukan yang diblokir)")
+    .option("--allow-all", "izinkan semua permintaan izin untuk sesi ini")
+    .option("--resume <id>", "lanjutkan sesi")
+    .option("--continue", "lanjutkan sesi terakhir di workspace ini")
+    .option("--cwd <path>", "direktori kerja")
+    .option("--allow-path <path>", "setujui path sebelum sesi (bisa diulang)", collect, [])
+    .option("--no-thinking", "sembunyikan thinking")
+    .option("--no-markdown", "jangan render markdown pada jawaban")
+    .option("--no-skills", "jangan muat skill dari SKILL.md")
+    .option("--debug", "log debug")
+    .action(async (options: Record<string, unknown>) => {
+      const opts = toCliOptions(options, undefined, { ui: "tui" });
+      const app = await ChatApp.create(opts);
+      const cleanup = (): void => app.stopTui();
+      process.once("exit", cleanup); // jaring force-exit (Ctrl+C kedua)
+      try {
+        const code = await app.runRepl();
+        process.exitCode = code;
+      } finally {
+        process.removeListener("exit", cleanup);
+        cleanup();
+      }
     });
 
   program

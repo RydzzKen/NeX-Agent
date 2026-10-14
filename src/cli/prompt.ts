@@ -7,12 +7,10 @@ export const PROMPT_EOF = "\u0004";
 export interface PrompterLike {
   question(query: string): Promise<string>;
   close(): void;
-  pause?: () => void;
-  resume?: () => void;
-  /** Tanya input rahasia; `mask` (mis. "*") menampilkan jumlah karakter tanpa isinya. */
-  secretQuestion?(query: string, mask?: string): Promise<string>;
-  /** Daftarkan handler Ctrl+C (menggantikan perilaku tutup-default readline). */
-  onInterrupt?: (handler: () => void) => void;
+  pause(): void;
+  resume(): void;
+  secretQuestion(query: string, mask?: string): Promise<string>;
+  onInterrupt(handler: () => void): void;
 }
 
 export interface PrompterOptions {

@@ -13,6 +13,8 @@ umum, jelaskan langsung dari sini — jangan menjelajah kode.
 
 - **Slash** (`/help`, `/mcp`, ...) diketik **di dalam sesi chat** (REPL), bukan di shell.
 - **CLI** (`agent ...`, alias `nex-agent`) dijalankan di shell.
+- **TUI** (layar penuh): `agent tui`. Pintasan: `Ctrl+Tab` ganti mode,
+  `Ctrl+X ↑/↓` ganti view, `Ctrl+T` thinking, `Ctrl+C` hentikan (2× keluar).
 - Bot Telegram punya subhimpunan sendiri (lihat bawah).
 
 ## 1. Mode Plan / Build

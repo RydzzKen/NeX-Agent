@@ -3,7 +3,7 @@ import { TerminalIO } from "../src/cli/render.js";
 import type { PrompterLike } from "../src/cli/prompt.js";
 
 function fakePrompter(question: PrompterLike["question"] = async () => ""): PrompterLike {
-  return { question, close: () => {} };
+  return { question, close: () => {}, pause: () => {}, resume: () => {}, secretQuestion: async () => "", onInterrupt: () => {} };
 }
 
 function makeIO(opts: { json?: boolean; spinner?: boolean; prompter?: PrompterLike } = {}) {

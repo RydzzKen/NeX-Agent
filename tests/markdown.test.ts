@@ -4,7 +4,7 @@ import { setColorEnabled } from "../src/util/color.js";
 import { TerminalIO } from "../src/cli/render.js";
 import type { PrompterLike } from "../src/cli/prompt.js";
 
-const prompter: PrompterLike = { question: async () => "", close: () => {} };
+const prompter: PrompterLike = { question: async () => "", close: () => {}, pause: () => {}, resume: () => {}, secretQuestion: async () => "", onInterrupt: () => {} };
 
 beforeEach(() => setColorEnabled(false));
 afterEach(() => setColorEnabled(false));

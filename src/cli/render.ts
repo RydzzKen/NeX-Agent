@@ -30,6 +30,19 @@ const STATUS_SYMBOL: Record<StepOutcome["status"], string> = {
   denied: "⊘",
 };
 
+/**
+ * IO terminal/interaktif yang dipakai `ChatApp` — cukup lebar untuk CLI maupun
+ * TUI. `TerminalIO` (CLI) dan `TuiIO` (TUI) sama-sama mengimplementasikannya.
+ */
+export interface ChatIO extends AgentIO {
+  /** Baris kosong penanda blok output baru setelah prompt/akhir giliran. */
+  lineBreak(): void;
+  setThinking(value: boolean): void;
+  thinkingEnabled(): boolean;
+  setMarkdown(value: boolean): void;
+  isMarkdownEnabled(): boolean;
+}
+
 /** Bingkai spinner untuk indikator "sedang bekerja". */
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -38,7 +51,7 @@ function truncate(text: string, max: number): string {
 }
 
 /** Implementasi AgentIO untuk terminal. */
-export class TerminalIO implements AgentIO {
+export class TerminalIO implements ChatIO {
   private thinkingActive = false;
   private textOpen = false;
   private textBuffer = "";

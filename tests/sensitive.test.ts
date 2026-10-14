@@ -5,7 +5,7 @@ import type { PrompterLike } from "../src/cli/prompt.js";
 
 function ioWithAnswer(answer: string): { io: TerminalIO; writes: string[] } {
   const writes: string[] = [];
-  const prompter: PrompterLike = { question: async () => answer, close: () => {} };
+  const prompter: PrompterLike = { question: async () => answer, close: () => {}, pause: () => {}, resume: () => {}, secretQuestion: async () => "", onInterrupt: () => {} };
   const io = new TerminalIO(prompter, { thinking: false, json: false }, (s) => writes.push(s));
   return { io, writes };
 }

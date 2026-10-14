@@ -117,6 +117,15 @@ export interface AgentIO {
    * Opsional; dipanggil lapisan UI mengelilingi satu giliran `run`.
    */
   busy?(on: boolean): void;
+
+  /**
+   * Sebuah lapisan kerja yang lebih dalam (mis. subagent `task`) mulai
+   * berjalan. UI dapat membuka buffer/view terpisah untuknya.
+   */
+  subtaskStart?(label: string): void;
+
+  /** Lapisan kerja yang lebih dalam selesai. */
+  subtaskEnd?(): void;
 }
 
 /** IO diam untuk tes dan mode non-interaktif tanpa `--yes`. */

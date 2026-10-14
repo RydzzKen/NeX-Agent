@@ -1,0 +1,91 @@
+import { describe, expect, it } from "vitest";
+import {
+  isCtrlTab,
+  normalizeKey,
+  stripAnsi,
+  truncateTo,
+  visibleWidth,
+  wrapAnsi,
+} from "../src/util/ansi.js";
+
+const RED = "\u001b[31m";
+const RESET = "\u001b[39m";
+
+describe("ansi: visibleWidth & stripAnsi", () => {
+  it("menghitung lebar teks ASCII", () => {
+    expect(visibleWidth("halo")).toBe(4);
+  });
+
+  it("mengabaikan urutan escape ANSI", () => {
+    expect(visibleWidth(`${RED}halo${RESET}`)).toBe(4);
+    expect(stripAnsi(`${RED}halo${RESET}`)).toBe("halo");
+  });
+
+  it("menghitung karakter lebar ganda (CJK) sebagai 2", () => {
+    expect(visibleWidth("漢")).toBe(2);
+    expect(visibleWidth("漢字")).toBe(4);
+  });
+});
+
+describe("ansi: wrapAnsi", () => {
+  it("membungkus teks ke lebar maksimum", () => {
+    const lines = wrapAnsi("abcdef", 3);
+    expect(lines.map((l) => l.line)).toEqual(["abc", "def"]);
+  });
+
+  it("mempertahankan pewarna dan menutupnya di akhir potongan", () => {
+    const lines = wrapAnsi(`${RED}abcd${RESET}`, 2);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]!.line).toBe(`${RED}ab\u001b[0m`);
+    // potongan kedua membuka ulang warna lalu di-reset di akhir.
+    expect(lines[1]!.line.startsWith(RED)).toBe(true);
+    expect(lines[1]!.line.endsWith(RESET)).toBe(true);
+  });
+
+  it("mempertahankan baris kosong", () => {
+    const lines = wrapAnsi("a\n\nb", 10);
+    expect(lines.map((l) => l.line)).toEqual(["a", "", "b"]);
+  });
+});
+
+describe("ansi: truncateTo", () => {
+  it("membiarkan teks yang muat", () => {
+    expect(truncateTo("abc", 5)).toBe("abc");
+  });
+
+  it("memotong dan menyisipkan elipsis", () => {
+    const out = truncateTo("abcdefgh", 4);
+    expect(visibleWidth(out)).toBe(4);
+    expect(out.endsWith("…")).toBe(true);
+  });
+
+  it("menghitung lebar tampilan saat memotong teks ber-pewarna", () => {
+    const out = truncateTo(`${RED}abcdef${RESET}`, 4);
+    expect(stripAnsi(out)).toBe("abc…");
+  });
+});
+
+describe("ansi: normalisasi key", () => {
+  it("menandai Ctrl+Tab dari urutan terminal umum", () => {
+    const key = normalizeKey({ sequence: "\u001b[27;5;9~" });
+    expect(key.name).toBe("tab");
+    expect(isCtrlTab(key)).toBe(true);
+  });
+
+  it("mengenali Ctrl+Tab dari flag ctrl + sequence tab", () => {
+    const key = normalizeKey({ ctrl: true, sequence: "\t" });
+    expect(isCtrlTab(key)).toBe(true);
+  });
+
+  it("bukan Ctrl+Tab untuk tab biasa", () => {
+    const key = normalizeKey({ name: "tab", sequence: "\t" });
+    expect(isCtrlTab(key)).toBe(false);
+  });
+
+  it("meneruskan key biasa apa adanya", () => {
+    const key = normalizeKey({ name: "up", sequence: "\u001b[A" });
+    expect(key.name).toBe("up");
+    expect(key.sequence).toBe("\u001b[A");
+    expect(key.ctrl).toBe(false);
+  });
+});

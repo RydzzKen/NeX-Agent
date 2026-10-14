@@ -27,6 +27,10 @@ function recordingIO(): {
 const stubPrompter: PrompterLike = {
   question: async () => "",
   close: () => {},
+  pause: () => {},
+  resume: () => {},
+  secretQuestion: async () => "",
+  onInterrupt: () => {},
 };
 
 describe("TodoStore", () => {

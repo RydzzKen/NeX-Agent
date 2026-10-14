@@ -54,8 +54,10 @@ import { todoHeader, todoLines } from "../util/todos.js";
 import { renderCrossSession, renderUsage } from "./usage.js";
 import { runConnect, describeProvider, defaultBaseURL, resolveProviderKey, providerRefFromArgs } from "./connect.js";
 import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice, validateFallbackModel } from "./models.js";
-import { TerminalIO } from "./render.js";
-import { Prompter, PROMPT_EOF } from "./prompt.js";
+import { TerminalIO, type ChatIO } from "./render.js";
+import { Prompter, PROMPT_EOF, type PrompterLike } from "./prompt.js";
+import { createTuiPair, attachTui, type TuiPair } from "./tui/index.js";
+import type { Screen } from "./tui/screen.js";
 import { resolveInterrupt } from "./interrupt.js";
 import { formatResumePreview } from "./resume_preview.js";
 import { restartArgs } from "./restart_args.js";
@@ -102,6 +104,8 @@ export interface CliOptions {
   skills?: boolean;
   debug?: boolean;
   json?: boolean;
+  /** Mode antarmuka: CLI (readline) default, atau TUI layar penuh. */
+  ui?: "cli" | "tui";
 }
 
 interface ResolvedModel {
@@ -109,7 +113,7 @@ interface ResolvedModel {
   info?: ModelInfo;
 }
 
-const SLASH_HELP: Array<[string, string]> = [
+export const SLASH_HELP: Array<[string, string]> = [
   ["/connect", "hubungkan provider (yang tersimpan bisa dipakai ulang)"],
   ["/provider [use|edit|hapus <id>]", "kelola provider tersimpan (id: anthropic, openai, custom:<nama>)"],
   ["/models [nomor|0|nama]", "lihat/ganti model (0 = custom)"],
@@ -198,27 +202,78 @@ export class ChatApp {
     private config: AgentConfig,
     private readonly credentials: CredentialStore,
     private readonly logger: Logger,
-    private readonly prompter: Prompter,
-    private readonly io: TerminalIO,
+    private readonly prompter: PrompterLike,
+    private readonly io: ChatIO,
     private readonly permissions: PermissionManager,
     private readonly approvals: Approvals,
     private readonly opts: CliOptions,
   ) {}
+
+  /** Penghenti layar TUI (bila berjalan lewat `nex-agent tui`). */
+  private tuiDetach?: () => void;
+  private tuiScreenRef?: Screen;
+
+  /** Layar TUI bila mode `ui: "tui"` (untuk pembersihan di CLI runner). */
+  get tuiScreen(): Screen | undefined {
+    return this.tuiScreenRef;
+  }
+
+  /** Catat penghenti layar TUI (dipanggil `create`). */
+  private setTuiLifecycle(screen: Screen, detach: () => void): void {
+    this.tuiScreenRef = screen;
+    this.tuiDetach = detach;
+  }
+
+  /** Hentikan layar TUI dan pulihkan terminal (aman dipanggil berkali-kali). */
+  stopTui(): void {
+    const detach = this.tuiDetach;
+    this.tuiDetach = undefined;
+    this.tuiScreenRef = undefined;
+    detach?.();
+  }
+
+  /** Ganti mode Plan/Build (dipakai tombol Ctrl+Tab di TUI). */
+  toggleMode(): void {
+    const next: Mode = this.session.getMode() === "plan" ? "build" : "plan";
+    this.session.setMode(next);
+    this.io.modeChanged?.(next);
+  }
+
+  /** Mode sesi saat ini. */
+  currentMode(): Mode {
+    return this.session.getMode();
+  }
 
   static async create(opts: CliOptions): Promise<ChatApp> {
     const workspace = createWorkspace(opts.cwd);
     const config = await loadConfig();
     const credentials = new CredentialStore();
     const logger = new JsonlLogger(path.join(logsDir(), "agent.jsonl"), { debug: Boolean(opts.debug) });
-    const prompter = new Prompter({
-      commands: SLASH_HELP.map(([usage]) => usage.split(/\s+/)[0]!),
-      cwd: workspace.root,
-    });
-    const io = new TerminalIO(prompter, {
-      thinking: opts.thinking !== false,
-      json: Boolean(opts.json),
-      markdown: opts.markdown ?? config.markdown ?? true,
-    });
+    const commands = SLASH_HELP.map(([usage]) => usage.split(/\s+/)[0]!);
+
+    let prompter: PrompterLike;
+    let io: ChatIO;
+    let tuiPair: TuiPair | undefined;
+    if (opts.ui === "tui") {
+      tuiPair = createTuiPair({
+        commands,
+        cwd: workspace.root,
+        initMode: opts.mode ?? "build",
+        initModel: opts.model,
+        initProvider: opts.provider,
+        thinking: opts.thinking !== false,
+        markdown: opts.markdown ?? config.markdown ?? true,
+      });
+      prompter = tuiPair.prompter;
+      io = tuiPair.io;
+    } else {
+      prompter = new Prompter({ commands, cwd: workspace.root });
+      io = new TerminalIO(prompter, {
+        thinking: opts.thinking !== false,
+        json: Boolean(opts.json),
+        markdown: opts.markdown ?? config.markdown ?? true,
+      });
+    }
     const permissions = new PermissionManager(workspace.root);
     for (const p of opts.allowPath ?? []) {
       permissions.allowStanding(p, "read", "allow-path");
@@ -242,7 +297,20 @@ export class ChatApp {
       approvals,
       opts,
     );
-    await app.init();
+
+    if (tuiPair) {
+      let appRef: ChatApp | undefined;
+      const wiring = attachTui(tuiPair, { toggleMode: () => appRef?.toggleMode() });
+      app.setTuiLifecycle(tuiPair.screen, wiring.detach);
+      appRef = app;
+    }
+
+    try {
+      await app.init();
+    } catch (err) {
+      app.stopTui();
+      throw err;
+    }
     return app;
   }
 
@@ -545,13 +613,13 @@ export class ChatApp {
     const controller = new AbortController();
     this.activeController = controller;
     let code: number;
-    this.io.busy(true);
+    this.io.busy?.(true);
     try {
       const result = await this.session.run(goal, controller.signal);
       code = exitCodeFor(result.stopReason);
     } finally {
       this.activeController = undefined;
-      this.io.busy(false);
+      this.io.busy?.(false);
       await this.saveRecord();
       await this.close();
     }
@@ -577,15 +645,15 @@ export class ChatApp {
       const controller = new AbortController();
       this.activeController = controller;
       this.io.lineBreak();
-      this.prompter.pause?.();
-      this.io.busy(true);
+      this.prompter.pause();
+      this.io.busy?.(true);
       try {
         await this.reloadSkills();
         await this.session.run(line, controller.signal);
       } finally {
         this.activeController = undefined;
-        this.io.busy(false);
-        this.prompter.resume?.();
+        this.io.busy?.(false);
+        this.prompter.resume();
         await this.saveRecord();
       }
     }

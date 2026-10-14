@@ -230,6 +230,9 @@ describe("TerminalIO.requestSecret", () => {
     const prompter: PrompterLike = {
       question: async () => "y",
       close: () => {},
+      pause: () => {},
+      resume: () => {},
+      onInterrupt: () => {},
       secretQuestion: async (query, mask) => {
         calls.push({ query, mask });
         return answer;

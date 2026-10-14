@@ -40,6 +40,7 @@
 | 🔀 | **Multi-provider** | Adapter OpenAI-compatible & Anthropic |
 | 🌐 | **Mode Web** | Chat + terminal nyata di browser, dengan QR untuk ponsel |
 | 🤖 | **Bot Telegram** | Daemon mandiri, auto-restart, kontrol dari ponsel |
+| 🖥️ | **Mode TUI** | Antarmuka layar penuh di terminal (view ganda + overlay) |
 | 🔌 | **Plugin MCP** | Tambah tool dari server MCP (stdio / HTTP / SSE) |
 | 🧠 | **Skill (SKILL.md)** | Agent bisa membuat & memasang skill sendiri |
 | ✅ | **Todo live** | Checklist tugas yang diperbarui di tempat |
@@ -148,6 +149,7 @@ Menjalankan dari sumber: `pnpm dev -- "<tujuan>"`.
 |---|---|
 | `nex-agent "<tujuan>"` | Jalankan satu tugas |
 | `nex-agent` | Mode chat interaktif |
+| `nex-agent tui` | Mode chat dengan antarmuka layar penuh (TUI) |
 | `nex-agent --mode plan "..."` | Mulai di mode Plan (read-only) |
 | `nex-agent --resume <id>` | Lanjutkan sesi |
 | `nex-agent --continue` | Lanjutkan sesi terakhir di workspace ini |
@@ -294,6 +296,31 @@ Sebelum membatalkan dengan `/undo`, tinjau dulu apa yang berubah pada sesi ini:
 Perintah ini menampilkan patch perubahan semua berkas yang disentuh sesi ini
 (dibandingkan kondisi paling awal yang tercatat) beserta ringkasan `+/-` per
 berkas dan totalnya. Bersifat read-only, jadi aman dipakai kapan saja.
+
+### 🖥️ Mode TUI (`nex-agent tui`)
+
+Alternatif mode chat dengan layar penuh: alt-screen, status bar, view terpisah
+untuk subagent, dan overlay di tengah layar untuk konfirmasi/input rahasia.
+
+```bash
+nex-agent tui                 # mulai layar penuh
+nex-agent tui --mode plan     # mulai di mode Plan
+```
+
+| Tombol | Fungsi |
+|---|---|
+| `Ctrl+Tab` | Ganti mode Plan ⇄ Build |
+| `Ctrl+X` lalu `↑`/`↓` | Pindah view (utama ⇄ subagent) |
+| `Ctrl+T` | Tampilkan/sembunyikan thinking |
+| `↑`/`↓` · `PgUp`/`PgDn` · `Home`/`End` | Gulir riwayat |
+| `Tab` | Lengkapi perintah `/slash` |
+| `Ctrl+C` | Hentikan tugas berjalan (2× keluar) |
+| `Ctrl+D` | Keluar (saat input kosong) |
+
+Terminal dipulihkan otomatis saat keluar — termasuk pada `Ctrl+C` kedua — lewat
+handler `exit`. Semua flag CLI biasa (`--model`, `--provider`, `--resume`,
+`--cwd`, dsb.) juga berlaku pada perintah `tui`. Perintah ini memerlukan
+terminal sungguhan (TTY); di pipe/CI otomatis jatuh ke mode chat biasa.
 
 ---
 

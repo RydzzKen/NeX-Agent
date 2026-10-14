@@ -92,6 +92,14 @@ class SubtaskIO implements AgentIO {
   busy?(on: boolean): void {
     this.inner.busy?.(on);
   }
+
+  subtaskStart?(label: string): void {
+    this.inner.subtaskStart?.(label);
+  }
+
+  subtaskEnd?(): void {
+    this.inner.subtaskEnd?.();
+  }
 }
 
 const DEFAULT_TASK_STEPS = 12;
@@ -194,17 +202,24 @@ export async function runSubagent(
     },
   );
 
-  const childResult = await child.run(plan.prompt.trim(), signal);
-  const last = lastAssistantText(child).trim();
-  const summary = trimSummary(last.length > 0 ? last : childResult.message?.trim() || "Selesai.");
+  // Tandai pembukaan lapisan sub-agent agar UI (mis. TUI) bisa membuka
+  // buffer/view terpisah; ditutup walau anak error/abort.
+  deps.io.subtaskStart?.("subtask");
+  try {
+    const childResult = await child.run(plan.prompt.trim(), signal);
+    const last = lastAssistantText(child).trim();
+    const summary = trimSummary(last.length > 0 ? last : childResult.message?.trim() || "Selesai.");
 
-  // Gabungkan pemakaian anak ke tracker induk agar total sesi tetap ter-budget.
-  deps.tracker.merge(tracker);
+    // Gabungkan pemakaian anak ke tracker induk agar total sesi tetap ter-budget.
+    deps.tracker.merge(tracker);
 
-  return {
-    summary,
-    steps: childResult.steps,
-    stopReason: childResult.stopReason,
-    status: childResult.stopReason === "stop" ? "ok" : "limited",
-  };
+    return {
+      summary,
+      steps: childResult.steps,
+      stopReason: childResult.stopReason,
+      status: childResult.stopReason === "stop" ? "ok" : "limited",
+    };
+  } finally {
+    deps.io.subtaskEnd?.();
+  }
 }
