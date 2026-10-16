@@ -401,3 +401,59 @@ describe("TuiPrompter: riwayat input (↑/↓ dan Ctrl+P/N)", () => {
     expect(prompter.consume(normalizeKey(ctrlN))).toBe(false);
   });
 });
+
+describe("TuiPrompter: perintah slash langsung saat sibuk", () => {
+  it("menjalankan perintah yang diterima handler tanpa mengantre", () => {
+    const { screen, prompter } = setup();
+    const seen: string[] = [];
+    prompter.setBusySlashHandler((line) => {
+      seen.push(line);
+      return line === "/diff";
+    });
+    for (const ch of "/diff") type(prompter, [symbol(ch)]);
+    type(prompter, [enter]);
+    expect(seen).toEqual(["/diff"]);
+    expect(prompter.takeQueued()).toBeUndefined();
+    expect(screen.getInputText()).toBe("");
+  });
+
+  it("perintah yang ditolak handler tetap mengantre", () => {
+    const { screen, prompter } = setup();
+    prompter.setBusySlashHandler(() => false);
+    for (const ch of "/help") type(prompter, [symbol(ch)]);
+    type(prompter, [enter]);
+    expect(prompter.takeQueued()).toBe("/help");
+    expect(screen.getInputText()).toBe("");
+  });
+
+  it("baris biasa tidak pernah dikirim ke handler slash", () => {
+    const { prompter } = setup();
+    const seen: string[] = [];
+    prompter.setBusySlashHandler((line) => {
+      seen.push(line);
+      return true;
+    });
+    for (const ch of "halo") type(prompter, [letter(ch)]);
+    type(prompter, [enter]);
+    expect(seen).toEqual([]);
+    expect(prompter.takeQueued()).toBe("halo");
+  });
+
+  it("perintah yang dijalankan tercatat di riwayat input", () => {
+    const { screen, prompter } = setup();
+    prompter.setBusySlashHandler(() => true);
+    for (const ch of "/help") type(prompter, [symbol(ch)]);
+    type(prompter, [enter]);
+    // Aktifkan baris input lagi, lalu ↑ memanggil ulang perintah tadi.
+    void prompter.question("› ");
+    type(prompter, [up]);
+    expect(screen.getInputText()).toBe("/help");
+  });
+
+  it("tanpa handler, perintah slash tetap mengantre (perilaku lama)", () => {
+    const { prompter } = setup();
+    for (const ch of "/diff") type(prompter, [symbol(ch)]);
+    type(prompter, [enter]);
+    expect(prompter.takeQueued()).toBe("/diff");
+  });
+});

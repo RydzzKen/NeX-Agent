@@ -2,6 +2,12 @@ import type { Writable } from "node:stream";
 import readline from "node:readline";
 import { color } from "../../util/color.js";
 import {
+  gradientDivider,
+  logoBanner,
+  moonAccent,
+  spinnerTick,
+} from "./theme.js";
+import {
   highlightColumns,
   normalizeKey,
   sliceByColumns,
@@ -32,14 +38,31 @@ export interface ScreenStatus {
   busy: boolean;
 }
 
+/** Daftar pilihan yang bisa disorot dengan ↑/↓ (mis. `/models`, `/sessions`). */
+export interface OverlayList {
+  items: string[];
+  selected: number;
+  /** Indeks item teratas yang terlihat (jendela bergulir). */
+  offset: number;
+  /** Teks bantuan di kaki overlay (mis. "↑/↓ pilih · Enter · Esc"). */
+  hint?: string;
+}
+
 export interface OverlayContent {
   title: string;
   body: string[];
   /** Opsi tombol, mis. `[["y","Izinkan"],["n","Tolak"]]` (Enter = yang pertama). */
   keys: Array<[string, string]>;
   /** Mode input rahasia (masked) — mengesampingkan `keys`. */
-  secret?: { label: string };
+  secret?: { label: string; masked?: boolean };
+  /** Mode daftar pilihan (↑/↓ memindah sorotan, Enter memilih). */
+  list?: OverlayList;
+  /** Baris teratas body yang ditampilkan untuk konten panjang (viewer). */
+  scrollTop?: number;
 }
+
+/** Baris daftar yang terlihat sekaligus di overlay. */
+const MAX_OVERLAY_LIST = 10;
 
 interface View {
   id: string;
@@ -166,7 +189,15 @@ export class Screen {
       });
     }
     const main = this.views.find((v) => v.main) ?? this.views[0]!;
-    main.lines.push({ kind: "info", text: color.brightGreen("TUI siap") + " " + color.cyan("— Ketik pesan atau /help. Gunakan Ctrl+X ↑/↓ untuk ganti view, Shift+Tab ganti mode.") });
+    main.lines.push({ kind: "raw", text: "" });
+    const bannerRows = Math.max(5, Math.min(8, Math.floor(this.rows() / 2)));
+    const banner = logoBanner(this.stdout.columns ?? DEFAULT_COLS, bannerRows);
+    for (const b of banner) main.lines.push({ kind: "raw", text: b });
+    main.lines.push({ kind: "raw", text: "" });
+    main.lines.push({
+      kind: "info",
+      text: color.brightGreen("TUI siap") + " " + color.cyan("— Ketik pesan atau /help. Gunakan Ctrl+X ↑/↓ untuk ganti view, Shift+Tab ganti mode."),
+    });
     if (main.lines.length > MAX_LINES) {
       main.lines.splice(0, main.lines.length - MAX_LINES);
     }
@@ -353,8 +384,46 @@ export class Screen {
     return this.overlayInput;
   }
 
+  /** Isi overlay input dengan teks awal (untuk mode input teks biasa). */
+  setOverlayInput(text: string): void {
+    this.overlayInput = text;
+    this.redraw();
+  }
+
   getOverlayFirstKey(): string {
     return this.overlay?.keys[0]?.[0] ?? "y";
+  }
+
+  /** True bila overlay sedang menampilkan daftar pilihan. */
+  hasOverlayList(): boolean {
+    return this.overlay?.list !== undefined;
+  }
+
+  /** Indeks item yang sedang disorot (atau -1 bila bukan mode daftar). */
+  getOverlaySelected(): number {
+    return this.overlay?.list?.selected ?? -1;
+  }
+
+  /** Pindahkan sorotan daftar overlay (jendela ikut bergulir). */
+  overlaySelect(delta: number): void {
+    const list = this.overlay?.list;
+    if (!list || list.items.length === 0) return;
+    const n = list.items.length;
+    const visible = Math.min(n, MAX_OVERLAY_LIST);
+    list.selected = (list.selected + delta + n) % n;
+    if (list.selected < list.offset) list.offset = list.selected;
+    else if (list.selected >= list.offset + visible) list.offset = list.selected - visible + 1;
+    list.offset = Math.max(0, Math.min(list.offset, Math.max(0, n - visible)));
+    this.redraw();
+  }
+
+  /** Gulir body overlay (mode viewer); delta > 0 = turun. */
+  overlayScrollBy(delta: number): void {
+    const o = this.overlay;
+    if (!o || o.list) return;
+    // `renderOverlay` meng-clamp nilai ini ke rentang yang valid.
+    o.scrollTop = Math.max(0, (o.scrollTop ?? 0) + delta);
+    this.redraw();
   }
 
   // ---- konten & view ----
@@ -738,7 +807,7 @@ export class Screen {
     const markerLeft = layout.clippedLeft ? color.dim("‹") : "";
     const markerRight = layout.clippedRight ? color.dim("›") : "";
     const renderedInput = `${color.cyan(this.input.prompt)}${markerLeft}${layout.before}${color.inverse(layout.at)}${layout.after}${markerRight}`;
-    const spinner = this.status.busy ? color.brightGreen(SPINNER[this.spinnerTick % SPINNER.length]!) : " ";
+    const spinner = this.status.busy ? spinnerTick(this.spinnerTick, SPINNER) : " ";
     buffer.push(`\u001b[${inputRow + 1};1H` + spinner + " " + padLine(truncateTo(renderedInput, cols - 2), cols - 2));
 
     // Kursor mengikuti jendela input (tetap terlihat walau input panjang).
@@ -774,7 +843,7 @@ export class Screen {
     for (const line of view.lines) {
       if (line.kind === "think" && !this.showThinking) continue;
       if (line.kind === "divider") {
-        wrapped.push(color.dim("─".repeat(cols)));
+        wrapped.push(gradientDivider(cols));
         continue;
       }
       for (const w of wrapAnsi(line.text, cols)) wrapped.push(w.line);
@@ -789,7 +858,7 @@ export class Screen {
     const thinking = this.showThinking
       ? color.brightGreen("thinking:on")
       : color.dim("thinking:off");
-    const left = `${color.bold(color.yellow(mode))} ${s.model ? color.green(s.model) : ""}${s.provider ? color.cyan(`@${s.provider}`) : ""} · ${color.brightGreen(`view:${view}`)} · ${thinking}`;
+    const left = `${moonAccent("◐")} ${color.bold(color.yellow(mode))} ${s.model ? color.green(s.model) : ""}${s.provider ? color.cyan(`@${s.provider}`) : ""} · ${color.brightGreen(`view:${view}`)} · ${thinking}`;
     const right = s.busy ? color.cyan("bekerja…") : "";
     const full = left + (right ? "  " + right : "");
     return truncateTo(full, cols);
@@ -811,25 +880,62 @@ export class Screen {
   private renderOverlay(cols: number, rows: number): string {
     const o = this.overlay;
     if (!o) return "";
-    const secret = o.secret !== undefined;
+    const inner = Math.max(1, cols - 4);
+    const list = o.list;
+
+    // Isi: daftar item (satu baris per item) atau body viewer yang dibungkus.
     const body: string[] = [];
-    for (const line of o.body) for (const w of wrapAnsi(color.dim(line), cols - 4)) body.push(w.line);
-    let height = 2 + body.length + 1;
-    if (secret) height += 1;
-    else height += 1;
-    if (height > rows - 4) height = rows - 4;
+    if (!list) {
+      for (const line of o.body) for (const w of wrapAnsi(color.dim(line), inner)) body.push(w.line);
+    }
+    const listVisible = list ? Math.min(list.items.length, MAX_OVERLAY_LIST) : 0;
+    const contentLen = list ? listVisible : body.length;
+
+    let height = contentLen + 3;
+    if (o.secret) height += 1;
+    height = Math.max(4, Math.min(height, Math.max(4, rows - 2)));
     const top = Math.max(1, Math.floor((rows - height) / 2));
+
     const out: string[] = [];
     for (let i = 0; i < height; i++) out.push(`\u001b[${top + i + 1};1H` + " ".repeat(cols));
-    out.push(`\u001b[${top + 1};1H` + color.bold(color.underline(o.title)));
-    const maxBody = height - 3;
-    for (let i = 0; i < Math.min(body.length, maxBody); i++) {
-      out.push(`\u001b[${top + i + 2};3H` + padLine(body[i]!, cols - 4));
+    out.push(`\u001b[${top + 1};1H` + color.bold(moonAccent(o.title, 0.75)));
+
+    const bodyRows = Math.max(0, height - 3 - (o.secret ? 1 : 0));
+    if (list) {
+      const n = list.items.length;
+      // Jendela efektif dibatasi tinggi yang benar-benar tersedia, lalu digeser
+      // agar item terpilih selalu terlihat (walau layar pendek).
+      const visible = Math.max(1, Math.min(listVisible, Math.max(1, bodyRows)));
+      let offset = Math.max(0, Math.min(list.offset, Math.max(0, n - visible)));
+      if (list.selected < offset) offset = list.selected;
+      else if (list.selected >= offset + visible) offset = list.selected - visible + 1;
+      offset = Math.max(0, Math.min(offset, Math.max(0, n - visible)));
+      list.offset = offset;
+      for (let i = 0; i < Math.min(visible, bodyRows); i++) {
+        const idx = offset + i;
+        const selected = idx === list.selected;
+        const text = truncateTo((selected ? "› " : "  ") + list.items[idx]!, cols - 4);
+        const styled = selected ? color.inverse(text) : text;
+        out.push(`\u001b[${top + i + 2};3H` + padLine(styled, inner));
+      }
+    } else {
+      // Viewer: klem offset gulir ke rentang valid lalu tampilkan jendelanya.
+      const maxTop = Math.max(0, body.length - bodyRows);
+      const scrollTop = Math.max(0, Math.min(o.scrollTop ?? 0, maxTop));
+      o.scrollTop = scrollTop;
+      for (let i = 0; i < Math.min(bodyRows, body.length - scrollTop); i++) {
+        out.push(`\u001b[${top + i + 2};3H` + padLine(body[scrollTop + i]!, inner));
+      }
     }
+
     const footRow = top + height;
-    if (secret) {
-      const shown = "*".repeat(this.overlayInput.length);
-      out.push(`\u001b[${footRow};3H` + color.dim(o.secret!.label + ": ") + shown);
+    if (o.secret) {
+      const masked = o.secret.masked !== false;
+      const shown = masked ? "*".repeat(this.overlayInput.length) : this.overlayInput;
+      out.push(`\u001b[${footRow};3H` + color.dim(o.secret.label + ": ") + shown);
+    } else if (list) {
+      const hint = list.hint ?? "↑/↓ pilih · Enter pilih · Esc batal";
+      out.push(`\u001b[${footRow};3H` + color.dim(truncateTo(hint, cols - 6)));
     } else {
       const keys = o.keys.map(([k, label]) => color.bold(k) + " " + label).join("   ");
       out.push(`\u001b[${footRow};3H` + truncateTo(keys, cols - 6));

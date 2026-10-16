@@ -27,20 +27,26 @@ let handle: WebServerHandle;
 let workspace: string;
 let configHome: string;
 let previousConfigDir: string | undefined;
+/** Jeda buatan per permintaan chat agar uji antrean deterministik. */
+let providerDelayMs = 0;
 
 beforeEach(async () => {
   workspace = await fs.mkdtemp(path.join(os.tmpdir(), "nex-web-ws-"));
   await fs.mkdir(path.join(workspace, ".git"), { recursive: true });
   configHome = await fs.mkdtemp(path.join(os.tmpdir(), "nex-web-cfg-"));
+  providerDelayMs = 0;
 
   let turns = 0;
-  provider = http.createServer((req, res) => {
+  provider = http.createServer(async (req, res) => {
     if (req.url === "/v1/models") {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ data: [{ id: "local-model" }] }));
       return;
     }
     if (req.url === "/v1/chat/completions") {
+      if (providerDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, providerDelayMs));
+      }
       res.writeHead(200, { "content-type": "text/event-stream" });
       turns += 1;
       if (turns === 1) {
@@ -226,5 +232,40 @@ describe("web server", () => {
     expect(client.messages.some((m) => m.type === "stepStart")).toBe(true);
     expect(await fs.readFile(path.join(workspace, "web.txt"), "utf8")).toBe("ok\n");
     client.ws.close();
-  });
+  }, 30000);
+
+  it("mengantrekan prompt yang dikirim saat agen sibuk", async () => {
+    providerDelayMs = 200; // jaga giliran pertama tetap berjalan saat pesan kedua tiba
+    const client = await connect();
+    await waitFor(() => client.messages.find((m) => m.type === "ready"));
+
+    client.ws.send(JSON.stringify({ type: "chat.send", text: "giliran pertama" }));
+    await waitFor(() => client.messages.find((m) => m.type === "busy" && m.on === true));
+
+    // Kirim pesan kedua selagi sibuk: harus diantrekan, bukan ditolak.
+    client.ws.send(JSON.stringify({ type: "chat.send", text: "giliran kedua" }));
+
+    const queued = await waitFor(
+      () => client.messages.find((m) => m.type === "queued" && m.count === 1),
+      10000,
+    );
+    if (queued.type !== "queued") throw new Error("bukan queued");
+    expect(queued.count).toBe(1);
+    expect(client.messages.some((m) => m.type === "warn")).toBe(false);
+
+    // Rantai selesai: hanya satu busy:false (saat seluruh antrean selesai).
+    await waitFor(
+      () => client.messages.find((m) => m.type === "busy" && m.on === false),
+      20000,
+    );
+    expect(client.messages.filter((m) => m.type === "busy" && m.on === false)).toHaveLength(1);
+
+    const texts = client.messages
+      .filter((m): m is Extract<ServerMessage, { type: "text" }> => m.type === "text")
+      .map((m) => m.chunk)
+      .join("");
+    // Kedua giliran menghasilkan balasan (provider membalas "selesai web" tiap giliran).
+    expect(texts.match(/selesai web/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    client.ws.close();
+  }, 30000);
 });

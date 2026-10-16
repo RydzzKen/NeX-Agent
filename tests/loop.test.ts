@@ -3,6 +3,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { createHarness } from "./helpers/harness.js";
+import { silentIO, type AgentIO } from "../src/core/io.js";
+import type { StopReason } from "../src/core/types.js";
+import { formatHttpError } from "../src/providers/errors.js";
 import { ToolRegistry, type AnyTool } from "../src/tools/registry.js";
 
 function readCall(path: string, id?: string) {
@@ -348,6 +351,90 @@ describe("loop agentik (kriteria penerimaan)", () => {
         .getHistory()
         .find((m) => m.role === "assistant" && (m.toolCalls?.length ?? 0) > 0);
       expect(assistant?.toolCalls?.[0]?.extraContent).toEqual(extra);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+});
+
+/** IO perekam: menangkap pesan error dan ringkasan berhenti untuk diperiksa. */
+function recordingIO(): {
+  io: AgentIO;
+  errors: string[];
+  summaries: Array<{ reason: StopReason; message: string }>;
+} {
+  const errors: string[] = [];
+  const summaries: Array<{ reason: StopReason; message: string }> = [];
+  const io: AgentIO = {
+    ...silentIO(),
+    error: (message) => errors.push(message),
+    summary: (reason, message) => summaries.push({ reason, message }),
+  };
+  return { io, errors, summaries };
+}
+
+describe("pelaporan error provider", () => {
+  // Body khas Google/Gemini — sumber keluhan "pesan tampil dua kali" dan
+  // "pesannya bahasa Inggris semua".
+  const geminiBody =
+    "models/hermes is not found for API version v1main, or is not supported for " +
+    "generateContent. Call ModelService.ListModels to see the list of available " +
+    "models and their supported methods.";
+
+  it("mencetak detail sekali dengan kalimat Indonesia lebih dulu, ringkasan singkat", async () => {
+    const { io, errors, summaries } = recordingIO();
+    const message = formatHttpError(
+      "custom:gemini",
+      404,
+      JSON.stringify({ error: { code: 404, message: geminiBody } }),
+    );
+    const harness = await createHarness({
+      io,
+      script: () => {
+        throw new Error(message);
+      },
+    });
+    try {
+      const result = await harness.run("halo");
+
+      expect(result.stopReason).toBe("provider_error");
+      // `result.message` tetap lengkap untuk log/sesi.
+      expect(result.message).toContain("models/hermes");
+
+      // Detail tampil sekali saja, di baris error — tanpa dibungkus dua kali.
+      expect(errors).toEqual([message]);
+      expect(errors[0]).not.toContain("Gagal memanggil model:");
+      // Petunjuk Indonesia lebih dulu; body provider menyusul sebagai kutipan.
+      const line = errors[0]!;
+      expect(line.indexOf("(model atau endpoint tidak ditemukan)")).toBeLessThan(
+        line.indexOf("pesan provider:"),
+      );
+
+      // Ringkasan berhenti singkat: tidak mengulang body provider.
+      expect(summaries).toHaveLength(1);
+      expect(summaries[0]!.reason).toBe("provider_error");
+      expect(summaries[0]!.message).toBe("Gagal memanggil model (HTTP 404).");
+      expect(summaries[0]!.message).not.toContain("models/hermes");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("tetap merangkum saat pesan tidak memuat status HTTP", async () => {
+    const { io, errors, summaries } = recordingIO();
+    const harness = await createHarness({
+      io,
+      script: () => {
+        throw new Error("fetch failed: ECONNREFUSED");
+      },
+    });
+    try {
+      const result = await harness.run("halo");
+
+      expect(result.stopReason).toBe("provider_error");
+      // Error non-HTTP tetap diberi konteks "Gagal memanggil model".
+      expect(errors).toEqual(["Gagal memanggil model: fetch failed: ECONNREFUSED"]);
+      expect(summaries).toEqual([{ reason: "provider_error", message: "Gagal memanggil model." }]);
     } finally {
       await harness.cleanup();
     }

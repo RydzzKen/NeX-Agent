@@ -1,6 +1,7 @@
 import type { ModelProvider } from "../providers/provider.js";
 import type { CredentialStore } from "../config/credentials.js";
 import type { PrompterLike } from "./prompt.js";
+import type { PickRequest } from "./render.js";
 import {
   BUILTIN_PROVIDERS,
   CUSTOM_PROVIDER_PREFIX,
@@ -12,6 +13,12 @@ export interface ConnectResult {
   providerKey: string;
   provider: ModelProvider;
 }
+
+/**
+ * Pemilih generik (TUI: overlay melayang). Bila diberikan, `/connect` memakai
+ * daftar yang bisa dinavigasi ↑/↓ alih-alih meminta nomor.
+ */
+export type ConnectPick = <T>(req: PickRequest<T>) => Promise<T | null>;
 
 /**
  * Susun menu `/connect`: provider bawaan, lalu provider custom yang sudah
@@ -82,18 +89,30 @@ export async function runConnect(
   prompter: PrompterLike,
   credentials: CredentialStore,
   fetchImpl?: typeof fetch,
+  pick?: ConnectPick,
 ): Promise<ConnectResult | undefined> {
   const saved = await credentials.list();
   const menu = buildConnectMenu(saved);
 
-  process.stdout.write("\nPilih provider:\n");
-  menu.forEach((item, i) => process.stdout.write(`  ${i + 1}) ${item.label}\n`));
-  const choice = (await prompter.question("Nomor provider: ")).trim();
-  const index = Number.parseInt(choice, 10) - 1;
-  const selected = menu[index];
-  if (!selected) {
-    process.stdout.write("Pilihan tidak valid.\n");
-    return undefined;
+  let selected: { key: string; label: string } | undefined;
+  if (pick) {
+    selected =
+      (await pick<{ key: string; label: string }>({
+        title: "Pilih provider",
+        items: menu.map((m) => ({ label: m.label, value: m })),
+        hint: "↑/↓ pilih · Enter pilih · Esc batal",
+      })) ?? undefined;
+    if (!selected) return undefined;
+  } else {
+    process.stdout.write("\nPilih provider:\n");
+    menu.forEach((item, i) => process.stdout.write(`  ${i + 1}) ${item.label}\n`));
+    const choice = (await prompter.question("Nomor provider: ")).trim();
+    const index = Number.parseInt(choice, 10) - 1;
+    selected = menu[index];
+    if (!selected) {
+      process.stdout.write("Pilihan tidak valid.\n");
+      return undefined;
+    }
   }
 
   if (selected.key === "custom") {

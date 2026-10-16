@@ -27,6 +27,10 @@ describe("modeDirective", () => {
     expect(directive).toContain("jangan menulis");
     expect(directive).toContain("/build");
     expect(directive).not.toContain("Mode saat ini: Build");
+    // Tool baca, termasuk pencarian web, disebut tetap tersedia agar model
+    // tidak menolak mencari hanya karena sedang di mode Plan.
+    expect(directive).toContain("web_search");
+    expect(directive).toContain("web_fetch");
   });
 
   it("mode Build: boleh mengeksekusi", () => {

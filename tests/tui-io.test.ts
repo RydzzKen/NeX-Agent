@@ -79,6 +79,28 @@ describe("TuiIO: overlay rahasia", () => {
   });
 });
 
+describe("TuiIO: input teks overlay", () => {
+  it("menerima ketikan dan mengembalikan nilainya (tidak masked)", async () => {
+    const { io, screen } = setup();
+    const pending = io.inputText({ title: "Model custom", label: "Nama model" });
+    for (const ch of ["t", "e", "s"]) io.handleOverlayKey(key({ name: ch, sequence: ch }));
+    expect(screen.getOverlayInput()).toBe("tes");
+    io.handleOverlayKey(key({ name: "backspace", sequence: "\u007f" }));
+    io.handleOverlayKey(key({ name: "return", sequence: "\r" }));
+    await expect(pending).resolves.toBe("te");
+    expect(screen.overlayActive).toBe(false);
+  });
+
+  it("initial mengisi input sejak overlay dibuka", async () => {
+    const { io, screen } = setup();
+    const pending = io.inputText({ title: "Model custom", label: "Nama", initial: "abc" });
+    expect(screen.getOverlayInput()).toBe("abc");
+    io.handleOverlayKey(key({ name: "escape", sequence: "\u001b" }));
+    await expect(pending).resolves.toBeNull();
+    expect(screen.overlayActive).toBe(false);
+  });
+});
+
 describe("TuiIO: streaming teks & thinking", () => {
   function setupCapture(): { io: TuiIO; screen: Screen; writes: string[] } {
     const writes: string[] = [];
@@ -139,6 +161,83 @@ describe("TuiIO: streaming teks & thinking", () => {
     expect(screen.thinkingVisible).toBe(false);
     io.setThinking(true);
     expect(screen.thinkingVisible).toBe(true);
+  });
+});
+
+describe("TuiIO: pemilih (pick) & penampil (view)", () => {
+  it("pick memilih item yang disorot dengan Enter", async () => {
+    const { io, screen } = setup();
+    const pending = io.pick({
+      title: "Model",
+      items: [
+        { label: "a", value: "a" },
+        { label: "b", value: "b" },
+      ],
+    });
+    expect(screen.hasOverlayList()).toBe(true);
+    io.handleOverlayKey(key({ name: "down", sequence: "\u001b[B" }));
+    expect(screen.getOverlaySelected()).toBe(1);
+    io.handleOverlayKey(key({ name: "return", sequence: "\r" }));
+    await expect(pending).resolves.toBe("b");
+    expect(screen.overlayActive).toBe(false);
+  });
+
+  it("pick naik ke atas dan membungkus", async () => {
+    const { io, screen } = setup();
+    const pending = io.pick({
+      title: "Pilih",
+      items: [
+        { label: "a", value: "a" },
+        { label: "b", value: "b" },
+      ],
+    });
+    io.handleOverlayKey(key({ name: "up", sequence: "\u001b[A" }));
+    expect(screen.getOverlaySelected()).toBe(1);
+    io.handleOverlayKey(key({ name: "return", sequence: "\r" }));
+    await expect(pending).resolves.toBe("b");
+  });
+
+  it("pick dibatalkan dengan Escape (null)", async () => {
+    const { io, screen } = setup();
+    const pending = io.pick({ title: "Pilih", items: [{ label: "a", value: "a" }] });
+    io.handleOverlayKey(key({ name: "escape", sequence: "\u001b" }));
+    await expect(pending).resolves.toBeNull();
+    expect(screen.overlayActive).toBe(false);
+  });
+
+  it("pick tanpa item langsung null (tidak membuka overlay)", async () => {
+    const { io, screen } = setup();
+    await expect(io.pick({ title: "Kosong", items: [] })).resolves.toBeNull();
+    expect(screen.overlayActive).toBe(false);
+  });
+
+  it("view ditutup dengan Enter/Escape/q", async () => {
+    for (const closeKey of ["return", "escape", "q"]) {
+      const { io, screen } = setup();
+      const pending = io.view({ title: "Diff", lines: ["+a", "-b"] });
+      expect(screen.overlayActive).toBe(true);
+      io.handleOverlayKey(
+        key(
+          closeKey === "return"
+            ? { name: "return", sequence: "\r" }
+            : closeKey === "escape"
+              ? { name: "escape", sequence: "\u001b" }
+              : { name: "q", sequence: "q" },
+        ),
+      );
+      await expect(pending).resolves.toBeUndefined();
+      expect(screen.overlayActive).toBe(false);
+    }
+  });
+
+  it("view bisa digulir dengan tombol panah/PgDn tanpa menutup", async () => {
+    const { io, screen } = setup();
+    const pending = io.view({ title: "Diff", lines: Array.from({ length: 50 }, (_, i) => `line-${i}`) });
+    io.handleOverlayKey(key({ name: "down", sequence: "\u001b[B" }));
+    io.handleOverlayKey(key({ name: "pagedown", sequence: "\u001b[6~" }));
+    expect(screen.overlayActive).toBe(true);
+    io.handleOverlayKey(key({ name: "escape", sequence: "\u001b" }));
+    await pending;
   });
 });
 

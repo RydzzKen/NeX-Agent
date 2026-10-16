@@ -13,7 +13,7 @@ import type {
 } from "../../core/io.js";
 import type { StopReason } from "../../core/types.js";
 import type { TodoItem } from "../../core/todos.js";
-import type { ChatIO } from "../render.js";
+import type { ChatIO, PickRequest, ViewRequest } from "../render.js";
 import type { Screen, OverlayContent } from "./screen.js";
 
 export interface TuiIOOptions {
@@ -21,11 +21,29 @@ export interface TuiIOOptions {
   markdown?: boolean;
 }
 
-interface OverlayState {
+interface KeysOverlay {
+  kind: "keys";
   resolve: (value: string | null) => void;
   accept: Map<string, string | null>;
   first: string;
 }
+
+interface SecretOverlay {
+  kind: "secret";
+  resolve: (value: string | null) => void;
+}
+
+interface ListOverlay {
+  kind: "list";
+  resolve: (index: number | null) => void;
+}
+
+interface ViewerOverlay {
+  kind: "viewer";
+  resolve: () => void;
+}
+
+type OverlayState = KeysOverlay | SecretOverlay | ListOverlay | ViewerOverlay;
 
 const STEP_SYMBOL: Record<StepOutcome["status"], string> = {
   ok: color.green("✓"),
@@ -251,18 +269,103 @@ export class TuiIO implements ChatIO {
     return value;
   }
 
+  // ---- pemilih & penampil (modul melayang) ----
+
+  /**
+   * Pilih satu item dari daftar lewat overlay melayang: ↑/↓ memindah sorotan,
+   * Enter memilih, Esc membatalkan (mengembalikan `null`).
+   */
+  pick<T>(req: PickRequest<T>): Promise<T | null> {
+    if (req.items.length === 0) return Promise.resolve(null);
+    const labels = req.items.map((it) =>
+      it.detail ? `${it.label}  ${color.dim(it.detail)}` : it.label,
+    );
+    return new Promise<T | null>((resolve) => {
+      this.overlay = {
+        kind: "list",
+        resolve: (index) => resolve(index === null ? null : req.items[index]!.value),
+      };
+      const content: OverlayContent = {
+        title: req.title,
+        body: [],
+        keys: [],
+        list: {
+          items: labels,
+          selected: 0,
+          offset: 0,
+          ...(req.hint ? { hint: req.hint } : {}),
+        },
+      };
+      this.screen.setOverlay(content);
+    });
+  }
+
+  /**
+   * Tampilkan konten panjang di overlay yang bisa digulir (↑/↓, PgUp/PgDn,
+   * Home/End). Enter/Esc/q menutup.
+   */
+  view(req: ViewRequest): Promise<void> {
+    return new Promise<void>((resolve) => {
+      this.overlay = { kind: "viewer", resolve };
+      const content: OverlayContent = {
+        title: req.title,
+        body: req.lines.length > 0 ? req.lines : ["(tidak ada isi)"],
+        keys: [["Esc", "tutup"]],
+        scrollTop: 0,
+      };
+      this.screen.setOverlay(content);
+    });
+  }
+
+  /**
+   * Input teks di dalam overlay (tidak masked). Enter = konfirmasi,
+   * Esc = batal (null). Bermanis untuk input singkat seperti nama model custom.
+   */
+  inputText(req: { title: string; label: string; initial?: string }): Promise<string | null> {
+    return this.openOverlay({
+      title: req.title,
+      body: [],
+      keys: [],
+      accept: new Map(),
+      first: "",
+      secret: true,
+      masked: false,
+      initial: req.initial ?? "",
+      label: req.label,
+    });
+  }
+
   /** Proses key saat overlay aktif (dipanggil dispatcher). */
   handleOverlayKey(key: Key): void {
-    if (!this.overlay) return;
     const o = this.overlay;
+    if (!o) return;
 
-    if (this.screen.isOverlaySecret()) {
+    if (o.kind === "secret") {
       if (key.name === "return") this.resolveOverlay(this.screen.getOverlayInput());
       else if (key.name === "escape") this.resolveOverlay(null);
       else if (key.name === "backspace") this.screen.popOverlayChar();
       else if (!key.ctrl && !key.meta && isPrintableText(key.sequence)) {
         this.screen.pushOverlayChar(key.sequence);
       }
+      return;
+    }
+
+    if (o.kind === "list") {
+      if (key.name === "up") this.screen.overlaySelect(-1);
+      else if (key.name === "down") this.screen.overlaySelect(1);
+      else if (key.name === "return") this.resolveList(this.screen.getOverlaySelected());
+      else if (key.name === "escape") this.resolveList(null);
+      return;
+    }
+
+    if (o.kind === "viewer") {
+      if (key.name === "up") this.screen.overlayScrollBy(-1);
+      else if (key.name === "down") this.screen.overlayScrollBy(1);
+      else if (key.name === "pageup") this.screen.overlayScrollBy(-10);
+      else if (key.name === "pagedown") this.screen.overlayScrollBy(10);
+      else if (key.name === "home") this.screen.overlayScrollBy(-Number.MAX_SAFE_INTEGER);
+      else if (key.name === "end") this.screen.overlayScrollBy(Number.MAX_SAFE_INTEGER);
+      else if (key.name === "return" || key.name === "escape" || key.name === "q") this.resolveViewer();
       return;
     }
 
@@ -276,26 +379,57 @@ export class TuiIO implements ChatIO {
     }
   }
 
-  private async openOverlay(req: {
+  private openOverlay(req: {
     title: string;
     body: string[];
     keys: Array<[string, string]>;
     accept: Map<string, string | null>;
     first: string;
     secret?: boolean;
+    masked?: boolean;
+    initial?: string;
+    label?: string;
   }): Promise<string | null> {
     const content: OverlayContent = { title: req.title, body: req.body, keys: req.keys };
-    if (req.secret) content.secret = { label: req.title };
+    if (req.secret) {
+      content.secret = {
+        label: req.label ?? req.title,
+        ...(req.masked !== undefined ? { masked: req.masked } : {}),
+      };
+    }
     return new Promise<string | null>((resolve) => {
-      this.overlay = { resolve, accept: req.accept, first: req.first };
+      this.overlay = req.secret
+        ? { kind: "secret", resolve }
+        : { kind: "keys", resolve, accept: req.accept, first: req.first };
       this.screen.setOverlay(content);
+      // Isi awal input — set setelah setOverlay karena setOverlay me-reset input.
+      if (req.initial) this.screen.setOverlayInput(req.initial);
     });
+  }
+
+  private clearOverlay(): void {
+    this.overlay = undefined;
+    this.screen.setOverlay(undefined);
   }
 
   private resolveOverlay(value: string | null): void {
     const o = this.overlay;
-    this.overlay = undefined;
-    this.screen.setOverlay(undefined);
-    o?.resolve(value);
+    if (!o || (o.kind !== "keys" && o.kind !== "secret")) return;
+    this.clearOverlay();
+    o.resolve(value);
+  }
+
+  private resolveList(index: number | null): void {
+    const o = this.overlay;
+    if (!o || o.kind !== "list") return;
+    this.clearOverlay();
+    o.resolve(index);
+  }
+
+  private resolveViewer(): void {
+    const o = this.overlay;
+    if (!o || o.kind !== "viewer") return;
+    this.clearOverlay();
+    o.resolve();
   }
 }

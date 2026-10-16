@@ -24,6 +24,26 @@ export interface RenderOptions {
   spinner?: boolean;
 }
 
+/** Satu item pada daftar pilihan (`ChatIO.pick`). */
+export interface PickItem<T> {
+  label: string;
+  /** Teks tambahan yang ditampilkan di sebelah label (mis. keterangan). */
+  detail?: string;
+  value: T;
+}
+
+export interface PickRequest<T> {
+  title: string;
+  items: PickItem<T>[];
+  /** Teks bantuan di kaki overlay. */
+  hint?: string;
+}
+
+export interface ViewRequest {
+  title: string;
+  lines: string[];
+}
+
 const STATUS_SYMBOL: Record<StepOutcome["status"], string> = {
   ok: "✓",
   error: "✗",
@@ -46,6 +66,23 @@ export interface ChatIO extends AgentIO {
   thinkingEnabled(): boolean;
   setMarkdown(value: boolean): void;
   isMarkdownEnabled(): boolean;
+  /**
+   * Pilih satu item dari daftar di UI modal (TUI: overlay melayang yang bisa
+   * dinavigasi ↑/↓ + Enter, Esc membatalkan). Bila UI tidak mendukung, method
+   * ini tidak diset dan pemanggil memakai alur teks biasa.
+   */
+  pick?<T>(req: PickRequest<T>): Promise<T | null>;
+  /**
+   * Tampilkan konten panjang yang bisa digulir (TUI: overlay viewer, Esc tutup).
+   * Bila tidak diset, pemanggil menulis ke riwayat seperti biasa.
+   */
+  view?(req: ViewRequest): Promise<void>;
+  /**
+   * Input teks singkat di dalam overlay (TUI: overlay input tidak masked,
+   * Enter konfirmasi, Esc batal). Bila tidak diset, pemanggil memakai
+   * `prompter.question` biasa.
+   */
+  inputText?(req: { title: string; label: string; initial?: string }): Promise<string | null>;
 }
 
 /** Bingkai spinner untuk indikator "sedang bekerja". */

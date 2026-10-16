@@ -37,6 +37,12 @@ export class TuiPrompter implements PrompterLike {
   private historyIndex?: number;
   /** Draf input yang disimpan saat mulai menelusuri riwayat (untuk ↓ kembali). */
   private historyDraft = "";
+  /**
+   * Handler perintah slash yang boleh dijalankan langsung saat agent sibuk.
+   * Mengembalikan `true` bila baris diterima (dijalankan langsung) sehingga
+   * tidak perlu diantre.
+   */
+  private busySlashHandler?: (line: string) => boolean;
 
   constructor(
     private readonly screen: Screen,
@@ -71,6 +77,15 @@ export class TuiPrompter implements PrompterLike {
 
   onInterrupt(handler: () => void): void {
     this.interruptHandler = handler;
+  }
+
+  /**
+   * Daftarkan handler untuk perintah slash yang boleh dijalankan **langsung**
+   * saat agent sibuk (lihat `cli/slash.ts`). Handler mengembalikan `true` bila
+   * baris diterima; `false` berarti baris tetap diantre seperti pesan biasa.
+   */
+  setBusySlashHandler(handler: (line: string) => boolean): void {
+    this.busySlashHandler = handler;
   }
 
   /** Panggil handler Ctrl+C yang didaftarkan app (jika ada). */
@@ -129,7 +144,9 @@ export class TuiPrompter implements PrompterLike {
         return true;
       }
       if (this.pending) this.submit();
-      else this.enqueue();
+      else if (this.tryBusySlash()) {
+        // Dijalankan langsung; layar sudah dikosongkan di dalam.
+      } else this.enqueue();
       return true;
     }
 
@@ -229,6 +246,24 @@ export class TuiPrompter implements PrompterLike {
   private activateInput(): void {
     if (this.screen.inputActive) return;
     this.screen.setInput("", 0, false, this.lastPrompt);
+  }
+
+  /**
+   * Coba jalankan input yang diawali `/` langsung saat agent sibuk. Hanya
+   * berlaku bila handler mengembalikan `true` (perintah aman-sibuk); selain itu
+   * baris tetap diantre.
+   */
+  private tryBusySlash(): boolean {
+    const handler = this.busySlashHandler;
+    if (!handler) return false;
+    const text = this.screen.getInputText().trim();
+    if (!text.startsWith("/")) return false;
+    if (!handler(text)) return false;
+    this.remember(text);
+    this.historyIndex = undefined;
+    this.screen.clearMenu();
+    this.screen.clearInput();
+    return true;
   }
 
   /** Simpan input saat ini sebagai pesan antre untuk giliran berikutnya. */

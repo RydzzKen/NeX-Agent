@@ -89,6 +89,16 @@ function isRetryable(err: unknown): boolean {
   );
 }
 
+/**
+ * Ringkasan singkat untuk baris "berhenti" saat provider gagal. Detail lengkap
+ * (termasuk body respons provider) sudah ditampilkan lewat `io.error`, jadi
+ * ringkasan cukup menegaskan status tanpa mengulang isi body.
+ */
+function providerErrorSummary(message: string): string {
+  const status = /HTTP (\d{3})/.exec(message)?.[1];
+  return status ? `Gagal memanggil model (HTTP ${status}).` : "Gagal memanggil model.";
+}
+
 /** Satu sesi agentik: menyimpan riwayat, mode, dan menjalankan loop. */
 export class AgentSession {
   private history: NeutralMessage[];
@@ -254,8 +264,12 @@ export class AgentSession {
         // error provider, jadi laporkan sebagai interupsi yang bersih.
         if (signal.aborted) return this.interrupt();
         const message = formatErrorMessage(err, { fallback: "Kesalahan provider tidak diketahui." });
-        this.deps.io.error(`Gagal memanggil model: ${message}`);
-        this.deps.io.summary("provider_error", message);
+        // Pesan HTTP dari provider sudah berbunyi "Provider <id> gagal: …" —
+        // jangan dibungkus lagi agar tidak ada kata "gagal" dua kali.
+        this.deps.io.error(/^Provider /i.test(message) ? message : `Gagal memanggil model: ${message}`);
+        // Jangan ulangi `message` di ringkasan berhenti: body dari provider bisa
+        // sangat panjang dan sudah tampil di baris error tepat di atasnya.
+        this.deps.io.summary("provider_error", providerErrorSummary(message));
         return { stopReason: "provider_error", message, steps: iteration };
       }
 

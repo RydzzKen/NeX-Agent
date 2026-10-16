@@ -74,6 +74,29 @@ function toCliOptions(
   };
 }
 
+/**
+ * Opsi sesi bersama untuk subcommand antarmuka interaktif (`tui`, `cli`).
+ * Dipisah agar kedua jalur selalu menerima opsi yang sama.
+ */
+function addInteractiveOptions(cmd: Command): Command {
+  return cmd
+    .option("--mode <mode>", "mode awal: plan atau build")
+    .option("--model <model>", "model yang dipakai")
+    .option("--provider <provider>", "provider yang dipakai")
+    .option("--max-steps <n>", "batas langkah", (v) => Number.parseInt(v, 10))
+    .option("--max-cost <n>", "anggaran biaya (USD)", (v) => Number.parseFloat(v))
+    .option("--yes", "setujui semua kategori konfirmasi (bukan yang diblokir)")
+    .option("--allow-all", "izinkan semua permintaan izin untuk sesi ini")
+    .option("--resume <id>", "lanjutkan sesi")
+    .option("--continue", "lanjutkan sesi terakhir di workspace ini")
+    .option("--cwd <path>", "direktori kerja")
+    .option("--allow-path <path>", "setujui path sebelum sesi (bisa diulang)", collect, [])
+    .option("--no-thinking", "sembunyikan thinking")
+    .option("--no-markdown", "jangan render markdown pada jawaban")
+    .option("--no-skills", "jangan muat skill dari SKILL.md")
+    .option("--debug", "log debug");
+}
+
 /** Argumen CLI yang diteruskan ke worker bot Telegram (daemon/supervisor). */
 function telegramWorkerArgs(merged: Record<string, unknown>): string[] {
   const args: string[] = [];
@@ -128,7 +151,7 @@ async function main(): Promise<void> {
   program
     .name("agent")
     .description("AI Agent CLI — loop agentik, mode Plan/Build, multi-provider")
-    .version("1.20.0", "-v, --version", "tampilkan versi")
+    .version("1.21.0", "-v, --version", "tampilkan versi")
     .argument("[goal]", "tujuan tugas; kosong untuk mode chat interaktif")
     .option("--mode <mode>", "mode awal: plan atau build")
     .option("--model <model>", "model yang dipakai")
@@ -170,27 +193,26 @@ async function main(): Promise<void> {
       process.exitCode = await runInteractive(app);
     });
 
-  program
-    .command("tui")
-    .description("antarmuka TUI layar penuh (lihat `agent default`)")
-    .option("--mode <mode>", "mode awal: plan atau build")
-    .option("--model <model>", "model yang dipakai")
-    .option("--provider <provider>", "provider yang dipakai")
-    .option("--max-steps <n>", "batas langkah", (v) => Number.parseInt(v, 10))
-    .option("--max-cost <n>", "anggaran biaya (USD)", (v) => Number.parseFloat(v))
-    .option("--yes", "setujui semua kategori konfirmasi (bukan yang diblokir)")
-    .option("--allow-all", "izinkan semua permintaan izin untuk sesi ini")
-    .option("--resume <id>", "lanjutkan sesi")
-    .option("--continue", "lanjutkan sesi terakhir di workspace ini")
-    .option("--cwd <path>", "direktori kerja")
-    .option("--allow-path <path>", "setujui path sebelum sesi (bisa diulang)", collect, [])
-    .option("--no-thinking", "sembunyikan thinking")
-    .option("--no-markdown", "jangan render markdown pada jawaban")
-    .option("--no-skills", "jangan muat skill dari SKILL.md")
-    .option("--debug", "log debug")
-    .action(async (options: Record<string, unknown>) => {
-      const opts = toCliOptions(options, undefined, { ui: "tui" });
+  addInteractiveOptions(
+    program.command("tui").description("antarmuka TUI layar penuh (lihat `agent default`)"),
+  ).action(async (options: Record<string, unknown>) => {
+    const opts = toCliOptions(options, undefined, { ui: "tui" });
+    const app = await ChatApp.create(opts);
+    process.exitCode = await runInteractive(app);
+  });
+
+  addInteractiveOptions(
+    program.command("cli").description("antarmuka CLI readline (lihat `agent default`)"),
+  )
+    .argument("[goal]", "tujuan tugas; kosong untuk mode chat interaktif")
+    .option("--json", "keluaran JSON per baris")
+    .action(async (goal: string | undefined, options: Record<string, unknown>) => {
+      const opts = toCliOptions(options, goal, { ui: "cli" });
       const app = await ChatApp.create(opts);
+      if (goal) {
+        process.exitCode = await app.runGoal(goal);
+        return;
+      }
       process.exitCode = await runInteractive(app);
     });
 

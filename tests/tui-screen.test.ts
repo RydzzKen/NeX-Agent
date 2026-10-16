@@ -337,6 +337,84 @@ describe("Screen: overlay", () => {
     screen.setOverlay(undefined);
     expect(screen.overlayActive).toBe(false);
   });
+
+  it("input overlay tidak masked menampilkan teks apa adanya", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    screen.setOverlay({
+      title: "Model custom",
+      body: [],
+      keys: [],
+      secret: { label: "Nama", masked: false },
+    });
+    screen.setOverlayInput("my-model");
+    writes.length = 0;
+    screen.redraw();
+    expect(stripAnsi(writes.join(""))).toContain("Nama: my-model");
+  });
+
+  it("input overlay masked (default) menyembunyikan teks", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    screen.setOverlay({ title: "Password", body: [], keys: [], secret: { label: "pw" } });
+    screen.pushOverlayChar("x");
+    writes.length = 0;
+    screen.redraw();
+    const frame = stripAnsi(writes.join(""));
+    expect(frame).toContain("pw: *");
+    expect(frame).not.toContain("pw: x");
+  });
+
+  it("mengelola sorotan daftar overlay (↑/↓, bungkus)", () => {
+    const { screen } = makeScreen();
+    screen.start();
+    screen.setOverlay({
+      title: "Pilih",
+      body: [],
+      keys: [],
+      list: { items: ["a", "b", "c"], selected: 0, offset: 0 },
+    });
+    expect(screen.hasOverlayList()).toBe(true);
+    expect(screen.getOverlaySelected()).toBe(0);
+    screen.overlaySelect(1);
+    screen.overlaySelect(1);
+    expect(screen.getOverlaySelected()).toBe(2);
+    screen.overlaySelect(1); // bungkus ke awal
+    expect(screen.getOverlaySelected()).toBe(0);
+    screen.overlaySelect(-1); // bungkus ke akhir
+    expect(screen.getOverlaySelected()).toBe(2);
+  });
+
+  it("daftar overlay bergulir sehingga item ke-7+ tetap terlihat", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    const items = Array.from({ length: 12 }, (_, i) => `item${i}`);
+    screen.setOverlay({ title: "Pilih", body: [], keys: [], list: { items, selected: 0, offset: 0 } });
+    for (let i = 0; i < 7; i++) screen.overlaySelect(1);
+    expect(screen.getOverlaySelected()).toBe(7);
+    writes.length = 0;
+    screen.redraw();
+    const frame = stripAnsi(writes.join(""));
+    expect(frame).toContain("item7");
+    expect(frame).not.toContain("item0");
+  });
+
+  it("viewer overlay menggulir konten panjang", () => {
+    const { screen, writes } = makeScreen();
+    screen.start();
+    const lines = Array.from({ length: 50 }, (_, i) => `line-${i}`);
+    screen.setOverlay({ title: "Diff", body: lines, keys: [["Esc", "tutup"]], scrollTop: 0 });
+    writes.length = 0;
+    screen.redraw();
+    expect(stripAnsi(writes.join(""))).toContain("line-0");
+
+    screen.overlayScrollBy(10);
+    writes.length = 0;
+    screen.redraw();
+    const frame = stripAnsi(writes.join(""));
+    expect(frame).toContain("line-10");
+    expect(frame).not.toContain("line-0");
+  });
 });
 
 describe("Screen: view", () => {

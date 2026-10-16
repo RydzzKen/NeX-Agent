@@ -79,6 +79,8 @@ export interface WebState {
   provider: string;
   allowAll: boolean;
   busy: boolean;
+  /** Jumlah prompt yang menunggu di antrean (dikirim saat agen sibuk). */
+  queued: number;
   skills: Array<{ name: string; description: string }>;
   sessions: SessionSummary[];
   current: SessionSummary;
@@ -104,6 +106,7 @@ export type ServerMessage =
   | { type: "summary"; reason: StopReason; message: string }
   | { type: "mode"; mode: Mode }
   | { type: "busy"; on: boolean }
+  | { type: "queued"; count: number }
   | { type: "confirm"; id: string; request: ConfirmRequest }
   | { type: "pathAccess"; id: string; request: PathAccessRequest }
   | { type: "sensitiveAccess"; id: string; request: SensitiveAccessRequest }

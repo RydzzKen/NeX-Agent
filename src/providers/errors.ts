@@ -26,16 +26,44 @@ function statusHint(status: number): string | undefined {
 }
 
 /**
- * Susun pesan error provider:
- *   `Provider <id> gagal: HTTP <status> — <pesan> (<petunjuk>)`
+ * Batas panjang detail body provider yang ditampilkan. Body dari gateway bisa
+ * memuat kalimat saran yang panjang (mis. "Call ModelService.ListModels …"),
+ * dan pesan ini muncul di terminal — jadi dipangkas agar tetap terbaca.
+ */
+const MAX_DETAIL = 160;
+
+/**
+ * Pangkas detail body provider: berhenti di akhir kalimat bila ada (selama tidak
+ * terlalu awal), jika tidak di akhir kata. Bedanya dengan potong-mentah: kalimat
+ * terakhir tetap utuh, bukan terbelah di tengah kata.
+ */
+function trimDetail(text: string, max = MAX_DETAIL): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  if (/[.!?]$/.test(cut)) return cut;
+  const sentence = Math.max(cut.lastIndexOf(". "), cut.lastIndexOf("! "), cut.lastIndexOf("? "));
+  if (sentence >= max / 2) return cut.slice(0, sentence + 1);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > 0 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/**
+ * Susun pesan error provider dengan kalimat kita (Indonesia) lebih dulu:
+ *   `Provider <id> gagal: HTTP <status> (<petunjuk>) — pesan provider: <pesan>`
+ *
+ * Petunjuk status ditulis sendiri, dalam bahasa Indonesia. Pesan mentah dari
+ * provider dikutip apa adanya dan diberi label "pesan provider" karena
+ * umumnya berbahasa Inggris dan tidak boleh kita terjemahkan seenaknya.
+ * Pesan akhir tetap memuat `HTTP <status>` agar deteksi retry di `core/loop.ts`
+ * (429/50x) tetap bekerja.
  */
 export function formatHttpError(id: string, status: number, body: string): string {
   const trimmed = body.trim();
   const detail = trimmed ? extractErrorMessage(trimmed) : undefined;
-  const message = (detail ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+  const message = trimDetail((detail ?? "").replace(/\s+/g, " ").trim());
   const hint = statusHint(status);
   const parts = [`Provider ${id} gagal: HTTP ${status}`];
-  if (message) parts.push(`— ${message}`);
   if (hint) parts.push(`(${hint})`);
+  if (message) parts.push(`— pesan provider: ${message}`);
   return parts.join(" ");
 }

@@ -31,6 +31,7 @@ export function modeDirective(mode: Mode): string {
     return [
       "## Mode saat ini: Plan",
       "Kamu hanya boleh membaca dan menganalisis; jangan menulis file atau mengeksekusi perubahan.",
+      "Tool baca tetap tersedia dan boleh dipakai, termasuk web_search dan web_fetch (cari dan buka halaman web), read_file, list_dir, glob, grep, skill, serta task dengan readOnly: true.",
       "Bila pengguna meminta eksekusi/perubahan, sampaikan rencanamu lalu minta pengguna pindah ke mode Build dengan mengetik /build.",
     ].join("\n");
   }

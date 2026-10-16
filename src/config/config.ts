@@ -51,6 +51,11 @@ export interface AgentConfig {
   /** Model terakhir per workspace (key = path absolut root). */
   models?: Record<string, string>;
   /**
+   * Nama model custom (non-bawaan) yang pernah dipilih pengguna, disimpan
+   * sebagai riwayat supaya bisa dipilih ulang dari `/models` tanpa ketik ulang.
+   */
+  recentCustomModels?: string[];
+  /**
    * Model fallback global (pilihan terakhir lintas workspace). Dipakai bila
    * workspace belum punya model sendiri, sehingga pindah folder tidak perlu
    * memilih model ulang. Hanya dipakai bila valid untuk provider aktif.
@@ -101,4 +106,34 @@ export async function saveConfig(patch: Partial<AgentConfig>): Promise<AgentConf
  */
 export async function rememberModel(workspaceRoot: string, model: string): Promise<void> {
   await saveConfig({ models: { [workspaceRoot]: model }, defaultModel: model });
+}
+
+/** Jumlah maksimum nama custom model yang disimpan sebagai riwayat. */
+const MAX_RECENT_CUSTOM_MODELS = 20;
+
+/**
+ * Catat nama model custom (non-bawaan) yang dipilih pengguna agar bisa dipilih
+ * ulang dari `/models`. Dedupe (case-insensitive) dan simpan yang terbaru dulu.
+ */
+export async function rememberCustomModel(name: string): Promise<void> {
+  const clean = name.trim();
+  if (!clean) return;
+  const current = await readConfig();
+  const prev = current.recentCustomModels ?? [];
+  const next = [clean, ...prev.filter((m) => m.toLowerCase() !== clean.toLowerCase())].slice(
+    0,
+    MAX_RECENT_CUSTOM_MODELS,
+  );
+  await saveConfig({ recentCustomModels: next });
+}
+
+/** Daftar nama custom model yang pernah dipakai (terbaru dulu). */
+export async function listRecentCustomModels(): Promise<string[]> {
+  const config = await readConfig();
+  return config.recentCustomModels ?? [];
+}
+
+/** Hapus semua riwayat custom model. */
+export async function clearRecentCustomModels(): Promise<void> {
+  await saveConfig({ recentCustomModels: [] });
 }

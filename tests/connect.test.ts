@@ -8,7 +8,11 @@ import {
   describeProvider,
   providerRefFromArgs,
   resolveProviderKey,
+  runConnect,
+  type ConnectPick,
 } from "../src/cli/connect.js";
+import type { PrompterLike } from "../src/cli/prompt.js";
+import type { PickRequest } from "../src/cli/render.js";
 import { CredentialStore } from "../src/config/credentials.js";
 
 describe("buildConnectMenu", () => {
@@ -122,6 +126,48 @@ describe("CredentialStore + nama singkat", () => {
       expect(await store.get(key)).toBeDefined();
       expect(await store.delete(key)).toBe(true);
       expect(await store.list()).toEqual([]);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("runConnect dengan pemilih (TUI)", () => {
+  /** Prompter yang gagal bila dipakai — membuktikan jalur pilih tak memakai nomor. */
+  const prompter = {
+    question: async () => {
+      throw new Error("prompter tak seharusnya dipakai pada jalur pilih");
+    },
+  } as unknown as PrompterLike;
+
+  it("memakai item terpilih dari pick tanpa meminta nomor", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "nex-connect-"));
+    try {
+      const store = new CredentialStore(dir);
+      await store.set("custom:9router", { baseURL: "http://localhost:20128/v1", apiKey: "k" });
+      let title = "";
+      const pick: ConnectPick = async <T>(req: PickRequest<T>): Promise<T | null> => {
+        title = req.title;
+        const target = req.items.find(
+          (it) => (it.value as { key?: string }).key === "custom:9router",
+        );
+        return target ? target.value : null;
+      };
+      const result = await runConnect(prompter, store, undefined, pick);
+      expect(title).toBe("Pilih provider");
+      expect(result?.providerKey).toBe("custom:9router");
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("membatalkan (undefined) saat pick mengembalikan null", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "nex-connect-"));
+    try {
+      const store = new CredentialStore(dir);
+      const pick: ConnectPick = async () => null;
+      const result = await runConnect(prompter, store, undefined, pick);
+      expect(result).toBeUndefined();
     } finally {
       await fs.rm(dir, { recursive: true, force: true });
     }

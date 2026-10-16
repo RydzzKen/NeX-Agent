@@ -1,4 +1,4 @@
-/* NeX-Agent Web — chat + terminal. Tanpa framework, tanpa build. */
+/* NeX-Agent Web - chat + terminal. Tanpa framework, tanpa build. */
 (function () {
   "use strict";
 
@@ -15,6 +15,40 @@
   const backdropEl = $("backdrop");
   const sidebarToggle = $("sidebar-toggle");
   const statusEl = $("status");
+  const themeToggle = $("theme-toggle");
+
+  // ---- tema terang/gelap ----
+  function currentTheme() {
+    return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  }
+
+  /** Tema xterm agar terminal ikut terang/gelap. */
+  function termTheme() {
+    return currentTheme() === "light"
+      ? { background: "#ffffff", foreground: "#1a222c", cursor: "#0f9d6b" }
+      : { background: "#0b0f14", foreground: "#dfe6ef", cursor: "#34d399" };
+  }
+
+  function applyTheme(theme, persist) {
+    document.documentElement.dataset.theme = theme;
+    if (persist) {
+      try {
+        localStorage.setItem("nex.theme", theme);
+      } catch {
+        /* abaikan */
+      }
+    }
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute("content", theme === "light" ? "#f5f7f9" : "#0a0d12");
+    if (themeToggle) {
+      const label = theme === "light" ? "Ganti ke tema gelap" : "Ganti ke tema terang";
+      themeToggle.title = label;
+      themeToggle.setAttribute("aria-label", label);
+      themeToggle.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
+    }
+    if (term) term.options.theme = termTheme();
+  }
+
 
   // ---- token ----
   function readToken() {
@@ -133,6 +167,36 @@
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  /** Bungkus tiap blok kode dengan tombol salin (progressive enhancement). */
+  function enhanceCode(root) {
+    if (!root) return;
+    root.querySelectorAll("pre.code").forEach((pre) => {
+      if (pre.parentElement && pre.parentElement.classList.contains("codeblock")) return;
+      const wrap = document.createElement("div");
+      wrap.className = "codeblock";
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "copy-btn";
+      btn.textContent = "salin";
+      btn.addEventListener("click", () => {
+        const code = pre.querySelector("code");
+        const text = code ? code.textContent : pre.textContent;
+        const done = () => {
+          btn.textContent = "tersalin";
+          setTimeout(() => {
+            btn.textContent = "salin";
+          }, 1200);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done).catch(() => {});
+        }
+      });
+      wrap.appendChild(btn);
+    });
+  }
+
   // ---- drawer (mobile) ----
   function openDrawer() {
     document.body.classList.add("drawer-open");
@@ -185,8 +249,28 @@
     const el = document.createElement("div");
     el.className = "empty-state";
     el.innerHTML =
-      "<h2>Mulai percakapan</h2><p>Tulis pesan di bawah, atau buka tab " +
-      "<strong>Terminal</strong> untuk shell penuh di browser.</p>";
+      '<div class="empty-mark" aria-hidden="true">N</div>' +
+      "<h2>Mulai percakapan</h2>" +
+      "<p>Tanya tentang kode, minta perubahan, atau buka tab " +
+      "<strong>Terminal</strong> untuk shell penuh di browser.</p>" +
+      '<div class="sugg"></div>' +
+      '<p class="kbd-hint"><kbd>Enter</kbd> kirim &middot; <kbd>Shift</kbd>+<kbd>Enter</kbd> baris baru</p>';
+    const sugg = el.querySelector(".sugg");
+    for (const prompt of [
+      "Ringkas struktur proyek ini",
+      "Cari error TypeScript",
+      "Tulis tes untuk fungsi terbaru",
+    ]) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = prompt;
+      b.addEventListener("click", () => {
+        inputEl.value = prompt;
+        inputEl.dispatchEvent(new Event("input"));
+        inputEl.focus();
+      });
+      sugg.appendChild(b);
+    }
     messagesEl.appendChild(el);
   }
 
@@ -195,6 +279,8 @@
   let state = null;
   let currentTurn = null;
   let busy = false;
+  let queuedCount = 0;
+  const pendingMsgs = [];
   let baseTitle = document.title || "NeX-Agent";
   const pendingApprovals = new Map();
 
@@ -254,6 +340,7 @@
     }
     turn.text += chunk;
     turn.textEl.innerHTML = renderMarkdown(turn.text);
+    enhanceCode(turn.textEl);
     touchWorking();
     scrollDown();
   }
@@ -382,7 +469,7 @@
       else if (message.type === "sensitiveAccess") send({ type: "sensitive.resolve", id, allow: value });
       else send({ type: "path.resolve", id, allow: value });
       box.querySelectorAll("button").forEach((b) => (b.disabled = true));
-      const verdict = value === "no" || value === false ? " — ditolak" : " — disetujui";
+      const verdict = value === "no" || value === false ? " (ditolak)" : " (disetujui)";
       box.querySelector(".ttl").textContent += verdict;
       pendingApprovals.delete(id);
     };
@@ -447,8 +534,9 @@
     modeBadge.textContent = next.mode;
     modeBadge.className = "badge " + next.mode;
     allowAllEl.checked = Boolean(next.allowAll);
+    queuedCount = typeof next.queued === "number" ? next.queued : 0;
     renderSessions(next.sessions || []);
-    baseTitle = "NeX-Agent — " + (next.current ? next.current.title : "web");
+    baseTitle = "NeX-Agent · " + (next.current ? next.current.title : "web");
     updateTitle();
     setBusy(Boolean(next.busy));
   }
@@ -456,14 +544,21 @@
   function renderHistory(history) {
     messagesEl.innerHTML = "";
     workingEl = null;
+    clearPendingTags(false);
+    queuedCount = 0;
     const items = history || [];
     if (!items.length) {
       renderEmpty();
       return;
     }
     for (const m of items) {
-      if (m.role === "user") addMessage("user", "kamu").textContent = m.content;
-      else if (m.role === "assistant" && m.content) addMessage("assistant", "assistant").innerHTML = renderMarkdown(m.content);
+      if (m.role === "user") {
+        addMessage("user", "kamu").textContent = m.content;
+      } else if (m.role === "assistant" && m.content) {
+        const bubble = addMessage("assistant", "assistant");
+        bubble.innerHTML = renderMarkdown(m.content);
+        enhanceCode(bubble);
+      }
     }
     scrollDown();
   }
@@ -480,21 +575,71 @@
     statusEl.title = "Status agen: " + label;
   }
 
+  function refreshStatus() {
+    if (busy) {
+      setStatus("busy", queuedCount ? "bekerja… · " + queuedCount + " menunggu" : "bekerja…");
+    } else if (queuedCount) {
+      setStatus("busy", queuedCount + " menunggu");
+    } else {
+      setStatus("idle", "siap");
+    }
+  }
+
+  /** Tandai satu pesan pengguna sebagai menunggu di antrean. */
+  function markPending(wrap) {
+    if (!wrap) return;
+    wrap.classList.add("pending");
+    const who = wrap.querySelector(".who");
+    if (who && !who.querySelector(".queued-tag")) {
+      const tag = document.createElement("span");
+      tag.className = "queued-tag";
+      tag.textContent = "menunggu";
+      who.appendChild(tag);
+    }
+    pendingMsgs.push(wrap);
+  }
+
+  /** Pesan antrean terlama mulai dikerjakan: lepas tanda "menunggu". */
+  function promoteOldestPending() {
+    const wrap = pendingMsgs.shift();
+    if (!wrap) return;
+    wrap.classList.remove("pending");
+    const tag = wrap.querySelector(".queued-tag");
+    if (tag) tag.remove();
+    currentTurn = null;
+  }
+
+  function clearPendingTags(cancelled) {
+    for (const wrap of pendingMsgs.splice(0)) {
+      wrap.classList.remove("pending");
+      const tag = wrap.querySelector(".queued-tag");
+      if (!tag) continue;
+      if (cancelled) {
+        tag.classList.add("cancel");
+        tag.textContent = "dibatalkan";
+      } else {
+        tag.remove();
+      }
+    }
+  }
+
   function setBusy(on) {
     const was = busy;
     busy = on;
-    sendBtn.disabled = on;
-    inputEl.disabled = on;
+    // Composer tetap aktif agar pengguna bisa mengetik & mengantrekan pesan.
+    sendBtn.textContent = on ? "Antre" : "Kirim";
     stopBtn.hidden = !on;
     if (on) {
-      inputEl.blur();
+      // Giliran baru dimulai: bila ini pesan antrean, tandanya dilepas.
+      promoteOldestPending();
       showWorking();
-      setStatus("busy", "bekerja…");
     } else {
       hideWorking();
+      clearPendingTags(false);
+      queuedCount = 0;
       if (was) inputEl.focus();
-      setStatus("idle", "siap");
     }
+    refreshStatus();
     updateTitle();
   }
 
@@ -564,6 +709,11 @@
       case "busy":
         setBusy(msg.on);
         break;
+      case "queued":
+        if (typeof msg.count === "number" && msg.count < queuedCount) promoteOldestPending();
+        queuedCount = typeof msg.count === "number" ? msg.count : 0;
+        refreshStatus();
+        break;
       case "confirm":
       case "pathAccess":
       case "sensitiveAccess":
@@ -589,10 +739,10 @@
     ws.addEventListener("open", () => {
       connEl.textContent = "terhubung";
       connEl.className = "conn ok";
-      if (!busy) setStatus("idle", "siap");
+      refreshStatus();
     });
     ws.addEventListener("close", () => {
-      connEl.textContent = "terputus — menyambung ulang…";
+      connEl.textContent = "terputus, menyambung ulang…";
       connEl.className = "conn bad";
       setBusy(false);
       setStatus("offline", "terputus");
@@ -657,7 +807,7 @@
       fontSize: window.innerWidth < 480 ? 12 : 13,
       cursorBlink: true,
       scrollback: 5000,
-      theme: { background: "#0b0f14", foreground: "#dfe6ef", cursor: "#4f9cf9" },
+      theme: termTheme(),
     });
     const FitCtor = window.FitAddon && window.FitAddon.FitAddon ? window.FitAddon.FitAddon : window.FitAddon;
     if (FitCtor) {
@@ -693,11 +843,18 @@
   function submit() {
     const text = inputEl.value.trim();
     if (!text) return;
-    addMessage("user", "kamu").textContent = text;
-    currentTurn = null;
-    send({ type: "chat.send", text });
+    const bubble = addMessage("user", "kamu");
+    bubble.textContent = text;
     inputEl.value = "";
     inputEl.style.height = "auto";
+    if (busy) {
+      // Agen sedang sibuk: pesan tetap dikirim, tapi ditandai menunggu antrean.
+      markPending(bubble.parentElement);
+      touchWorking();
+    } else {
+      currentTurn = null;
+    }
+    send({ type: "chat.send", text });
   }
 
   document.querySelectorAll(".tab").forEach((t) => t.addEventListener("click", () => setTab(t.dataset.tab)));
@@ -727,7 +884,12 @@
     }
   });
   sendBtn.addEventListener("click", submit);
-  stopBtn.addEventListener("click", () => send({ type: "chat.interrupt" }));
+  stopBtn.addEventListener("click", () => {
+    clearPendingTags(true);
+    queuedCount = 0;
+    refreshStatus();
+    send({ type: "chat.interrupt" });
+  });
   inputEl.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -738,6 +900,27 @@
     inputEl.style.height = "auto";
     inputEl.style.height = Math.min(inputEl.scrollHeight, 200) + "px";
   });
+
+  applyTheme(currentTheme(), false);
+  if (themeToggle) {
+    themeToggle.addEventListener("click", () =>
+      applyTheme(currentTheme() === "light" ? "dark" : "light", true),
+    );
+  }
+  if (window.matchMedia) {
+    const mq = window.matchMedia("(prefers-color-scheme: light)");
+    const onSystemTheme = (e) => {
+      let saved = null;
+      try {
+        saved = localStorage.getItem("nex.theme");
+      } catch {
+        saved = null;
+      }
+      if (!saved) applyTheme(e.matches ? "light" : "dark", false);
+    };
+    if (mq.addEventListener) mq.addEventListener("change", onSystemTheme);
+    else if (mq.addListener) mq.addListener(onSystemTheme);
+  }
 
   renderEmpty();
   connect();

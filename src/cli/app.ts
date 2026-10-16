@@ -31,9 +31,12 @@ import { removeMcpServer } from "../plugins/config.js";
 import { listMcpPresets } from "../plugins/presets.js";
 import { applyMcpAdd, planMcpAdd, type McpAddPlan } from "../plugins/mcp_add.js";
 import {
+  clearRecentCustomModels,
   configDir,
+  listRecentCustomModels,
   loadConfig,
   logsDir,
+  rememberCustomModel,
   rememberModel,
   saveConfig,
   sessionsDir,
@@ -52,10 +55,11 @@ import { firstNonEmpty } from "../util/strings.js";
 import { formatErrorMessage } from "../util/errors.js";
 import { todoHeader, todoLines } from "../util/todos.js";
 import { renderCrossSession, renderUsage } from "./usage.js";
-import { runConnect, describeProvider, defaultBaseURL, resolveProviderKey, providerRefFromArgs } from "./connect.js";
+import { runConnect, describeProvider, defaultBaseURL, resolveProviderKey, providerRefFromArgs, type ConnectPick } from "./connect.js";
 import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice, validateFallbackModel } from "./models.js";
-import { TerminalIO, type ChatIO } from "./render.js";
+import { TerminalIO, type ChatIO, type PickItem, type PickRequest } from "./render.js";
 import { Prompter, PROMPT_EOF, type PrompterLike } from "./prompt.js";
+import { isBusySafeSlash } from "./slash.js";
 import { createTuiPair, attachTui, type TuiPair } from "./tui/index.js";
 import { describeDefault, parseDefaultTarget, readDefaultInterface, setDefaultInterface } from "./default.js";
 import type { Screen } from "./tui/screen.js";
@@ -117,7 +121,7 @@ interface ResolvedModel {
 export const SLASH_HELP: Array<[string, string]> = [
   ["/connect", "hubungkan provider (yang tersimpan bisa dipakai ulang)"],
   ["/provider [use|edit|hapus <id>]", "kelola provider tersimpan (id: anthropic, openai, custom:<nama>)"],
-  ["/models [nomor|0|nama]", "lihat/ganti model (0 = custom)"],
+  ["/models [nomor|0|nama|clear]", "lihat/ganti model (0 = custom, clear = hapus riwayat custom)"],
   ["/plan", "pindah ke mode Plan (read-only)"],
   ["/build", "pindah ke mode Build (eksekusi)"],
   ["/sessions [clear]", "daftar sesi / hapus semua sesi workspace ini"],
@@ -305,6 +309,9 @@ export class ChatApp {
       const wiring = attachTui(tuiPair, { toggleMode: () => appRef?.toggleMode() });
       app.setTuiLifecycle(tuiPair.screen, wiring.detach);
       appRef = app;
+      // Saat agent sibuk, perintah slash yang aman dijalankan langsung tanpa
+      // masuk antrean (opsi A) — lihat `cli/slash.ts`.
+      tuiPair.prompter.setBusySlashHandler((line) => app.runBusySlash(line));
     }
 
     try {
@@ -396,7 +403,7 @@ export class ChatApp {
     let provider = key ? await createProvider(key, this.credentials) : undefined;
 
     if (!provider && Boolean(process.stdin.isTTY) && !this.opts.json) {
-      const result = await runConnect(this.prompter, this.credentials);
+      const result = await runConnect(this.prompter, this.credentials, undefined, this.overlayPick());
       if (result) {
         provider = result.provider;
         this.providerKey = result.providerKey;
@@ -706,6 +713,19 @@ export class ChatApp {
     }
   }
 
+  /**
+   * Jalankan baris slash **langsung** saat agent sibuk (mode TUI), bila
+   * perintah tergolong aman-sibuk (`isBusySafeSlash`). Mengembalikan `true`
+   * bila diterima sehingga prompter tidak mengantre baris ini.
+   */
+  runBusySlash(line: string): boolean {
+    if (!isBusySafeSlash(line)) return false;
+    void this.handleSlash(line).catch((err: unknown) => {
+      this.io.error(`Perintah gagal: ${formatErrorMessage(err)}`);
+    });
+    return true;
+  }
+
   private async handleSlash(line: string): Promise<"continue" | "exit"> {
     const [cmdRaw, ...args] = line.split(/\s+/);
     const cmd = cmdRaw ?? "";
@@ -844,6 +864,21 @@ export class ChatApp {
   }
 
   private printHelp(): void {
+    if (this.io.view) {
+      const lines: string[] = [];
+      lines.push("Perintah:");
+      for (const [name, desc] of SLASH_HELP) {
+        lines.push(`  ${name.padEnd(32)}${desc}`);
+      }
+      void this.io.view({ title: "Bantuan", lines }).catch(() => {
+        process.stdout.write("\nPerintah:\n");
+        for (const [name, desc] of SLASH_HELP) {
+          process.stdout.write(`  ${name.padEnd(32)}${desc}\n`);
+        }
+        process.stdout.write("\n");
+      });
+      return;
+    }
     process.stdout.write("\nPerintah:\n");
     for (const [name, desc] of SLASH_HELP) {
       process.stdout.write(`  ${name.padEnd(32)}${desc}\n`);
@@ -852,7 +887,7 @@ export class ChatApp {
   }
 
   private async commandConnect(): Promise<void> {
-    const result = await runConnect(this.prompter, this.credentials);
+    const result = await runConnect(this.prompter, this.credentials, undefined, this.overlayPick());
     if (!result) return;
     this.provider = result.provider;
     this.providerKey = result.providerKey;
@@ -871,6 +906,17 @@ export class ChatApp {
   }
 
   /**
+   * Pemilih overlay TUI (bila `ChatIO` mendukungnya) untuk alur interaktif
+   * seperti `/connect`. `undefined` → pemanggil memakai prompt teks biasa.
+   */
+  private overlayPick(): ConnectPick | undefined {
+    const pick = this.io.pick;
+    if (!pick) return undefined;
+    // Panggil lewat `this.io` agar `this` (state overlay TuiIO) tetap terikat.
+    return <T>(req: PickRequest<T>): Promise<T | null> => this.io.pick!<T>(req);
+  }
+
+  /**
    * Kelola provider tersimpan: tampilkan daftar, aktifkan, edit, atau hapus.
    * Nilai API key tidak pernah ditampilkan (hanya status ada/tidak).
    */
@@ -879,6 +925,30 @@ export class ChatApp {
     const name = providerRefFromArgs(args.slice(1));
 
     if (!sub) {
+      // TUI: buka pemilih melayang; Enter mengaktifkan provider terpilih.
+      if (this.io.pick) {
+        const keys = (await this.credentials.list()).sort();
+        if (keys.length === 0) {
+          this.io.info("Belum ada provider tersimpan. Jalankan /connect untuk menambahkan.");
+          return;
+        }
+        const items: PickItem<string>[] = [];
+        for (const key of keys) {
+          const creds = await this.credentials.get(key);
+          items.push({
+            label: key,
+            detail: `${creds?.baseURL ?? defaultBaseURL(key) ?? "-"}  ${creds?.apiKey ? "api key ok" : "tanpa api key"}${this.config.defaultProvider === key ? "  (default)" : ""}`,
+            value: key,
+          });
+        }
+        const chosen = await this.io.pick({
+          title: "Provider tersimpan",
+          items,
+          hint: "↑/↓ pilih · Enter aktifkan · Esc tutup",
+        });
+        if (chosen !== null) await this.activateProvider(chosen);
+        return;
+      }
       await this.listProviders();
       return;
     }
@@ -890,26 +960,7 @@ export class ChatApp {
         this.io.warn("Pakai: /provider use <id>.");
         return;
       }
-      const key = resolveProviderKey(name, saved);
-      const provider = key ? await createProvider(key, this.credentials) : undefined;
-      if (!key || !provider) {
-        this.io.warn(`Provider tidak dikenal atau belum tersimpan: ${name}. Lihat /provider.`);
-        return;
-      }
-      this.provider = provider;
-      this.providerKey = key;
-      this.config = await saveConfig({ defaultProvider: key });
-      const model = await this.resolveModel(this.provider, undefined);
-      if (!model) {
-        this.io.warn("Tidak ada model terpilih.");
-        return;
-      }
-      this.session.setProvider(this.provider, key);
-      this.session.setModel(model.id, model.info);
-      this.record.providerId = key;
-      this.record.model = model.id;
-      await rememberModel(this.workspace.root, model.id);
-      this.io.info(`Provider aktif: ${key} / ${model.id}.`);
+      await this.activateProvider(name);
       return;
     }
 
@@ -947,6 +998,31 @@ export class ChatApp {
     }
 
     this.io.warn(`Argumen tidak dikenal: ${sub}. Pakai /provider [use|edit|hapus <id>].`);
+  }
+
+  /** Aktifkan provider tersimpan (id atau nama singkat custom). */
+  private async activateProvider(name: string): Promise<void> {
+    const saved = await this.credentials.list();
+    const key = resolveProviderKey(name, saved);
+    const provider = key ? await createProvider(key, this.credentials) : undefined;
+    if (!key || !provider) {
+      this.io.warn(`Provider tidak dikenal atau belum tersimpan: ${name}. Lihat /provider.`);
+      return;
+    }
+    this.provider = provider;
+    this.providerKey = key;
+    this.config = await saveConfig({ defaultProvider: key });
+    const model = await this.resolveModel(this.provider, undefined);
+    if (!model) {
+      this.io.warn("Tidak ada model terpilih.");
+      return;
+    }
+    this.session.setProvider(this.provider, key);
+    this.session.setModel(model.id, model.info);
+    this.record.providerId = key;
+    this.record.model = model.id;
+    await rememberModel(this.workspace.root, model.id);
+    this.io.info(`Provider aktif: ${key} / ${model.id}.`);
   }
 
   private async listProviders(): Promise<void> {
@@ -1015,30 +1091,98 @@ export class ChatApp {
     } catch (err) {
       this.io.error(`Gagal memuat model: ${formatErrorMessage(err)}`);
     }
+    const knownIds = new Set(models.map((m) => m.id));
 
     if (!arg) {
+      // TUI: buka pemilih melayang; Enter langsung mengganti model.
+      if (this.io.pick) {
+        // Custom model yang pernah dipakai ditampilkan agar bisa dipilih ulang.
+        const recent = (await listRecentCustomModels()).filter((m) => !knownIds.has(m));
+        const items: PickItem<string>[] = [
+          { label: CUSTOM_MODEL_LABEL, value: "__custom__" },
+          ...recent.map((m) => ({ label: m, detail: "custom tersimpan", value: `__recent__${m}` })),
+          ...models.map((m) => ({ label: m.id, value: m.id })),
+        ];
+        if (recent.length > 0) {
+          items.push({ label: "Bersihkan riwayat custom", detail: `${recent.length}`, value: "__clear__" });
+        }
+        const picked = await this.io.pick({
+          title: `Model — ${this.providerKey} (${models.length})`,
+          items,
+          hint: "↑/↓ pilih · Enter pakai · Esc tutup",
+        });
+        if (picked === null) return;
+        if (picked === "__clear__") {
+          await clearRecentCustomModels();
+          this.io.info("Riwayat custom model dibersihkan.");
+          return;
+        }
+        if (picked === "__custom__") {
+          const name = await this.askCustomModelName();
+          if (!name) {
+            this.io.warn("Nama model kosong; dibatalkan.");
+            return;
+          }
+          await this.applyCustomModel(name);
+          return;
+        }
+        if (picked.startsWith("__recent__")) {
+          await this.applyCustomModel(picked.slice("__recent__".length));
+          return;
+        }
+        const chosen = models.find((m) => m.id === picked);
+        if (chosen) await this.switchModel({ id: chosen.id, info: chosen });
+        return;
+      }
       process.stdout.write(`\nModel untuk ${this.providerKey} (${models.length}):\n`);
       process.stdout.write(`    0) ${CUSTOM_MODEL_LABEL}\n`);
       models.forEach((m, i) => process.stdout.write(`  ${String(i + 1).padStart(3)}) ${m.id}\n`));
-      process.stdout.write("\n  Ganti dengan /models <nomor>, /models 0 (custom), atau /models <nama>.\n\n");
+      process.stdout.write(
+        "\n  Ganti dengan /models <nomor>, /models 0 (custom), /models <nama>, atau /models clear (hapus riwayat custom).\n\n",
+      );
+      return;
+    }
+
+    if (arg === "clear") {
+      await clearRecentCustomModels();
+      this.io.info("Riwayat custom model dibersihkan.");
       return;
     }
 
     const choice = resolveModelChoice(arg, models);
     if (choice.kind === "custom") {
-      const name = cleanModelName(await this.prompter.question("Nama model custom: "));
+      const name = await this.askCustomModelName();
       if (!name) {
         this.io.warn("Nama model kosong; dibatalkan.");
         return;
       }
-      await this.switchModel({ id: name });
+      await this.applyCustomModel(name);
       return;
     }
     if (choice.kind === "model") {
       await this.switchModel({ id: choice.model.id, info: choice.model });
+      if (!knownIds.has(choice.model.id)) await rememberCustomModel(choice.model.id);
       return;
     }
     this.io.warn(`Pilihan tidak valid: ${arg}. Gunakan nomor, 0, atau nama model.`);
+  }
+
+  /**
+   * Minta nama model custom dari pengguna. Di TUI memakai overlay input teks
+   * (di dalam modul `/models`); di CLI memakai prompt baris seperti biasa.
+   */
+  private async askCustomModelName(): Promise<string> {
+    if (this.io.inputText) {
+      const raw = await this.io.inputText({ title: "Model custom", label: "Nama model" });
+      return raw === null ? "" : cleanModelName(raw);
+    }
+    return cleanModelName(await this.prompter.question("Nama model custom: "));
+  }
+
+  /** Terapkan model custom: jadikan aktif sekaligus catat ke riwayat agar tersimpan. */
+  private async applyCustomModel(name: string): Promise<void> {
+    await this.switchModel({ id: name });
+    await rememberCustomModel(name);
   }
 
   /** Ganti model sesi aktif dan ingat pilihan untuk run berikutnya. */
@@ -1051,6 +1195,15 @@ export class ChatApp {
     this.io.info(`Model diganti ke ${this.providerKey} / ${model.id}.`);
   }
 
+  /** Item daftar sesi untuk pemilih (TUI) — nilai = id sesi. */
+  private sessionItems(sessions: SessionRecord[]): PickItem<string>[] {
+    return sessions.map((s) => ({
+      label: `${s.updatedAt.slice(0, 16).replace("T", " ")}  ${s.title}`,
+      detail: `${s.model || "-"}${s.id === this.record.id ? "  ●" : ""}`,
+      value: s.id,
+    }));
+  }
+
   private async commandSessions(arg?: string): Promise<void> {
     if (arg === "clear" || arg === "hapus" || arg === "bersihkan") {
       await this.clearSessions();
@@ -1059,6 +1212,16 @@ export class ChatApp {
     const sessions = await this.store.listForWorkspace(this.workspace.root);
     if (sessions.length === 0) {
       this.io.info("Belum ada sesi untuk workspace ini.");
+      return;
+    }
+    // TUI: langsung buka pemilih melayang; Enter melanjutkan sesi terpilih.
+    if (!arg && this.io.pick) {
+      const id = await this.io.pick({
+        title: "Sesi — Enter untuk melanjutkan",
+        items: this.sessionItems(sessions),
+        hint: "↑/↓ pilih · Enter resume · Esc tutup",
+      });
+      if (id !== null) await this.resumeSession(id);
       return;
     }
     process.stdout.write("\nSesi:\n");
@@ -1143,13 +1306,28 @@ export class ChatApp {
       return;
     }
     if (!arg) {
+      // TUI: pemilih melayang (sama seperti /sessions). CLI: tampilkan daftar.
+      if (this.io.pick) {
+        const id = await this.io.pick({
+          title: "Sesi — Enter untuk melanjutkan",
+          items: this.sessionItems(sessions),
+          hint: "↑/↓ pilih · Enter resume · Esc tutup",
+        });
+        if (id !== null) await this.resumeSession(id);
+        return;
+      }
       await this.commandSessions();
       return;
     }
+    await this.resumeSession(arg);
+  }
 
-    const target = selectSession(sessions, arg) ?? (await this.store.load(arg));
+  /** Aktifkan sesi terpilih (nomor urut atau id) sebagai sesi berjalan. */
+  private async resumeSession(selector: string): Promise<void> {
+    const sessions = await this.store.listForWorkspace(this.workspace.root);
+    const target = selectSession(sessions, selector) ?? (await this.store.load(selector));
     if (!target || target.workspace !== this.workspace.root) {
-      this.io.warn(`Sesi tidak ditemukan: ${arg}. Lihat /sessions.`);
+      this.io.warn(`Sesi tidak ditemukan: ${selector}. Lihat /sessions.`);
       return;
     }
     if (target.id === this.record.id) {
@@ -1239,13 +1417,23 @@ export class ChatApp {
     }
     let added = 0;
     let removed = 0;
+    const lines: string[] = [];
     for (const entry of entries) {
       const before = entry.before ?? "";
       const after = entry.after ?? "";
       const stats = diffStats(before, after);
       added += stats.added;
       removed += stats.removed;
-      this.io.diff(renderDiff(before, after, entry.display));
+      const rendered = renderDiff(before, after, entry.display);
+      if (this.io.view) for (const line of rendered.split("\n")) lines.push(line);
+      else this.io.diff(rendered);
+    }
+    if (this.io.view) {
+      await this.io.view({
+        title: `Diff — ${entries.length} file (+${added} -${removed})`,
+        lines,
+      });
+      return;
     }
     this.io.info(
       `${entries.length} file berubah (+${added} -${removed}). Gunakan /undo untuk membatalkan.`,
@@ -1271,7 +1459,13 @@ export class ChatApp {
   private async commandUsage(arg?: string): Promise<void> {
     if (arg === "today" || arg === "week" || arg === "all") {
       const summary = await this.usageStore.aggregate(arg as UsageRange);
-      process.stdout.write(renderCrossSession(summary, arg) + "\n");
+      const text = renderCrossSession(summary, arg) + "\n";
+      const lines = text.split("\n");
+      if (this.io.view) {
+        await this.io.view({ title: `Penggunaan — ${arg}`, lines });
+        return;
+      }
+      process.stdout.write(text);
       return;
     }
     if (arg) {
@@ -1286,17 +1480,21 @@ export class ChatApp {
     const usedTokens = new ContextManager(this.session.getModelInfo()?.contextWindow).estimate(
       this.session.getHistory(),
     );
-    process.stdout.write(
-      renderUsage(this.tracker, {
-        ...(this.session.getModelInfo()?.contextWindow
-          ? { contextWindow: this.session.getModelInfo()!.contextWindow }
-          : {}),
-        usedTokens,
-        ...(this.opts.maxCost ?? this.config.maxCost
-          ? { maxCost: this.opts.maxCost ?? this.config.maxCost! }
-          : {}),
-      }) + "\n",
-    );
+    const out = renderUsage(this.tracker, {
+      ...(this.session.getModelInfo()?.contextWindow
+        ? { contextWindow: this.session.getModelInfo()!.contextWindow }
+        : {}),
+      usedTokens,
+      ...(this.opts.maxCost ?? this.config.maxCost
+        ? { maxCost: this.opts.maxCost ?? this.config.maxCost! }
+        : {}),
+    }) + "\n";
+    const lines = out.split("\n");
+    if (this.io.view) {
+      await this.io.view({ title: "Penggunaan — sesi ini", lines });
+      return;
+    }
+    process.stdout.write(out);
   }
 
   private async commandPermissions(args: string[]): Promise<void> {
@@ -1330,6 +1528,18 @@ export class ChatApp {
       this.io.info(
         "Belum ada skill. Letakkan folder berisi SKILL.md di ./skills, ./.nex-agent/skills, atau ~/.config/agent/skills.",
       );
+      return;
+    }
+    const lines: string[] = [];
+    lines.push(`Skill tersedia (dimuat otomatis saat relevan):`);
+    for (const skill of this.skills) {
+      const active = this.activeSkills.some((a) => a.name === skill.name) ? color.green("●") : " ";
+      lines.push(`  ${active} ${skill.name.padEnd(24)} ${truncate(skill.description, 60)}`);
+    }
+    lines.push("");
+    lines.push("  Paksa aktif: /skill <nama>  ·  lepas semua: /skill off  ·  pasang: /skills install <sumber>");
+    if (this.io.view) {
+      await this.io.view({ title: "Skills", lines });
       return;
     }
     process.stdout.write("\nSkill tersedia (dimuat otomatis saat relevan):\n");
@@ -1740,9 +1950,18 @@ export class ChatApp {
       return;
     }
     const counts = new TodoStore(todos).counts();
-    process.stdout.write(
-      `\n${todoHeader(todos)}  (${counts.inProgress} berjalan, ${counts.pending} menunggu, ${counts.cancelled} dibatalkan)\n`,
-    );
+    const header = `\n${todoHeader(todos)}  (${counts.inProgress} berjalan, ${counts.pending} menunggu, ${counts.cancelled} dibatalkan)\n`;
+    const lines: string[] = [header.replace(/^\n/, "").replace(/\n$/, "")];
+    for (const line of todoLines(todos)) lines.push(line);
+    if (this.io.view) {
+      void this.io.view({ title: "Todos", lines }).catch(() => {
+        process.stdout.write(`${header}`);
+        for (const line of todoLines(todos)) process.stdout.write(`  ${line}\n`);
+        process.stdout.write("\n");
+      });
+      return;
+    }
+    process.stdout.write(`${header}`);
     for (const line of todoLines(todos)) process.stdout.write(`  ${line}\n`);
     process.stdout.write("\n");
   }
@@ -1793,6 +2012,15 @@ export class ChatApp {
     const facts = await readFacts(dir);
     if (facts.length === 0) {
       this.io.info('Belum ada memori jangka panjang. Contoh: /memory add hobi coding');
+      return;
+    }
+    const lines: string[] = [];
+    lines.push(`Memori jangka panjang (${facts.length}):`);
+    for (const f of facts) lines.push(`  ${f.key}: ${f.value}`);
+    lines.push("");
+    lines.push("Hapus dengan: /memory forget <key>  ·  /memory clear");
+    if (this.io.view) {
+      await this.io.view({ title: "Memory", lines });
       return;
     }
     process.stdout.write(`\nMemori jangka panjang (${facts.length}):\n`);

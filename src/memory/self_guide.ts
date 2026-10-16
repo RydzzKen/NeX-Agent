@@ -33,7 +33,7 @@ export const AGENT_GUIDE = [
   "- Server: /web [lan|stop] /telegram [start|stop|restart|status|logs|token|allow]",
   "- Lain: /usage [today|week|all|<id>] /todos /memory [add|forget|clear] /update [--stash] /restart /help /exit",
   "",
-  "Perintah CLI: `agent [tujuan]` · `agent usage [range]` · `agent logs <id>` · `agent web` · `agent telegram ...` · `agent update` · `agent uninstall`.",
+  "Perintah CLI: `agent [tujuan]` · `agent cli` (REPL readline) · `agent tui` (layar penuh) · `agent default [tui|cli|reset]` · `agent usage [range]` · `agent logs <id>` · `agent web` · `agent telegram ...` · `agent update` · `agent uninstall`.",
   "",
   "Konfigurasi (~/.config/agent): config.json · credentials.json (izin 600) · plugins.json (MCP) · AGENTS.md · sessions/ · logs/.",
   "Skill dipindai dari: ~/.config/agent/skills/ · <workspace>/skills/ · <workspace>/.nex-agent/skills/.",

@@ -2,7 +2,14 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadConfig, rememberModel, saveConfig } from "../src/config/config.js";
+import {
+  clearRecentCustomModels,
+  listRecentCustomModels,
+  loadConfig,
+  rememberCustomModel,
+  rememberModel,
+  saveConfig,
+} from "../src/config/config.js";
 
 let dir: string;
 
@@ -45,5 +52,47 @@ describe("config model memory", () => {
   it("defaultModel tidak tertulis bila config kosong", async () => {
     const cfg = await loadConfig();
     expect(cfg.defaultModel).toBeUndefined();
+  });
+});
+
+describe("config custom model memory", () => {
+  it("menyimpan nama custom, terbaru lebih dulu", async () => {
+    await rememberCustomModel("model-a");
+    await rememberCustomModel("model-b");
+    expect(await listRecentCustomModels()).toEqual(["model-b", "model-a"]);
+  });
+
+  it("mendedupe secara case-insensitive dan memindah ke depan", async () => {
+    await rememberCustomModel("Model-A");
+    await rememberCustomModel("model-b");
+    await rememberCustomModel("MODEL-A");
+    expect(await listRecentCustomModels()).toEqual(["MODEL-A", "model-b"]);
+  });
+
+  it("mengabaikan nama kosong/spasi", async () => {
+    await rememberCustomModel("   ");
+    expect(await listRecentCustomModels()).toEqual([]);
+  });
+
+  it("memangkas riwayat pada batas maksimum", async () => {
+    for (let i = 0; i < 25; i += 1) await rememberCustomModel(`m-${i}`);
+    const list = await listRecentCustomModels();
+    expect(list).toHaveLength(20);
+    expect(list[0]).toBe("m-24");
+    expect(list).not.toContain("m-0");
+  });
+
+  it("rememberModel tidak menghapus riwayat custom", async () => {
+    await rememberCustomModel("custom-x");
+    await rememberModel("/ws/a", "gpt-4o");
+    expect(await listRecentCustomModels()).toEqual(["custom-x"]);
+    const cfg = await loadConfig();
+    expect(cfg.models?.["/ws/a"]).toBe("gpt-4o");
+  });
+
+  it("clearRecentCustomModels menghapus riwayat", async () => {
+    await rememberCustomModel("custom-x");
+    await clearRecentCustomModels();
+    expect(await listRecentCustomModels()).toEqual([]);
   });
 });

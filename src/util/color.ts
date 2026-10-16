@@ -11,6 +11,30 @@ export function colorEnabled(): boolean {
   return enabled;
 }
 
+function parseForceColor(v?: string): number {
+  if (!v || v === "0") return 0;
+  if (v === "1" || v === "true") return 1;
+  if (v === "2") return 2;
+  if (v === "3") return 3;
+  const n = Number(v);
+  if (Number.isFinite(n)) return Math.max(0, Math.min(3, n));
+  return 1;
+}
+
+const force = parseForceColor(process.env.FORCE_COLOR);
+export const truecolorSupported: boolean =
+  enabled &&
+  (process.env.COLORTERM === "truecolor" ||
+    process.env.COLORTERM === "24bit" ||
+    force >= 3);
+
+export function rgb(r: number, g: number, b: number, bg = false): (s: string) => string {
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const R = clamp(r), G = clamp(g), B = clamp(b);
+  const code = bg ? `48;2;${R};${G};${B}` : `38;2;${R};${G};${B}`;
+  return (s: string) => (enabled && truecolorSupported ? `\u001b[${code}m${s}\u001b[0m` : s);
+}
+
 function wrap(code: string, close: string): (s: string) => string {
   return (s: string) => (enabled ? `\u001b[${code}m${s}\u001b[${close}m` : s);
 }
@@ -30,4 +54,6 @@ export const color = {
   underline: wrap("4", "24"),
   italic: wrap("3", "23"),
   strike: wrap("9", "29"),
-};
+  rgb,
+  truecolor: truecolorSupported,
+} as const;

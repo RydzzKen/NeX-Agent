@@ -774,7 +774,8 @@ Disimpan di `~/.config/agent/` (bisa diubah lewat `AGENT_CONFIG_DIR`):
 
 ### 🔎 Pencarian web (`web_search`)
 
-Tool `web_search` aktif secara bawaan. Backend bawaannya **DuckDuckGo tanpa
+Tool `web_search` aktif secara bawaan dan **boleh dipakai di mode Plan**
+(read-only, tidak mengubah apa pun). Backend bawaannya **DuckDuckGo tanpa
 kunci**: mula-mula **Instant Answer API**, lalu otomatis jatuh ke **halaman hasil
 HTML DuckDuckGo** bila kosong — sehingga pencarian biasa tetap mendapat hasil
 web. Untuk hasil yang lebih andal, pilih backend lewat `searchProvider`:
@@ -805,10 +806,11 @@ web. Untuk hasil yang lebih andal, pilih backend lewat `searchProvider`:
 
 ### 🌐 Ambil halaman web (`web_fetch`)
 
-Tool `web_fetch` aktif secara bawaan dan bersifat **read-only**. Beri satu URL
-`http/https`; tool mengambil halaman (mengikuti redirect) lalu mengubah HTML
-menjadi teks/Markdown yang bisa dibaca — berguna untuk membuka dokumentasi,
-artikel, atau URL yang baru ditemukan lewat `web_search`.
+Tool `web_fetch` aktif secara bawaan, bersifat **read-only**, dan **boleh dipakai
+di mode Plan**. Beri satu URL `http/https`; tool mengambil halaman (mengikuti
+redirect) lalu mengubah HTML menjadi teks/Markdown yang bisa dibaca — berguna
+untuk membuka dokumentasi, artikel, atau URL yang baru ditemukan lewat
+`web_search`.
 
 - Respons non-HTML (mis. JSON/teks) dikembalikan apa adanya.
 - Batas waktu 20 detik dan batas ukuran; keluaran dipotong (default 20.000

@@ -98,6 +98,8 @@ export class WebApp {
   private running = false;
   private controller: AbortController | undefined;
   private runPromise: Promise<void> | undefined;
+  /** Antrean prompt yang dikirim saat agen sibuk (FIFO). */
+  private pending: string[] = [];
 
   private constructor(
     private readonly opts: WebAppOptions,
@@ -336,39 +338,60 @@ export class WebApp {
     return this.running;
   }
 
-  /** Jalankan satu prompt pengguna; mengembalikan hasil akhir proses. */
+  /**
+   * Kirim satu prompt. Bila agen sedang sibuk, prompt **diantrekan** (FIFO)
+   * dan dijalankan otomatis begitu giliran berjalan selesai — jadi pengguna
+   * tetap bisa mengetik selagi agen bekerja.
+   */
   async send(text: string): Promise<void> {
     if (this.running) {
-      this.io.warn("Sesi sedang menjalankan tugas lain; tunggu hingga selesai.");
+      this.pending.push(text);
+      this.io.emit({ type: "queued", count: this.pending.length });
       return;
     }
-    this.running = true;
-    const controller = new AbortController();
-    this.controller = controller;
-    this.io.emit({ type: "busy", on: true });
-    const run = (async () => {
-      try {
-        await this.reloadSkills();
-        await this.session.run(text, controller.signal);
-      } catch (err) {
-        this.io.error(`Terjadi kesalahan: ${formatErrorMessage(err)}`);
-      } finally {
-        this.running = false;
-        this.controller = undefined;
-        await this.saveRecord();
-        this.io.emit({ type: "busy", on: false });
-        await this.notifyState();
-      }
-    })();
+    const run = this.runTurn(text);
     this.runPromise = run;
     await run;
   }
 
   /**
-   * Hentikan tugas yang berjalan: batalkan sinyal **dan** tolak semua
-   * persetujuan yang menggantung supaya loop tidak macet menunggu jawaban.
+   * Jalankan prompt, lalu lanjutkan ke antrean berikutnya sampai kosong.
+   * `running` tetap true sepanjang rantai agar prompt yang masuk di sela-sela
+   * giliran ikut terantre (tidak memulai proses paralel).
+   */
+  private async runTurn(text: string): Promise<void> {
+    this.running = true;
+    this.io.emit({ type: "busy", on: true });
+    let current: string | undefined = text;
+    while (current !== undefined) {
+      const controller = new AbortController();
+      this.controller = controller;
+      try {
+        await this.reloadSkills();
+        await this.session.run(current, controller.signal);
+      } catch (err) {
+        this.io.error(`Terjadi kesalahan: ${formatErrorMessage(err)}`);
+      } finally {
+        this.controller = undefined;
+        await this.saveRecord();
+      }
+      current = this.pending.shift();
+      if (current !== undefined) this.io.emit({ type: "queued", count: this.pending.length });
+    }
+    this.running = false;
+    this.io.emit({ type: "busy", on: false });
+    await this.notifyState();
+  }
+
+  /**
+   * Hentikan tugas yang berjalan: kosongkan antrean, batalkan sinyal **dan**
+   * tolak semua persetujuan yang menggantung supaya loop tidak macet.
    */
   interrupt(): void {
+    if (this.pending.length > 0) {
+      this.pending.length = 0;
+      this.io.emit({ type: "queued", count: 0 });
+    }
     this.controller?.abort();
     this.io.cancelAll();
   }
@@ -487,6 +510,7 @@ export class WebApp {
       provider: this.providerKey,
       allowAll: this.approvals.allowAll(),
       busy: this.running,
+      queued: this.pending.length,
       skills: this.skillsList(),
       sessions: await this.listSessions(),
       current: this.currentSummary(),
