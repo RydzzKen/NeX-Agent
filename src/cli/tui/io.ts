@@ -14,11 +14,14 @@ import type {
 import type { StopReason } from "../../core/types.js";
 import type { TodoItem } from "../../core/todos.js";
 import type { ChatIO, PickRequest, ViewRequest } from "../render.js";
+import { Typewriter } from "../typewriter.js";
 import type { Screen, OverlayContent } from "./screen.js";
 
 export interface TuiIOOptions {
   thinking?: boolean;
   markdown?: boolean;
+  /** Animasi mengetik untuk jawaban model (default nonaktif; diaktifkan app). */
+  typewriter?: boolean;
 }
 
 interface KeysOverlay {
@@ -58,6 +61,8 @@ const STEP_SYMBOL: Record<StepOutcome["status"], string> = {
 export class TuiIO implements ChatIO {
   private markdownOn: boolean;
   private thinkingOn: boolean;
+  private typewriterOn: boolean;
+  private readonly typer: Typewriter;
   private textBuffer = "";
   private overlay?: OverlayState;
 
@@ -67,6 +72,8 @@ export class TuiIO implements ChatIO {
   ) {
     this.markdownOn = opts.markdown ?? true;
     this.thinkingOn = opts.thinking ?? false;
+    this.typewriterOn = opts.typewriter === true;
+    this.typer = new Typewriter((chunk) => this.screen.appendStream("text", chunk));
   }
 
   // ---- teks ----
@@ -74,18 +81,27 @@ export class TuiIO implements ChatIO {
   text(chunk: string): void {
     if (this.markdownOn) {
       this.textBuffer += chunk;
+    } else if (this.typewriterOn) {
+      this.typer.push(chunk);
     } else {
       this.screen.appendStream("text", chunk);
     }
   }
 
-  textEnd(): void {
+  async textEnd(): Promise<void> {
     const buffered = this.textBuffer;
     this.textBuffer = "";
     if (this.markdownOn && buffered) {
       const rendered = renderMarkdown(buffered);
-      this.screen.append("raw", rendered);
+      if (this.typewriterOn) {
+        // Markdown baru bisa dirender utuh, jadi animasi dimulai di akhir blok.
+        this.typer.push(rendered);
+      } else {
+        this.screen.append("raw", rendered);
+      }
     }
+    // Tuntaskan animasi yang tersisa sebelum blok berikutnya ditulis.
+    await this.typer.end();
     // Tutup baris streaming agar blok berikutnya mulai di baris baru.
     this.screen.endStream();
   }
@@ -105,6 +121,16 @@ export class TuiIO implements ChatIO {
 
   isMarkdownEnabled(): boolean {
     return this.markdownOn;
+  }
+
+  setTypewriter(value: boolean): void {
+    this.typewriterOn = value;
+    // Matikan di tengah animasi: tulis sisa teks seketika agar tidak hilang.
+    if (!value) this.typer.flush();
+  }
+
+  isTypewriterEnabled(): boolean {
+    return this.typewriterOn;
   }
 
   setThinking(value: boolean): void {

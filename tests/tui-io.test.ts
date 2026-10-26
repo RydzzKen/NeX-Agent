@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Screen, type ScreenOptions } from "../src/cli/tui/screen.js";
 import { TuiIO } from "../src/cli/tui/io.js";
 import { normalizeKey, stripAnsi } from "../src/util/ansi.js";
@@ -27,6 +27,10 @@ const key = (k: {
   shift?: boolean;
   sequence?: string;
 }): ReturnType<typeof normalizeKey> => normalizeKey(k);
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("TuiIO: konfirmasi overlay", () => {
   it("huruf 'y' menyetujui (name terisi readline, bukan undefined)", async () => {
@@ -102,7 +106,11 @@ describe("TuiIO: input teks overlay", () => {
 });
 
 describe("TuiIO: streaming teks & thinking", () => {
-  function setupCapture(): { io: TuiIO; screen: Screen; writes: string[] } {
+  function setupCapture(opts: { thinking?: boolean; typewriter?: boolean } = { thinking: true }): {
+    io: TuiIO;
+    screen: Screen;
+    writes: string[];
+  } {
     const writes: string[] = [];
     const out: FakeStdout = {
       write: (chunk: string) => {
@@ -118,8 +126,45 @@ describe("TuiIO: streaming teks & thinking", () => {
       stdin: stdin as unknown as ScreenOptions["stdin"],
       stdout: out as unknown as ScreenOptions["stdout"],
     });
-    return { io: new TuiIO(screen, { thinking: true }), screen, writes };
+    return { io: new TuiIO(screen, opts), screen, writes };
   }
+
+  it("efek mengetik menahan output bertahap dan textEnd menunggu", async () => {
+    vi.useFakeTimers();
+    const { io, screen, writes } = setupCapture({ typewriter: true });
+    io.setMarkdown(false);
+    screen.start();
+
+    io.text("halo");
+    let settled = false;
+    const done = io.textEnd().then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    await done;
+    expect(settled).toBe(true);
+
+    writes.length = 0;
+    screen.redraw();
+    expect(stripAnsi(writes.join(""))).toContain("halo");
+  });
+
+  it("setTypewriter(false) menulis sisa antrean seketika", () => {
+    vi.useFakeTimers();
+    const { io, screen, writes } = setupCapture({ typewriter: true });
+    io.setMarkdown(false);
+    screen.start();
+
+    io.text("halo dunia");
+    io.setTypewriter(false);
+
+    writes.length = 0;
+    screen.redraw();
+    expect(stripAnsi(writes.join(""))).toContain("halo dunia");
+  });
 
   it("chunk thinking berurutan tampil dalam satu baris", () => {
     const { io, screen, writes } = setupCapture();

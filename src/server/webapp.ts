@@ -116,7 +116,7 @@ export class WebApp {
       yes: Boolean(opts.yes),
       interactive: true,
       allowAll: Boolean(opts.allowAll),
-      showDiffOnAutoApprove: Boolean(config.showDiffOnAutoApprove),
+      showDiffOnAutoApprove: config.showDiffOnAutoApprove ?? true,
     });
   }
 

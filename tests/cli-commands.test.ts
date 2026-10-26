@@ -47,6 +47,7 @@ describe("subcommand antarmuka", () => {
       "--allow-path",
       "--no-thinking",
       "--no-markdown",
+      "--no-typewriter",
       "--no-skills",
       "--debug",
       "--json",

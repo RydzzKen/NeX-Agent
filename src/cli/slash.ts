@@ -24,6 +24,8 @@ export const BUSY_SAFE_COMMANDS: ReadonlySet<string> = new Set([
   "/permissions",
   "/thinking",
   "/markdown",
+  "/typewriter",
+  "/diff-auto",
   "/memory",
   "/skills",
 ]);

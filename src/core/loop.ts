@@ -446,7 +446,9 @@ export class AgentSession {
       // Tutup blok thinking/teks walau stream diputus (mis. Ctrl+C) agar
       // renderer tidak tertinggal dalam keadaan terbuka.
       if (thinkingOpen) this.deps.io.thinkingEnd();
-      this.deps.io.textEnd?.();
+      // Renderer boleh menuntaskan animasi (efek mengetik) sebelum langkah
+      // berikutnya menulis output lain, agar urutan baris tetap rapi.
+      await this.deps.io.textEnd?.();
     }
     return turn;
   }

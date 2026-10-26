@@ -64,6 +64,7 @@
 - [Tool bawaan](#tool)
 - [Arsitektur](#arsitektur)
 - [Render Markdown](#markdown)
+- [Efek Mengetik](#typewriter)
 - [Skill (SKILL.md)](#skill)
 - [Daftar tugas (todo) live](#todo)
 - [Pengembangan](#pengembangan)
@@ -174,7 +175,7 @@ Menjalankan dari sumber: `pnpm dev -- "<tujuan>"`.
 
 `--model` · `--provider` · `--max-steps` · `--max-cost` · `--yes` ·
 `--allow-all` · `--cwd <path>` · `--allow-path <path>` (bisa diulang) ·
-`--no-thinking` · `--no-markdown` · `--no-skills` · `--debug` · `--json` ·
+`--no-thinking` · `--no-markdown` · `--no-typewriter` · `--no-skills` · `--debug` · `--json` ·
 `--ui <cli|tui>`
 
 `--yes` dan `--allow-all` menyetujui semua konfirmasi untuk sesi ini
@@ -184,11 +185,11 @@ giliran membuat tahu mode aktifnya: di Plan, bila kamu meminta eksekusi, dia
 akan menganalisis dulu lalu mengarahkanmu pindah dengan `/build`.
 
 > [!TIP]
-> **Tetap lihat diff walau auto-approve.** Konfirmasi otomatis (`--yes`/
-> `/allow-all`) biasanya ikut menyembunyikan preview diff sebelum file ditulis.
-> Bila ingin tetap melihatnya tanpa kembali bertanya, setel
-> `"showDiffOnAutoApprove": true` di `config.json` — diff tetap dicetak sebagai
-> preview, konfirmasi tetap otomatis.
+> **Tetap lihat diff walau auto-approve.** Saat konfirmasi otomatis (`--yes`/
+> `/allow-all`), diff tetap dicetak sebagai preview secara default, tanpa
+> kembali bertanya. Matikan dengan `/diff-auto off` (toggle `/diff-auto`) atau
+> setel `"showDiffOnAutoApprove": false` di `config.json`. Mode `--json` tidak
+> mencetak diff kecuali opsi itu disetel `true` secara eksplisit.
 
 **⏳ Indikator bekerja.** Selama agen memproses, terminal menampilkan spinner
 `⠋ sedang bekerja… <detik>` (hanya di TTY, redup saat menunggu jawaban
@@ -217,7 +218,7 @@ Anda tahu kapan agen masih mengerjakan sesuatu dan kapan sudah berhenti.
 | Kategori | Perintah |
 |---|---|
 | 🔌 **Koneksi & model** | `/connect` · `/provider [use\|edit\|hapus <id>]` · `/models [nomor\|0\|nama]` |
-| 🧭 **Mode & izin** | `/plan` · `/build` · `/permissions` · `/allow-all [on\|off]` · `/thinking` · `/markdown` · `/default [tui\|cli\|reset]` |
+| 🧭 **Mode & izin** | `/plan` · `/build` · `/permissions` · `/allow-all [on\|off]` · `/diff-auto` · `/thinking` · `/markdown` · `/typewriter` · `/default [tui\|cli\|reset]` |
 | 🗂️ **Sesi** | `/sessions [clear]` · `/resume <n>` · `/search <kata>` · `/new` · `/clear` · `/rename` · `/delete [all]` · `/diff` · `/undo [n]` |
 | 📊 **Info & tugas** | `/usage` · `/todos` · `/help` |
 | 🧩 **Ekstensi** | `/skills` · `/skill <nama>\|off` · `/mcp [add\|remove\|reload\|key\|presets]` |
@@ -924,6 +925,24 @@ lebar terminal.
   Pilihan disimpan di `config.json`, jadi bertahan setelah restart.
 - Saat pertama kali mulai: `nex-agent --no-markdown`.
 - Mode `--json` tidak merender markdown (mengeluarkan event `text` mentah).
+
+---
+
+<a id="typewriter"></a>
+## ⌨️ Efek Mengetik
+
+Jawaban model muncul bertahap seperti sedang diketik. Kecepatannya menyesuaikan:
+
+- Teks **> 1500 kata** diketik lebih cepat secara proporsional, jadi jawaban
+  panjang tidak terasa lambat.
+- Saat model mengirim lebih cepat daripada animasi (antrean menumpuk), animasi
+  ikut dipercepat agar tidak tertinggal.
+- Sisa antrean di akhir giliran dituntaskan dalam waktu singkat (≤ ~2,5 detik),
+  sehingga langkah tool berikutnya tidak menunggu lama.
+
+Matikan dengan `/typewriter off` (toggle `/typewriter`), atau sejak awal dengan
+`nex-agent --no-typewriter`. Pilihan disimpan di `config.json`. Mode `--json`
+tidak memakai animasi.
 
 ---
 

@@ -23,8 +23,8 @@ class SubtaskIO implements AgentIO {
     this.inner.text(chunk);
   }
 
-  textEnd?(): void {
-    this.inner.textEnd?.();
+  textEnd?(): void | Promise<void> {
+    return this.inner.textEnd?.();
   }
 
   thinking(chunk: string): void {

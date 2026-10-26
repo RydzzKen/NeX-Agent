@@ -13,6 +13,7 @@ import type { TodoItem } from "../core/todos.js";
 import { color } from "../util/color.js";
 import { renderMarkdown } from "../util/markdown.js";
 import { todoHeader, todoLines } from "../util/todos.js";
+import { Typewriter } from "./typewriter.js";
 import { PROMPT_EOF, type PrompterLike } from "./prompt.js";
 
 export interface RenderOptions {
@@ -20,6 +21,8 @@ export interface RenderOptions {
   json: boolean;
   /** Render markdown pada jawaban model (default true). */
   markdown?: boolean;
+  /** Animasi mengetik pada jawaban model (default nonaktif; diaktifkan app). */
+  typewriter?: boolean;
   /** Paksa spinner "sedang bekerja" aktif/nonaktif (default: hanya bila TTY). */
   spinner?: boolean;
 }
@@ -66,6 +69,9 @@ export interface ChatIO extends AgentIO {
   thinkingEnabled(): boolean;
   setMarkdown(value: boolean): void;
   isMarkdownEnabled(): boolean;
+  /** Aktifkan/nonaktifkan efek mengetik pada jawaban model. */
+  setTypewriter(value: boolean): void;
+  isTypewriterEnabled(): boolean;
   /**
    * Pilih satu item dari daftar di UI modal (TUI: overlay melayang yang bisa
    * dinavigasi ↑/↓ + Enter, Esc membatalkan). Bila UI tidak mendukung, method
@@ -100,6 +106,8 @@ export class TerminalIO implements ChatIO {
   private todoLineCount = 0;
   private lastWasTodos = false;
   private markdownOn: boolean;
+  private typewriterOn: boolean;
+  private readonly typer: Typewriter;
   private readonly spinnerEnabled: boolean;
   private running = false;
   private suspended = false;
@@ -116,6 +124,8 @@ export class TerminalIO implements ChatIO {
     private readonly write: (s: string) => void = (s) => process.stdout.write(s),
   ) {
     this.markdownOn = opts.markdown !== false;
+    this.typewriterOn = opts.typewriter === true;
+    this.typer = new Typewriter((chunk) => this.writeContent(chunk));
     const tty = Boolean(process.stdout.isTTY);
     this.spinnerEnabled = Boolean(opts.json) ? false : (opts.spinner ?? tty);
   }
@@ -228,26 +238,38 @@ export class TerminalIO implements ChatIO {
     }
     if (!this.markdownOn) {
       this.textOpen = true;
-      this.writeContent(chunk);
+      if (this.typewriterOn) this.typer.push(chunk);
+      else this.writeContent(chunk);
       return;
     }
     this.textBuffer += chunk;
   }
 
   /** Akhir teks satu giliran: render markdown yang terkumpul sekaligus. */
-  textEnd(): void {
+  async textEnd(): Promise<void> {
     if (this.opts.json) return;
     if (!this.markdownOn) {
       if (this.textOpen) {
         this.textOpen = false;
+        await this.typer.end();
         this.writeContent("\n");
       }
       return;
     }
-    if (!this.textBuffer) return;
+    if (!this.textBuffer) {
+      await this.typer.end();
+      return;
+    }
     const rendered = renderMarkdown(this.textBuffer);
     this.textBuffer = "";
-    this.writeContent(rendered.endsWith("\n") ? rendered : `${rendered}\n`);
+    const out = rendered.endsWith("\n") ? rendered : `${rendered}\n`;
+    if (this.typewriterOn) {
+      // Markdown baru bisa dirender utuh; animasikan hasil akhirnya.
+      this.typer.push(out);
+      await this.typer.end();
+    } else {
+      this.writeContent(out);
+    }
   }
 
   /** Aktifkan/nonaktifkan render markdown untuk teks berikutnya. */
@@ -257,6 +279,16 @@ export class TerminalIO implements ChatIO {
 
   isMarkdownEnabled(): boolean {
     return this.markdownOn;
+  }
+
+  setTypewriter(value: boolean): void {
+    this.typewriterOn = value;
+    // Matikan di tengah animasi: tulis sisa teks seketika agar tidak hilang.
+    if (!value) this.typer.flush();
+  }
+
+  isTypewriterEnabled(): boolean {
+    return this.typewriterOn;
   }
 
   thinking(chunk: string): void {

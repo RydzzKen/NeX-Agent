@@ -19,6 +19,7 @@ export interface TuiPairOptions {
   initProvider?: string;
   thinking?: boolean;
   markdown?: boolean;
+  typewriter?: boolean;
 }
 
 /**
@@ -52,6 +53,7 @@ export function createTuiPair(opts: TuiPairOptions): TuiPair {
   const io = new TuiIO(screen, {
     thinking: opts.thinking,
     markdown: opts.markdown,
+    typewriter: opts.typewriter,
   });
   return { prompter, io, screen };
 }

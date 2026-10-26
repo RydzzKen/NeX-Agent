@@ -68,8 +68,12 @@ export interface SecretRequest {
 export interface AgentIO {
   /** Teks jawaban final model (streaming). */
   text(chunk: string): void;
-  /** Akhir potongan teks satu giliran model (untuk flush/render). */
-  textEnd?(): void;
+  /**
+   * Akhir potongan teks satu giliran model (untuk flush/render).
+   * Boleh mengembalikan Promise bila renderer masih menganimasikan antrean
+   * (mis. efek mengetik); loop menunggunya sebelum lanjut ke langkah berikut.
+   */
+  textEnd?(): void | Promise<void>;
   /** Potongan thinking model (streaming). */
   thinking(chunk: string): void;
   thinkingEnd(): void;

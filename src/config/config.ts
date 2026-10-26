@@ -39,6 +39,8 @@ export interface AgentConfig {
   thinking?: boolean;
   /** Render markdown pada jawaban model (default true). */
   markdown?: boolean;
+  /** Animasi mengetik pada jawaban model (default true). */
+  typewriter?: boolean;
   /** Muat skill dari SKILL.md (default true). */
   skills?: boolean;
   /** Provider default. */
@@ -63,8 +65,7 @@ export interface AgentConfig {
   defaultModel?: string;
   /**
    * Tampilkan diff sebagai preview walau konfirmasi disetujui otomatis
-   * (allow-all/--yes). Aktifkan bila ingin tetap melihat perubahan saat
-   * tidak lagi dikonfirmasi satu per satu.
+   * (allow-all/--yes). Default aktif; matikan lewat `/diff-auto off`.
    */
   showDiffOnAutoApprove?: boolean;
   /** URL layanan pencarian web opsional. */

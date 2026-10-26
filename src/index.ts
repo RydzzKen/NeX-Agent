@@ -67,6 +67,7 @@ function toCliOptions(
       : {}),
     thinking: options.thinking !== false,
     ...(options.markdown === false ? { markdown: false } : {}),
+    ...(options.typewriter === false ? { typewriter: false } : {}),
     ...(options.skills === false ? { skills: false } : {}),
     ...(options.debug ? { debug: true } : {}),
     ...(options.json ? { json: true } : {}),
@@ -93,6 +94,7 @@ function addInteractiveOptions(cmd: Command): Command {
     .option("--allow-path <path>", "setujui path sebelum sesi (bisa diulang)", collect, [])
     .option("--no-thinking", "sembunyikan thinking")
     .option("--no-markdown", "jangan render markdown pada jawaban")
+    .option("--no-typewriter", "matikan efek mengetik pada jawaban")
     .option("--no-skills", "jangan muat skill dari SKILL.md")
     .option("--debug", "log debug");
 }
@@ -166,6 +168,7 @@ async function main(): Promise<void> {
     .option("--allow-path <path>", "setujui path sebelum sesi (bisa diulang)", collect, [])
     .option("--no-thinking", "sembunyikan thinking")
     .option("--no-markdown", "jangan render markdown pada jawaban")
+    .option("--no-typewriter", "matikan efek mengetik pada jawaban")
     .option("--no-skills", "jangan muat skill dari SKILL.md")
     .option("--debug", "log debug")
     .option("--json", "keluaran JSON per baris")

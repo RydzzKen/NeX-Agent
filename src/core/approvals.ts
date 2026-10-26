@@ -36,6 +36,7 @@ export interface ApprovalOptions {
 export class Approvals {
   private autoAllWrites = false;
   private sessionAllowAll: boolean;
+  private autoApproveDiff: boolean;
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(
@@ -43,6 +44,7 @@ export class Approvals {
     private readonly opts: ApprovalOptions,
   ) {
     this.sessionAllowAll = opts.yes || Boolean(opts.allowAll);
+    this.autoApproveDiff = Boolean(opts.showDiffOnAutoApprove);
   }
 
   /** True bila semua permintaan persetujuan diizinkan untuk sesi ini. */
@@ -53,6 +55,16 @@ export class Approvals {
   /** Ubah mode izinkan-semua untuk sesi berjalan (toggle `/allow-all`). */
   setAllowAll(value: boolean): void {
     this.sessionAllowAll = value;
+  }
+
+  /** True bila diff tetap ditampilkan saat konfirmasi disetujui otomatis. */
+  autoApproveDiffEnabled(): boolean {
+    return this.autoApproveDiff;
+  }
+
+  /** Ubah tampilan diff saat auto-approve untuk sesi berjalan (`/diff-auto`). */
+  setAutoApproveDiff(value: boolean): void {
+    this.autoApproveDiff = value;
   }
 
   /** Jalankan satu tindakan setelah tindakan interaktif sebelumnya selesai. */
@@ -68,10 +80,15 @@ export class Approvals {
   confirm(req: ConfirmRequest, o: { allowAll?: boolean } = {}): Promise<ConfirmDecision> {
     if (this.sessionAllowAll) {
       // Walau otomatis disetujui, tampilkan diff sebagai preview bila diminta.
-      if (this.opts.showDiffOnAutoApprove && req.diff) this.io.diff(req.diff);
+      if (this.autoApproveDiff && req.diff) this.io.diff(req.diff);
       return Promise.resolve("yes");
     }
-    if (o.allowAll && this.autoAllWrites) return Promise.resolve("yes");
+    if (o.allowAll && this.autoAllWrites) {
+      // "Setujui semua" (a) juga melewati prompt — diff tetap ditampilkan
+      // sebagai preview bila fitur ini aktif.
+      if (this.autoApproveDiff && req.diff) this.io.diff(req.diff);
+      return Promise.resolve("yes");
+    }
     if (!this.opts.interactive) return Promise.resolve("no");
     return this.serialize(async () => {
       const decision = await this.io.confirm(req);

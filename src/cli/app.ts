@@ -105,6 +105,8 @@ export interface CliOptions {
   thinking?: boolean;
   /** Render markdown pada jawaban model (default true). */
   markdown?: boolean;
+  /** Animasi mengetik pada jawaban model (default true). */
+  typewriter?: boolean;
   /** Muat skill dari SKILL.md (default true). */
   skills?: boolean;
   debug?: boolean;
@@ -136,8 +138,10 @@ export const SLASH_HELP: Array<[string, string]> = [
   ["/usage [today|week|all|<id>]", "pemakaian token & biaya"],
   ["/permissions [revoke <path>]", "lihat/cabut izin luar workspace"],
   ["/allow-all [on|off]", "izinkan semua izin untuk sesi ini"],
+  ["/diff-auto [on|off]", "tampilkan diff walau disetujui otomatis"],
   ["/thinking [on|off]", "tampilkan/sembunyikan thinking"],
   ["/markdown [on|off]", "render markdown pada jawaban"],
+  ["/typewriter [on|off]", "efek mengetik pada jawaban model"],
   ["/default [tui|cli|reset]", "atur antarmuka default saat `agent` dijalankan tanpa tujuan"],
   ["/skills [install <sumber>]", "daftar skill · pasang skill via SkillUI"],
   ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
@@ -269,6 +273,7 @@ export class ChatApp {
         initProvider: opts.provider,
         thinking: opts.thinking !== false,
         markdown: opts.markdown ?? config.markdown ?? true,
+        typewriter: opts.typewriter ?? config.typewriter ?? true,
       });
       prompter = tuiPair.prompter;
       io = tuiPair.io;
@@ -278,6 +283,7 @@ export class ChatApp {
         thinking: opts.thinking !== false,
         json: Boolean(opts.json),
         markdown: opts.markdown ?? config.markdown ?? true,
+        typewriter: opts.typewriter ?? config.typewriter ?? true,
       });
     }
     const permissions = new PermissionManager(workspace.root);
@@ -289,7 +295,9 @@ export class ChatApp {
       yes: Boolean(opts.yes),
       interactive: Boolean(process.stdin.isTTY) && !opts.json,
       allowAll: Boolean(opts.allowAll),
-      showDiffOnAutoApprove: Boolean(config.showDiffOnAutoApprove),
+      // Default: diff tetap terlihat saat auto-approve. JSON per baris tetap
+      // bersih kecuali pengguna menyalakannya eksplisit di config.
+      showDiffOnAutoApprove: config.showDiffOnAutoApprove ?? !opts.json,
     });
 
     const app = new ChatApp(
@@ -800,6 +808,14 @@ export class ChatApp {
         );
         return "continue";
       }
+      case "/diff-auto": {
+        const value = args[0];
+        const on = value === undefined ? !this.approvals.autoApproveDiffEnabled() : value === "on";
+        this.approvals.setAutoApproveDiff(on);
+        this.config = await saveConfig({ showDiffOnAutoApprove: on });
+        this.io.info(`Diff saat auto-approve ${on ? "aktif" : "nonaktif"}.`);
+        return "continue";
+      }
       case "/thinking": {
         const value = args[0];
         const on = value === undefined ? !this.io.thinkingEnabled() : value === "on";
@@ -813,6 +829,14 @@ export class ChatApp {
         this.io.setMarkdown(on);
         this.config = await saveConfig({ markdown: on });
         this.io.info(`Markdown ${on ? "aktif" : "nonaktif"}.`);
+        return "continue";
+      }
+      case "/typewriter": {
+        const value = args[0];
+        const on = value === undefined ? !this.io.isTypewriterEnabled() : value === "on";
+        this.io.setTypewriter(on);
+        this.config = await saveConfig({ typewriter: on });
+        this.io.info(`Efek mengetik ${on ? "aktif" : "nonaktif"}.`);
         return "continue";
       }
       case "/default": {

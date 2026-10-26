@@ -240,4 +240,48 @@ describe("Approvals showDiffOnAutoApprove", () => {
 
     expect(diffs).toEqual([diff]);
   });
+
+  it("default nonaktif, lalu bisa diubah saat sesi berjalan (/diff-auto)", async () => {
+    const diffs: string[] = [];
+    const io: AgentIO = {
+      ...silentIO("no"),
+      diff: (text: string) => diffs.push(text),
+    };
+    const approvals = new Approvals(io, { yes: false, interactive: true, allowAll: true });
+    expect(approvals.autoApproveDiffEnabled()).toBe(false);
+
+    await approvals.confirm({ kind: "write", title: "x", detail: "", diff });
+    expect(diffs).toEqual([]);
+
+    approvals.setAutoApproveDiff(true);
+    expect(approvals.autoApproveDiffEnabled()).toBe(true);
+    await approvals.confirm({ kind: "write", title: "x", detail: "", diff });
+    expect(diffs).toEqual([diff]);
+
+    approvals.setAutoApproveDiff(false);
+    await approvals.confirm({ kind: "write", title: "x", detail: "", diff });
+    expect(diffs).toEqual([diff]);
+  });
+
+  it("menampilkan diff pada 'a' (setujui semua) untuk aksi berikutnya", async () => {
+    const diffs: string[] = [];
+    const io: AgentIO = {
+      ...silentIO("no"),
+      diff: (text: string) => diffs.push(text),
+      confirm: async () => "all",
+    };
+    const approvals = new Approvals(io, {
+      yes: false,
+      interactive: true,
+      showDiffOnAutoApprove: true,
+    });
+
+    // Prompt pertama menampilkan diff lewat UI konfirmasi (bukan io.diff).
+    await approvals.confirm({ kind: "write", title: "x", detail: "", diff }, { allowAll: true });
+    expect(diffs).toEqual([]);
+
+    // Aksi berikutnya auto-approve karena "a" — diff tetap harus tampil.
+    await approvals.confirm({ kind: "write", title: "y", detail: "", diff }, { allowAll: true });
+    expect(diffs).toEqual([diff]);
+  });
 });
