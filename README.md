@@ -35,6 +35,7 @@
 | 🧭 | **Mode Plan & Build** | Plan = read-only (ditegakkan di kode), Build = eksekusi |
 | 🛡️ | **Workspace boundary** | Akses luar workspace & file sensitif butuh konfirmasi |
 | 📝 | **Diff + konfirmasi** | Lihat perubahan dulu sebelum ditulis |
+| 👁️ | **Diff saat auto-approve** | Perubahan tetap terlihat walau `/allow-all`/`--yes` aktif (`/diff-auto`) |
 | ⏪ | **Checkpoint / Undo** | Batalkan perubahan dengan `/undo` |
 | 🔬 | **Tinjau perubahan** | `/diff` melihat perubahan sesi sebelum dibatalkan |
 | 🔀 | **Multi-provider** | Adapter OpenAI-compatible & Anthropic |
@@ -45,6 +46,7 @@
 | 🧠 | **Skill (SKILL.md)** | Agent bisa membuat & memasang skill sendiri |
 | ✅ | **Todo live** | Checklist tugas yang diperbarui di tempat |
 | 🎨 | **Render Markdown** | Heading, tabel, kode, dan gaya inline di terminal |
+| ⌨️ | **Efek mengetik** | Jawaban muncul bertahap seperti diketik; teks panjang otomatis lebih cepat (`/typewriter`) |
 | 🔎 | **Pencarian & baca web** | `web_search` (DuckDuckGo/SearXNG/Brave) + `web_fetch` halaman |
 | 🗂️ | **Cari di workspace** | `glob` & `grep` read-only (boleh di mode Plan) |
 | 📌 | **Memori jangka panjang** | Ingat fakta sederhana pengguna (nama, hobi) lintas sesi |
@@ -242,7 +244,8 @@ pertama), dan `/resume 2` melanjutkan sesi nomor 2. `/search <kata>` mencari
 teks (tanpa peduli huruf besar/kecil) di **seluruh** sesi — lintas workspace —
 lalu menampilkan sesi beserta cuplikan pesan yang cocok (`kamu`/`agen`/`tool`);
 buka sesi workspace ini dengan `/resume <id>`. `/allow-all` menyalakan
-mode izinkan-semua tanpa keluar dari sesi. `/web` menyalakan server web
+mode izinkan-semua tanpa keluar dari sesi — diff tetap ditampilkan sebagai
+preview, dan bisa dimatikan dengan `/diff-auto off`. `/web` menyalakan server web
 (chat + terminal) di dalam sesi yang sedang berjalan, memakai workspace, model,
 provider, dan mode aktif; `/web stop` mematikannya. `/telegram` menyalakan bot
 Telegram mandiri (lihat [Bot Telegram](#telegram)). `/exit` (atau Ctrl+D)
