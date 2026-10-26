@@ -17,7 +17,18 @@ interface FakeStdout {
   on: (event: string, cb: () => void) => void;
 }
 
-function setup(cwd = "/tmp"): { screen: Screen; prompter: TuiPrompter } {
+/** Folder sementara dengan beberapa entri agar completion punya kandidat. */
+const tmpRoots: string[] = [];
+
+/**
+ * Folder kosong untuk tes yang tidak sedang menguji completion. Tanpa ini,
+ * isi `/tmp` mesin penguji (mis. `adb.1000.log`) bisa ikut muncul di menu dan
+ * mengubah arti Enter — tes jadi tidak hermetis.
+ */
+const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), "nex-tui-scratch-"));
+tmpRoots.push(scratchDir);
+
+function setup(cwd = scratchDir): { screen: Screen; prompter: TuiPrompter } {
   const out: FakeStdout = { write: () => true, columns: 40, rows: 12, on: () => {} };
   const stdin = { isTTY: false, setRawMode: () => {}, on: () => {}, removeAllListeners: () => {} };
   const screen = new Screen({
@@ -29,8 +40,6 @@ function setup(cwd = "/tmp"): { screen: Screen; prompter: TuiPrompter } {
   return { screen, prompter };
 }
 
-/** Folder sementara dengan beberapa entri agar completion punya kandidat. */
-const tmpRoots: string[] = [];
 function tempDir(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nex-tui-"));
   fs.mkdirSync(path.join(dir, "Project", "Sub"), { recursive: true });
