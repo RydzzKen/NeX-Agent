@@ -94,6 +94,16 @@ export function centerLine(text: string, width: number): string {
   return " ".repeat(left) + clipped + " ".repeat(pad - left);
 }
 
+/** Ratakan kiri dan kanan dalam satu baris (mis. nama plugin + status). */
+export function alignSides(left: string, right: string, width: number): string {
+  const w = Math.max(1, Math.floor(width));
+  const rightWidth = visibleWidth(right);
+  if (rightWidth >= w) return fitLine(right, w);
+  const leftText = clipLine(left, w - rightWidth - 1);
+  const gap = Math.max(1, w - visibleWidth(leftText) - rightWidth);
+  return fitLine(leftText + " ".repeat(gap) + right, w);
+}
+
 function takeStart(text: string, max: number): string {
   if (max <= 0) return "";
   let out = "";

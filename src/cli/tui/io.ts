@@ -1,7 +1,7 @@
 import { color } from "../../util/color.js";
 import { renderMarkdown } from "../../util/markdown.js";
 import { todoHeader, todoLines } from "../../util/todos.js";
-import { isPrintableText, truncateTo, type Key } from "../../util/ansi.js";
+import { isPrintableText, stripAnsi, type Key } from "../../util/ansi.js";
 import type {
   ConfirmDecision,
   ConfirmRequest,
@@ -48,11 +48,15 @@ interface ViewerOverlay {
 
 type OverlayState = KeysOverlay | SecretOverlay | ListOverlay | ViewerOverlay;
 
-const STEP_SYMBOL: Record<StepOutcome["status"], string> = {
-  ok: color.green("✓"),
-  error: color.red("✗"),
-  denied: color.yellow("⊘"),
-};
+interface ToolStep {
+  id?: number;
+  info: StepInfo;
+  diffs: string[];
+}
+
+const EDIT_TOOLS = new Set(["edit_file", "write_file", "apply_patch"]);
+const MAX_OUTPUT_LINES = 40;
+const MAX_OUTPUT_CHARS = 6000;
 
 /**
  * Implementasi `ChatIO` untuk TUI: semua output dirender ke buffer layar
@@ -65,6 +69,7 @@ export class TuiIO implements ChatIO {
   private readonly typer: Typewriter;
   private textBuffer = "";
   private overlay?: OverlayState;
+  private readonly toolStack: ToolStep[] = [];
 
   constructor(
     private readonly screen: Screen,
@@ -145,26 +150,52 @@ export class TuiIO implements ChatIO {
 
   // ---- langkah & konten ----
 
-  stepStart(_info: StepInfo): void {
-    // hanya ditampilkan saat selesai (paritas dengan TerminalIO).
+  stepStart(info: StepInfo): void {
+    const text = toolLabel(info);
+    // Subagent punya baris sendiri; jangan tampilkan baris induk yang menggantung.
+    const id = info.name === "task" ? undefined : this.screen.appendTool(`$ ${text}`);
+    this.toolStack.push({ id, info, diffs: [] });
   }
 
   stepEnd(info: StepInfo, outcome: StepOutcome): void {
-    const icon = info.risk === "mutate" ? "✎" : "⚙";
-    const name = color.bold(info.name.padEnd(12));
-    const args = color.dim(truncateTo(info.argsSummary, 46));
-    const dur = color.dim(`(${outcome.durationMs}ms)`);
-    this.screen.append("step", `${icon} ${name} ${args} ${dur} ${STEP_SYMBOL[outcome.status]}`);
+    const step = this.toolStack.pop() ?? { info, diffs: [] };
+    const edit = EDIT_TOOLS.has(info.name);
+    const status = outcome.status;
+    if (step.id !== undefined) {
+      this.screen.finishTool(step.id, {
+        text: edit ? info.argsSummary : `$ ${toolLabel(info)}`,
+        kind: edit ? "edit" : "tool",
+        status,
+      });
+    } else if (info.name === "task") {
+      const label = outcome.summary ? `${info.argsSummary} · ${outcome.summary}` : info.argsSummary;
+      this.screen.append("info", `↳ ${label}`);
+    }
+
+    for (const diff of step.diffs) {
+      const path = diffPath(diff) ?? info.argsSummary;
+      this.screen.append("edit", path);
+      this.screen.appendDiff(diff);
+    }
+    const output = outcome.output ? truncateOutput(outcome.output) : "";
+    if (output) this.screen.append("tool-out", output);
   }
 
   diff(text: string): void {
-    this.screen.append("raw", text);
+    const step = this.toolStack[this.toolStack.length - 1];
+    if (step) {
+      step.diffs.push(text);
+      return;
+    }
+    const path = diffPath(text);
+    if (path) this.screen.append("edit", path);
+    this.screen.appendDiff(text);
   }
 
   todos(items: TodoItem[]): void {
     const header = todoHeader(items);
     const lines = todoLines(items);
-    this.screen.append("info", `📋 ${header}`);
+    this.screen.append("info", `tugas  ${header}`);
     for (const line of lines) this.screen.append("raw", line);
   }
 
@@ -173,25 +204,26 @@ export class TuiIO implements ChatIO {
   }
 
   /** Tampilkan pesan pengguna di riwayat (baris input dihapus saat submit). */
-  userMessage(text: string): void {
-    this.screen.append("user", `› ${text}`);
+  userMessage(text: string, title?: string): void {
+    this.screen.startSession(title ?? text);
+    this.screen.append("user", text);
   }
 
   info(message: string): void {
-    this.screen.append("info", `ℹ ${message}`);
+    this.screen.append("info", `· ${message}`);
   }
 
   warn(message: string): void {
-    this.screen.append("warn", `⚠ ${message}`);
+    this.screen.append("warn", `! ${message}`);
   }
 
   error(message: string): void {
-    this.screen.append("error", `✗ ${message}`);
+    this.screen.append("error", `× ${message}`);
   }
 
   summary(reason: StopReason, message: string): void {
     void reason;
-    this.screen.append("warn", `${color.yellow("── berhenti ──")} ${message}`);
+    this.screen.append("warn", `! ${message}`);
   }
 
   busy(on: boolean): void {
@@ -205,12 +237,12 @@ export class TuiIO implements ChatIO {
   // ---- sub-workspace (subagent) ----
 
   subtaskStart(label: string): void {
-    this.screen.appendRaw(`${color.cyan("⟳")} ${label} berjalan…`);
+    this.screen.append("info", `↳ ${label}`);
     this.screen.openSubtaskView(label);
   }
 
   subtaskEnd(): void {
-    this.screen.appendRaw(`${color.brightGreen("✓")} subagent selesai.`);
+    this.screen.append("info", "subagent selesai");
     this.screen.activateMainView();
   }
 
@@ -219,7 +251,7 @@ export class TuiIO implements ChatIO {
   async confirm(req: ConfirmRequest): Promise<ConfirmDecision> {
     const body: string[] = [];
     if (req.diff) body.push(...req.diff.split("\n"));
-    if (req.irreversible) body.push("⚠ Efek samping perintah shell tidak bisa di-undo.");
+    if (req.irreversible) body.push("! Efek samping perintah shell tidak bisa di-undo.");
     const decision = await this.openOverlay({
       title: req.title,
       body,
@@ -265,10 +297,7 @@ export class TuiIO implements ChatIO {
   async requestSensitiveAccess(req: SensitiveAccessRequest): Promise<boolean> {
     const decision = await this.openOverlay({
       title: "FILE SENSITIF",
-      body: [
-        req.detail,
-        `${req.reason} — konfirmasi ini tidak bisa dilewati allow-all.`,
-      ],
+      body: [req.detail, `${req.reason} — konfirmasi ini tidak bisa dilewati allow-all.`],
       keys: [
         ["y", "izinkan"],
         ["n", "tolak"],
@@ -391,7 +420,8 @@ export class TuiIO implements ChatIO {
       else if (key.name === "pagedown") this.screen.overlayScrollBy(10);
       else if (key.name === "home") this.screen.overlayScrollBy(-Number.MAX_SAFE_INTEGER);
       else if (key.name === "end") this.screen.overlayScrollBy(Number.MAX_SAFE_INTEGER);
-      else if (key.name === "return" || key.name === "escape" || key.name === "q") this.resolveViewer();
+      else if (key.name === "return" || key.name === "escape" || key.name === "q")
+        this.resolveViewer();
       return;
     }
 
@@ -458,4 +488,50 @@ export class TuiIO implements ChatIO {
     this.clearOverlay();
     o.resolve();
   }
+}
+
+/** Label ringkas untuk baris tool: perintah shell atau nama tool + argumen. */
+function toolLabel(info: StepInfo): string {
+  if (info.name === "run_shell") return info.argsSummary;
+  if (EDIT_TOOLS.has(info.name)) return info.argsSummary;
+  if (info.argsSummary === info.name) return info.name;
+  return `${info.name} ${info.argsSummary}`;
+}
+
+/** Ambil path dari header diff (`path  (+N -M)`) atau `+++ b/path`. */
+function diffPath(text: string): string | undefined {
+  for (const raw of stripAnsi(text).split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    const header = /^(.+?)\s+\(\+\d+\s+-\d+\)$/.exec(line);
+    if (header) return header[1]!.trim();
+    if (line.startsWith("+++ "))
+      return line
+        .slice(4)
+        .replace(/^[ab]\//, "")
+        .trim();
+    if (line.startsWith("--- "))
+      return line
+        .slice(4)
+        .replace(/^[ab]\//, "")
+        .trim();
+  }
+  return undefined;
+}
+
+/** Batasi output tool agar layar tidak dibanjiri hasil panjang. */
+function truncateOutput(text: string): string {
+  const clean = String(text).replace(/\r/g, "").replace(/\s+$/, "");
+  if (!clean) return "";
+  const all = clean.split("\n");
+  let lines = all.slice(0, MAX_OUTPUT_LINES);
+  let joined = lines.join("\n");
+  if (joined.length > MAX_OUTPUT_CHARS) {
+    joined = joined.slice(0, MAX_OUTPUT_CHARS);
+    lines = joined.split("\n");
+  }
+  if (all.length > lines.length || joined.length < clean.length) {
+    joined += `\n… (${Math.max(0, all.length - lines.length)} baris lagi)`;
+  }
+  return joined;
 }

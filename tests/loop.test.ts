@@ -12,6 +12,43 @@ function readCall(path: string, id?: string) {
   return { ...(id ? { id } : {}), name: "read_file", arguments: JSON.stringify({ path }) };
 }
 
+describe("AgentSession.runShell (input `!`)", () => {
+  it("menjalankan run_shell dan mengirim output ke UI", async () => {
+    const steps: Array<{ name: string; output?: string }> = [];
+    const io: AgentIO = {
+      ...silentIO("yes"),
+      stepStart: (info) => steps.push({ name: info.name }),
+      stepEnd: (info, outcome) =>
+        steps.push({ name: info.name, ...(outcome.output ? { output: outcome.output } : {}) }),
+    };
+    const harness = await createHarness({ script: [], io });
+    try {
+      const result = await harness.session.runShell(
+        "printf 'halo-shell'",
+        new AbortController().signal,
+      );
+      expect(result.ok).toBe(true);
+      expect(result.content).toContain("halo-shell");
+      expect(steps[0]?.name).toBe("run_shell");
+      expect(steps[1]?.output).toContain("halo-shell");
+      expect(harness.session.getHistory()).toHaveLength(0);
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("menolak perintah shell di mode Plan", async () => {
+    const harness = await createHarness({ script: [], mode: "plan" });
+    try {
+      const result = await harness.session.runShell("echo nope", new AbortController().signal);
+      expect(result.denied).toBe(true);
+      expect(result.content).toContain("mode Plan");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+});
+
 describe("loop agentik (kriteria penerimaan)", () => {
   it("berhenti tepat di batas langkah dengan model palsu", async () => {
     const harness = await createHarness({
@@ -35,7 +72,11 @@ describe("loop agentik (kriteria penerimaan)", () => {
           toolCalls: [
             { id: "c1", name: "read_file", arguments: JSON.stringify({ path: "hello.txt" }) },
             { id: "c2", name: "list_dir", arguments: JSON.stringify({ path: "." }) },
-            { id: "c3", name: "write_file", arguments: JSON.stringify({ path: "x.txt", content: "hi" }) },
+            {
+              id: "c3",
+              name: "write_file",
+              arguments: JSON.stringify({ path: "x.txt", content: "hi" }),
+            },
           ],
         },
         { text: "selesai" },
@@ -143,7 +184,15 @@ describe("loop agentik (kriteria penerimaan)", () => {
     const harness = await createHarness({
       mode: "plan",
       script: [
-        { toolCalls: [{ id: "w1", name: "write_file", arguments: JSON.stringify({ path: "a.txt", content: "x" }) }] },
+        {
+          toolCalls: [
+            {
+              id: "w1",
+              name: "write_file",
+              arguments: JSON.stringify({ path: "a.txt", content: "x" }),
+            },
+          ],
+        },
         { text: "menyerah" },
       ],
     });
@@ -152,7 +201,9 @@ describe("loop agentik (kriteria penerimaan)", () => {
       expect(result.stopReason).toBe("stop");
       const tool = harness.session.getHistory().find((m) => m.role === "tool");
       expect(tool?.content).toContain("mode Plan");
-      await expect(fs.readFile(path.join(harness.workspaceRoot, "a.txt"), "utf8")).rejects.toThrow();
+      await expect(
+        fs.readFile(path.join(harness.workspaceRoot, "a.txt"), "utf8"),
+      ).rejects.toThrow();
     } finally {
       await harness.cleanup();
     }
@@ -203,7 +254,9 @@ describe("loop agentik (kriteria penerimaan)", () => {
       }
       await harness.run();
       for (const f of files) {
-        expect(await fs.readFile(path.join(harness.workspaceRoot, f), "utf8")).toContain("B_diubah");
+        expect(await fs.readFile(path.join(harness.workspaceRoot, f), "utf8")).toContain(
+          "B_diubah",
+        );
       }
 
       const undo = await harness.checkpoints.undoLast(harness.workspaceRoot);
@@ -262,10 +315,7 @@ describe("loop agentik (kriteria penerimaan)", () => {
               id: "t1",
               name: "todo_write",
               arguments: JSON.stringify({
-                todos: [
-                  { content: "Tahap 1: baca file" },
-                  { content: "Tahap 2: ubah file" },
-                ],
+                todos: [{ content: "Tahap 1: baca file" }, { content: "Tahap 2: ubah file" }],
               }),
             },
           ],

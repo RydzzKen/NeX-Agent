@@ -14,6 +14,8 @@ export interface StepOutcome {
   status: "ok" | "error" | "denied";
   durationMs: number;
   summary?: string;
+  /** Output tool untuk ditampilkan UI (opsional; bisa dipotong per renderer). */
+  output?: string;
 }
 
 export type AccessKind = "read" | "write";

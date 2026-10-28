@@ -4,7 +4,7 @@ Peta kerja agar tidak lupa. Tandai `[x]` bila selesai, `[>]` sedang dikerjakan.
 
 Legenda: `[x]` selesai · `[>]` berjalan · `[ ]` belum · `[~]` opsional/nanti
 
-Terakhir diperbarui: Re-design TUI tahap 1 selesai — tema baru + layout responsif; menunggu lanjut tahap 2.
+Terakhir diperbarui: Re-design TUI selesai — home/sesi, transkrip, autocomplete, slash command, undo/redo, sidebar responsif, README, dan screenshot.
 
 ## Selesai
 
@@ -30,19 +30,19 @@ Terakhir diperbarui: Re-design TUI tahap 1 selesai — tema baru + layout respon
 - [x] Pesan error dirapikan: provider (termasuk error di dalam stream) & MCP tak lagi tampil sebagai JSON mentah; Web/Telegram/CLI konsisten
 - [x] **Mode TUI** (`nex-agent tui`) — layar penuh: alt-screen, status bar, view subagent, overlay konfirmasi/rahasia, pintasan tombol, gulir horizontal input, antrean pesan saat agent sibuk (`src/cli/tui/*`, `src/util/ansi.ts`)
 
-## Re-design TUI (mengikuti `~/Project/TUI.md`)  ← berjalan
+## Re-design TUI (mengikuti `~/Project/TUI.md`)  ← selesai
 
 Sumber kebenaran: `TUI.md` + mockup `Re-Design NeX-Agent TUI.html`. Renderer custom dipertahankan (repo tidak memakai Ink).
 
 Keputusan: undo/redo berbasis checkpoint + snapshot riwayat; tema `opencode` + `mint`; plugin toggle lewat panel/klik; `/compact` ringkasan model dengan fallback trim.
 
 - [x] **Tahap 1** — tema baru (palet TUI.md, fallback truecolor → 256 → 16), logo `NeX`/`AGENT`, layout responsif (`≥100` / `60–99` / `<60`, tinggi `<20`) + tes; tes prompt dibuat hermetis (scratch dir)
-- [ ] **Tahap 2** — dua layar: home & sesi; header judul + konteks; footer folder:branch + versi; sidebar; resize tanpa flicker
-- [ ] **Tahap 3** — isi sesi: panel pesan user, `$ perintah` + output, `← Edit path` + diff bernomor, kursor tool berjalan, `/details`
-- [ ] **Tahap 4** — autocomplete `/` (prefix → contains), `@` fuzzy file, `!` shell, Tab ganti mode (configurable), `/mode`, Enter terima saran
-- [ ] **Tahap 5** — slash command: `compact`/`summarize`, `details`, `editor`, `export`, `init`, `redo`, `themes`; alias `quit`/`q`/`clear`/`resume`/`continue`; undo/redo + snapshot
-- [ ] **Tahap 6** — data sidebar (sesi/plugin/file), toggle plugin, panel detail untuk 60–99 kolom, README TUI, screenshot `120×35` / `80×24` / `45×30`
-- [ ] **Verifikasi akhir** — `pnpm test`, `pnpm lint`, `pnpm typecheck`, `pnpm build`; tidak ada regresi loop/tool/provider
+- [x] **Tahap 2** — dua layar: home & sesi; header judul + konteks; footer folder:branch + versi; sidebar; resize tanpa flicker
+- [x] **Tahap 3** — isi sesi: panel pesan user, `$ perintah` + output, `← Edit path` + diff bernomor, kursor tool berjalan, `/details`
+- [x] **Tahap 4** — autocomplete `/` (prefix → contains), `@` fuzzy file, `!` shell, Tab ganti mode (configurable), `/mode`, Enter terima saran
+- [x] **Tahap 5** — slash command: `compact`/`summarize`, `details`, `editor`, `export`, `init`, `redo`, `themes`; alias `quit`/`q`/`clear`/`resume`/`continue`; undo/redo + snapshot
+- [x] **Tahap 6** — data sidebar (sesi/plugin/file), toggle plugin (klik + `/mcp enable|disable`), panel detail untuk 60–99 kolom, README TUI, screenshot `120×35` / `80×24` / `45×30` di `docs/tui/`
+- [x] **Verifikasi akhir** — `pnpm test` (804 tes), `pnpm lint`, `pnpm typecheck`, `pnpm build`; tidak ada regresi loop/tool/provider
 
 ## Web (chat + terminal di browser)  ← selesai
 

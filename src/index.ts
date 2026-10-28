@@ -31,6 +31,7 @@ import {
 } from "./server/telegram_daemon.js";
 import { qrLines } from "./util/qr.js";
 import { color } from "./util/color.js";
+import { APP_VERSION } from "./version.js";
 import type { Mode } from "./core/types.js";
 
 function collect(value: string, previous: string[]): string[] {
@@ -153,7 +154,7 @@ async function main(): Promise<void> {
   program
     .name("agent")
     .description("AI Agent CLI — loop agentik, mode Plan/Build, multi-provider")
-    .version("1.21.0", "-v, --version", "tampilkan versi")
+    .version(APP_VERSION, "-v, --version", "tampilkan versi")
     .argument("[goal]", "tujuan tugas; kosong untuk mode chat interaktif")
     .option("--mode <mode>", "mode awal: plan atau build")
     .option("--model <model>", "model yang dipakai")

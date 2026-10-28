@@ -20,6 +20,7 @@ export const BUSY_SAFE_COMMANDS: ReadonlySet<string> = new Set([
   "/usage",
   "/todos",
   "/diff",
+  "/details",
   "/search",
   "/permissions",
   "/thinking",

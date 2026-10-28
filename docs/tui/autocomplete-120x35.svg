@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1116" height="701" viewBox="0 0 1116 701" role="img">
+<rect width="1116" height="701" fill="#050505"/>
+<rect x="17" y="17" width="1082" height="667" fill="#0a0a0a" stroke="#2a2a2a"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="15" xml:space="preserve">
+<rect x="18" y="189" width="486" height="19" fill="#0a0a0a"/>
+<rect x="504" y="189" width="81" height="19" fill="#0a0a0a"/>
+<text x="504" y="203" fill="#6b6b6b">█▄ █ █▀▀ </text>
+<rect x="585" y="189" width="27" height="19" fill="#0a0a0a"/>
+<text x="585" y="203" fill="#eeeeee">▀▄▀</text>
+<rect x="612" y="189" width="486" height="19" fill="#0a0a0a"/>
+<rect x="18" y="208" width="486" height="19" fill="#0a0a0a"/>
+<rect x="504" y="208" width="81" height="19" fill="#0a0a0a"/>
+<text x="504" y="222" fill="#6b6b6b">█ ▀█ ██▄ </text>
+<rect x="585" y="208" width="27" height="19" fill="#0a0a0a"/>
+<text x="585" y="222" fill="#eeeeee">█ █</text>
+<rect x="612" y="208" width="486" height="19" fill="#0a0a0a"/>
+<rect x="18" y="227" width="495" height="19" fill="#0a0a0a"/>
+<rect x="513" y="227" width="81" height="19" fill="#0a0a0a"/>
+<text x="513" y="241" fill="#808080">A G E N T</text>
+<rect x="594" y="227" width="504" height="19" fill="#0a0a0a"/>
+<rect x="18" y="246" width="1080" height="19" fill="#0a0a0a"/>
+<rect x="18" y="265" width="216" height="19" fill="#0a0a0a"/>
+<rect x="234" y="265" width="648" height="19" fill="#5c9cf5"/>
+<text x="234" y="279" fill="#0a0a0a"> /connect        hubungkan provider (yang tersimpan bisa dipakai ulang) </text>
+<rect x="234" y="284" width="648" height="19" fill="#141414"/>
+<text x="234" y="298" fill="#808080"> /provider  kelola provider tersimpan (id: anthropic, openai, custom:&lt;… </text>
+<rect x="234" y="303" width="648" height="19" fill="#141414"/>
+<text x="234" y="317" fill="#808080"> /models   lihat/ganti model (0 = custom, clear = hapus riwayat custom) </text>
+<rect x="234" y="322" width="648" height="19" fill="#141414"/>
+<text x="234" y="336" fill="#808080"> /plan                                  pindah ke mode Plan (read-only) </text>
+<rect x="234" y="341" width="648" height="19" fill="#141414"/>
+<text x="234" y="355" fill="#808080"> /build                                 pindah ke mode Build (eksekusi) </text>
+<rect x="234" y="360" width="648" height="19" fill="#141414"/>
+<text x="234" y="374" fill="#808080"> /mode                                       lihat atau ganti mode sesi </text>
+<rect x="234" y="379" width="9" height="19" fill="#141414"/>
+<rect x="234" y="379" width="9" height="19" fill="#5c9cf5"/>
+<rect x="243" y="379" width="9" height="19" fill="#141414"/>
+<rect x="252" y="379" width="18" height="19" fill="#141414"/>
+<text x="252" y="393" fill="#808080">› </text>
+<rect x="270" y="379" width="9" height="19" fill="#141414"/>
+<text x="270" y="393" fill="#eeeeee">/</text>
+<rect x="279" y="379" width="9" height="19" fill="#5c9cf5"/>
+<rect x="234" y="398" width="9" height="19" fill="#141414"/>
+<rect x="234" y="398" width="9" height="19" fill="#5c9cf5"/>
+<rect x="243" y="398" width="9" height="19" fill="#141414"/>
+<rect x="252" y="398" width="45" height="19" fill="#141414"/>
+<text x="252" y="412" fill="#5c9cf5">build</text>
+<rect x="297" y="398" width="18" height="19" fill="#141414"/>
+<rect x="315" y="398" width="135" height="19" fill="#141414"/>
+<text x="315" y="412" fill="#808080">claude-sonnet-4</text>
+<rect x="450" y="398" width="18" height="19" fill="#141414"/>
+<rect x="468" y="398" width="81" height="19" fill="#141414"/>
+<text x="468" y="412" fill="#6b6b6b">anthropic</text>
+<rect x="549" y="398" width="333" height="19" fill="#141414"/>
+<text x="441" y="450" fill="#6b6b6b">tab</text>
+<text x="477" y="450" fill="#6b6b6b">mode/lengkapi</text>
+<text x="603" y="450" fill="#6b6b6b">·</text>
+<text x="621" y="450" fill="#6b6b6b">/</text>
+<text x="639" y="450" fill="#6b6b6b">perintah</text>
+<text x="720" y="450" fill="#6b6b6b">·</text>
+<text x="738" y="450" fill="#6b6b6b">@</text>
+<text x="756" y="450" fill="#6b6b6b">file</text>
+<text x="801" y="450" fill="#6b6b6b">·</text>
+<text x="819" y="450" fill="#6b6b6b">!</text>
+<text x="837" y="450" fill="#6b6b6b">shell</text>
+<text x="333" y="469" fill="#e5a14d">●</text>
+<text x="351" y="469" fill="#808080">tip:</text>
+<text x="396" y="469" fill="#808080">ketik</text>
+<text x="450" y="469" fill="#808080">/skills</text>
+<text x="522" y="469" fill="#808080">untuk</text>
+<text x="576" y="469" fill="#808080">melihat</text>
+<text x="648" y="469" fill="#808080">skill</text>
+<text x="702" y="469" fill="#808080">terpasang</text>
+<text x="36" y="678" fill="#808080">~/Project/NeX-Agent:main</text>
+<text x="927" y="678" fill="#6b6b6b">NeX-Agent</text>
+<text x="1017" y="678" fill="#6b6b6b">v1.21.0</text>
+</g>
+</svg>

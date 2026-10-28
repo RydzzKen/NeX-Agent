@@ -17,11 +17,107 @@ export const SUBCOMMANDS: Record<string, string[]> = {
   "/provider": ["use", "edit", "hapus"],
   "/sessions": ["clear"],
   "/delete": ["all"],
+  "/details": ["panel"],
+  "/mode": ["plan", "build"],
   "/skill": ["off"],
   "/skills": ["install"],
-  "/telegram": ["start", "stop", "restart", "status", "logs", "token", "allow", "deny", "on", "off"],
+  "/telegram": [
+    "start",
+    "stop",
+    "restart",
+    "status",
+    "logs",
+    "token",
+    "allow",
+    "deny",
+    "on",
+    "off",
+  ],
   "/web": ["lan", "stop"],
 };
+
+const AT_IGNORED = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  ".next",
+  ".nuxt",
+  ".cache",
+  ".turbo",
+  "target",
+  "vendor",
+]);
+
+/** Nilai fuzzy: makin tinggi makin cocok; -1 = tidak cocok. */
+function fuzzyScore(text: string, query: string): number {
+  if (!query) return 1;
+  const hay = text.toLowerCase();
+  const q = query.toLowerCase();
+  if (hay === q) return 10_000;
+  if (hay.startsWith(q)) return 5_000 - hay.length;
+  const idx = hay.indexOf(q);
+  if (idx >= 0) return 3_000 - idx - hay.length;
+  let ti = 0;
+  let last = -2;
+  let score = 0;
+  for (const ch of q) {
+    const found = hay.indexOf(ch, ti);
+    if (found < 0) return -1;
+    score += found === last + 1 ? 4 : 1;
+    last = found;
+    ti = found + 1;
+  }
+  return score - hay.length * 0.01;
+}
+
+/** Kumpulkan file relatif (batas kedalaman + jumlah) untuk pencarian `@`. */
+function listFiles(root: string, max = 4000): string[] {
+  const out: string[] = [];
+  const stack: Array<{ dir: string; rel: string; depth: number }> = [
+    { dir: root, rel: "", depth: 0 },
+  ];
+  while (stack.length > 0 && out.length < max) {
+    const item = stack.pop()!;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(item.dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const rel = item.rel ? `${item.rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (AT_IGNORED.has(entry.name) || item.depth >= 8) continue;
+        stack.push({ dir: path.join(item.dir, entry.name), rel, depth: item.depth + 1 });
+      } else if (entry.isFile()) {
+        out.push(rel);
+        if (out.length >= max) break;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Cari file untuk token `@...` dengan fuzzy match pada path relatif.
+ * Mengembalikan kandidat berawalan `@` siap dipakai sebagai pengganti token.
+ */
+export function completeAt(input: string, cwd: string, max = 30): [string[], string] {
+  const token = input.replace(/^\s+/, "");
+  if (!token.startsWith("@")) return [[], token];
+  const query = token.slice(1).replace(/^\.\//, "");
+  const files = listFiles(cwd);
+  const scored = files
+    .map((file) => ({ file, score: fuzzyScore(file, query) }))
+    .filter((entry) => entry.score >= 0)
+    .sort((a, b) => b.score - a.score || a.file.localeCompare(b.file))
+    .slice(0, max)
+    .map((entry) => `@${entry.file}`);
+  return [scored, token];
+}
 
 function completePath(token: string, cwd: string): [string[], string] {
   const dirPart = token.includes("/") ? token.slice(0, token.lastIndexOf("/")) : ".";
@@ -75,10 +171,15 @@ export function formatHint(hits: string[], max = 12): string {
 export function completeLine(input: string, commands: string[], cwd: string): [string[], string] {
   const left = input.replace(/^\s+/, "");
 
-  // Token pertama: perintah slash.
+  // Pencarian file fuzzy: `@src/tui` / `@screen`.
+  if (left.startsWith("@")) return completeAt(left, cwd);
+
+  // Token pertama: perintah slash. Prefix dulu, lalu kecocokan di tengah.
   if (left.startsWith("/") && !left.includes(" ")) {
-    const hits = commands.filter((c) => c.startsWith(left));
-    return [hits.length ? hits : commands, left];
+    const bare = left.slice(1);
+    const prefix = commands.filter((c) => c.startsWith(left));
+    const contains = commands.filter((c) => !prefix.includes(c) && c.slice(1).includes(bare));
+    return [[...prefix, ...contains], left];
   }
 
   // Token kedua untuk perintah yang punya subperintah.

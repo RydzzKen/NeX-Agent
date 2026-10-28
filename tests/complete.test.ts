@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { completeLine, formatHint } from "../src/cli/complete.js";
+import { completeAt, completeLine, formatHint } from "../src/cli/complete.js";
 
 const CMDS = ["/connect", "/models", "/mcp", "/provider", "/sessions", "/serve"];
 
@@ -36,6 +36,7 @@ describe("completeLine", () => {
     await fs.writeFile(path.join(dir, "notes.txt"), "x");
     await fs.writeFile(path.join(dir, "readme.md"), "x");
     await fs.mkdir(path.join(dir, "src"));
+    await fs.writeFile(path.join(dir, "src", "screen.ts"), "x");
     await fs.writeFile(path.join(dir, ".env"), "secret");
   });
 
@@ -49,9 +50,28 @@ describe("completeLine", () => {
     expect(hits).toEqual(["/sessions", "/serve"]);
   });
 
-  it("menampilkan semua perintah bila tidak ada yang cocok", () => {
+  it("mengembalikan kosong bila tidak ada perintah yang cocok", () => {
     const [hits] = completeLine("/zzz", CMDS, dir);
-    expect(hits).toEqual(CMDS);
+    expect(hits).toEqual([]);
+  });
+
+  it("mencocokkan potongan di tengah setelah prefix", () => {
+    const [hits] = completeLine("/odel", CMDS, dir);
+    expect(hits).toEqual(["/models"]);
+  });
+
+  it("mencari file fuzzy dengan awalan @", () => {
+    const [hits, token] = completeLine("@rdm", CMDS, dir);
+    expect(token).toBe("@rdm");
+    expect(hits[0]).toBe("@readme.md");
+    const [nested] = completeAt("@scr", dir);
+    expect(nested).toContain("@src/screen.ts");
+  });
+
+  it("tidak menampilkan file tersembunyi/diabaikan pada pencarian @", () => {
+    const [hits] = completeAt("@", dir);
+    expect(hits).not.toContain("@.env");
+    expect(hits.length).toBeGreaterThan(0);
   });
 
   it("melengkapi subperintah (/provider ha -> hapus)", () => {

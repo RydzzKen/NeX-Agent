@@ -1,5 +1,15 @@
 import path from "node:path";
-import type { Mode, ModelInfo, ModelPricing, NeutralMessage, StopReason, SubagentPlan, SubagentResult, TokenUsage, ToolCallRequest } from "./types.js";
+import type {
+  Mode,
+  ModelInfo,
+  ModelPricing,
+  NeutralMessage,
+  StopReason,
+  SubagentPlan,
+  SubagentResult,
+  TokenUsage,
+  ToolCallRequest,
+} from "./types.js";
 import { EMPTY_USAGE } from "./types.js";
 import { runSubagent } from "./task.js";
 import type { StepInfo } from "./io.js";
@@ -232,6 +242,89 @@ export class AgentSession {
     };
   }
 
+  /**
+   * Jalankan perintah shell langsung dari input `!...` tanpa memanggil model.
+   * Memakai tool `run_shell` yang sama agar izin, konfirmasi, dan pembatasan
+   * mode tetap berlaku; output dikembalikan untuk ditampilkan di transkrip.
+   */
+  async runShell(
+    command: string,
+    signal: AbortSignal,
+  ): Promise<{ ok: boolean; content: string; summary?: string; denied?: boolean }> {
+    const tool = this.deps.registry.get("run_shell");
+    if (!tool) {
+      const content = "Tool run_shell tidak tersedia.";
+      this.deps.io.error(content);
+      return { ok: false, content };
+    }
+    const parsed = tool.schema.safeParse({ command });
+    if (!parsed.success) {
+      const content = `Argumen tidak valid untuk run_shell: ${parsed.error.issues
+        .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+        .join("; ")}`;
+      this.deps.io.error(content);
+      return { ok: false, content };
+    }
+    const risk = tool.riskFor ? tool.riskFor(parsed.data) : tool.risk;
+    if (this.mode === "plan" && risk === "mutate") {
+      const content = `Ditolak: tool "run_shell" tidak diizinkan di mode Plan.`;
+      this.deps.io.warn(content);
+      return { ok: false, content, denied: true };
+    }
+
+    const summary = tool.summarize ? tool.summarize(parsed.data) : command;
+    const stepInfo: StepInfo = {
+      index: this.stepCounter + 1,
+      total: this.maxSteps,
+      name: "run_shell",
+      argsSummary: summary,
+      risk,
+    };
+    this.stepCounter += 1;
+    this.deps.io.stepStart(stepInfo);
+    const started = Date.now();
+    try {
+      const result = await tool.execute(parsed.data, this.toolContext(signal));
+      const content = trimToolResult(result.content);
+      this.deps.io.stepEnd(stepInfo, {
+        status: result.ok === false ? "error" : "ok",
+        durationMs: Date.now() - started,
+        summary: result.summary,
+        output: content,
+      });
+      if (result.todos) this.deps.io.todos?.(result.todos);
+      this.deps.logger.info("tool.ok", {
+        tool: "run_shell",
+        args: JSON.stringify({ command }),
+        durationMs: Date.now() - started,
+      });
+      return {
+        ok: result.ok !== false,
+        content,
+        ...(result.summary ? { summary: result.summary } : {}),
+      };
+    } catch (err) {
+      const denied = err instanceof ToolDeniedError;
+      const message = err instanceof Error ? err.message : String(err);
+      const detail = formatErrorMessage(err, { fallback: "kesalahan tidak diketahui" });
+      this.deps.io.stepEnd(stepInfo, {
+        status: denied ? "denied" : "error",
+        durationMs: Date.now() - started,
+        summary: denied ? "ditolak" : "error",
+        output: detail,
+      });
+      this.deps.logger.warn(denied ? "tool.denied" : "tool.error", {
+        tool: "run_shell",
+        error: message,
+      });
+      return {
+        ok: false,
+        denied: denied || undefined,
+        content: denied ? `Ditolak: ${detail}` : detail,
+      };
+    }
+  }
+
   /** Jalankan satu tugas pengguna sampai selesai atau kondisi berhenti. */
   async run(userText: string, signal: AbortSignal): Promise<RunResult> {
     this.history.push({ role: "user", content: userText });
@@ -263,10 +356,14 @@ export class AgentSession {
         // Batal dari pengguna (Ctrl+C) memutus koneksi provider — itu bukan
         // error provider, jadi laporkan sebagai interupsi yang bersih.
         if (signal.aborted) return this.interrupt();
-        const message = formatErrorMessage(err, { fallback: "Kesalahan provider tidak diketahui." });
+        const message = formatErrorMessage(err, {
+          fallback: "Kesalahan provider tidak diketahui.",
+        });
         // Pesan HTTP dari provider sudah berbunyi "Provider <id> gagal: …" —
         // jangan dibungkus lagi agar tidak ada kata "gagal" dua kali.
-        this.deps.io.error(/^Provider /i.test(message) ? message : `Gagal memanggil model: ${message}`);
+        this.deps.io.error(
+          /^Provider /i.test(message) ? message : `Gagal memanggil model: ${message}`,
+        );
         // Jangan ulangi `message` di ringkasan berhenti: body dari provider bisa
         // sangat panjang dan sudah tampil di baris error tepat di atasnya.
         this.deps.io.summary("provider_error", providerErrorSummary(message));
@@ -291,10 +388,7 @@ export class AgentSession {
 
       this.history.push({ role: "assistant", content: turn.text, toolCalls: turn.toolCalls });
 
-      const { results, invalidJson, aborted } = await this.executeToolCalls(
-        turn.toolCalls,
-        signal,
-      );
+      const { results, invalidJson, aborted } = await this.executeToolCalls(turn.toolCalls, signal);
       let repetitionHit = false;
       for (const result of results) {
         this.history.push({
@@ -310,8 +404,7 @@ export class AgentSession {
 
       consecutiveInvalidJson = invalidJson > 0 ? consecutiveInvalidJson + invalidJson : 0;
       if (consecutiveInvalidJson >= 2) {
-        const message =
-          "Tool call JSON tidak valid dua kali berturut-turut. Loop dihentikan.";
+        const message = "Tool call JSON tidak valid dua kali berturut-turut. Loop dihentikan.";
         this.deps.io.summary("invalid_tool_json", message);
         return { stopReason: "invalid_tool_json", message, steps: iteration };
       }
@@ -385,7 +478,11 @@ export class AgentSession {
       } catch (err) {
         if (attempt > this.retries || !isRetryable(err)) throw err;
         const backoff = 500 * 2 ** (attempt - 1);
-        this.deps.logger.warn("provider.retry", { attempt, backoff, error: (err as Error).message });
+        this.deps.logger.warn("provider.retry", {
+          attempt,
+          backoff,
+          error: (err as Error).message,
+        });
         await this.sleep(backoff);
       }
     }
@@ -482,9 +579,7 @@ export class AgentSession {
           batch.push(calls[i]!);
           i++;
         }
-        const batchResults = await Promise.all(
-          batch.map((c) => this.executeSingle(c, signal)),
-        );
+        const batchResults = await Promise.all(batch.map((c) => this.executeSingle(c, signal)));
         for (const r of batchResults) {
           results.push(r);
           if (r.invalidJson) invalidJson++;
@@ -514,10 +609,7 @@ export class AgentSession {
     return { results, invalidJson, aborted };
   }
 
-  private async executeSingle(
-    call: ToolCallRequest,
-    signal: AbortSignal,
-  ): Promise<ExecutedResult> {
+  private async executeSingle(call: ToolCallRequest, signal: AbortSignal): Promise<ExecutedResult> {
     const tool = this.deps.registry.get(call.name);
     const ctx = this.toolContext(signal);
 
@@ -599,6 +691,7 @@ export class AgentSession {
           status: result.ok === false ? "error" : "ok",
           durationMs: Date.now() - started,
           summary: result.summary,
+          output: content,
         });
       }
       if (result.todos) this.deps.io.todos?.(result.todos);

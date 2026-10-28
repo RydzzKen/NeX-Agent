@@ -1,7 +1,6 @@
 import {
   decodeOtherKeys,
   decodeSgrMouse,
-  isCtrlTab,
   isOtherKeysPartial,
   isSgrMousePartial,
   type Key,
@@ -10,9 +9,12 @@ import {
 import { Screen } from "./screen.js";
 import { TuiPrompter } from "./prompt.js";
 import { TuiIO } from "./io.js";
+import { displayFolder, readGitBranch } from "./status.js";
+import { APP_VERSION } from "../../version.js";
 
 export interface TuiPairOptions {
   commands: string[];
+  descriptions?: Record<string, string>;
   cwd: string;
   initMode: string;
   initModel?: string;
@@ -20,6 +22,7 @@ export interface TuiPairOptions {
   thinking?: boolean;
   markdown?: boolean;
   typewriter?: boolean;
+  theme?: "opencode" | "mint";
 }
 
 /**
@@ -33,8 +36,47 @@ export interface TuiPair {
 }
 
 export interface TuiHooks {
-  /** Ganti mode Plan/Build (Ctrl+Tab / Shift+Tab). */
+  /** Ganti mode Plan/Build (default Tab; dapat diubah lewat config). */
   toggleMode: () => void;
+  /** Buka panel detail sesi (default Ctrl+O). */
+  details?: () => void;
+  /** Keybind mode, mis. "tab" atau "ctrl+g". */
+  modeKey?: string;
+  /** Keybind panel detail, mis. "ctrl+o". */
+  detailsKey?: string;
+  /** Aktif/nonaktifkan plugin dari klik sidebar. */
+  togglePlugin?: (name: string) => void;
+}
+
+/** Cocokkan key readline dengan binding sederhana seperti `ctrl+o`/`shift+tab`. */
+export function matchesKeybinding(key: Key, binding: string): boolean {
+  const parts = binding
+    .toLowerCase()
+    .split("+")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return false;
+  const namePart = parts.pop()!;
+  const ctrl = parts.includes("ctrl");
+  const meta = parts.includes("alt") || parts.includes("meta");
+  const shift = parts.includes("shift");
+  const aliases: Record<string, string> = {
+    esc: "escape",
+    enter: "return",
+    return: "return",
+    space: "space",
+    up: "up",
+    down: "down",
+    left: "left",
+    right: "right",
+  };
+  const wanted = aliases[namePart] ?? namePart;
+  const actual = (key.name ?? "").toLowerCase();
+  if (actual !== wanted) return false;
+  if ((key.ctrl === true) !== ctrl) return false;
+  if ((key.meta === true) !== meta) return false;
+  if ((key.shift === true) !== shift) return false;
+  return true;
 }
 
 /** Bangun layar + prompter + io TUI (belum dimulai/diwiring). */
@@ -48,8 +90,14 @@ export function createTuiPair(opts: TuiPairOptions): TuiPair {
       provider: opts.initProvider ?? "",
     },
     showThinking: opts.thinking !== false,
+    ...(opts.theme ? { theme: opts.theme } : {}),
+    footer: {
+      folder: displayFolder(opts.cwd),
+      branch: readGitBranch(opts.cwd) ?? "",
+      version: APP_VERSION,
+    },
   });
-  const prompter = new TuiPrompter(screen, opts.commands, opts.cwd);
+  const prompter = new TuiPrompter(screen, opts.commands, opts.cwd, opts.descriptions ?? {});
   const io = new TuiIO(screen, {
     thinking: opts.thinking,
     markdown: opts.markdown,
@@ -65,6 +113,7 @@ export function createTuiPair(opts: TuiPairOptions): TuiPair {
 export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void } {
   const { screen, prompter, io } = pair;
   let chord = false;
+  screen.setSidebarHandler((name) => hooks.togglePlugin?.(name));
 
   // Roda mouse menggulir transkrip; seret tombol kiri menyeleksi teks (disalin
   // ke clipboard lewat OSC 52 saat dilepas). Karena pelaporan mouse aktif, roda
@@ -79,6 +128,7 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
       return;
     }
     if (screen.overlayActive || !event.left) return;
+    if (event.press && !event.motion && screen.clickSidebar(event.x, event.y)) return;
     if (event.motion) screen.updateSelection(event.x, event.y);
     else if (event.press) screen.beginSelection(event.x, event.y);
     else screen.endSelection();
@@ -86,18 +136,23 @@ export function attachTui(pair: TuiPair, hooks: TuiHooks): { detach: () => void 
 
   const handleGlobal = (key: Key): void => {
     const { name, ctrl } = key;
+    const modeKey = hooks.modeKey ?? "tab";
+    const detailsKey = hooks.detailsKey ?? "ctrl+o";
 
     if (ctrl && name === "c") {
       prompter.triggerInterrupt();
       return;
     }
-    if (isCtrlTab(key)) {
-      hooks.toggleMode();
+    if (matchesKeybinding(key, detailsKey)) {
+      hooks.details?.();
       return;
     }
-    // Shift+Tab: alternatif andal untuk ganti mode (Ctrl+Tab tidak dikirim oleh
-    // banyak terminal). readline mengurainya bersih sebagai tab + shift.
-    if (name === "tab" && key.shift && !ctrl) {
+    if (
+      matchesKeybinding(key, modeKey) ||
+      // Alternatif lama saat mode memakai Tab: Ctrl+Tab/Shift+Tab tetap bekerja
+      // karena banyak terminal tidak mengirim Ctrl+Tab dengan bersih.
+      (modeKey === "tab" && name === "tab" && (ctrl || key.shift))
+    ) {
       hooks.toggleMode();
       return;
     }

@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="756" height="492" viewBox="0 0 756 492" role="img">
+<rect width="756" height="492" fill="#050505"/>
+<rect x="17" y="17" width="722" height="458" fill="#0a0a0a" stroke="#2a2a2a"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="15" xml:space="preserve">
+<rect x="18" y="18" width="18" height="19" fill="#0a0a0a"/>
+<rect x="36" y="18" width="9" height="19" fill="#0a0a0a"/>
+<text x="36" y="32" fill="#2a2a2a">│</text>
+<rect x="45" y="18" width="9" height="19" fill="#0a0a0a"/>
+<rect x="54" y="18" width="189" height="19" fill="#0a0a0a"/>
+<text x="54" y="32" fill="#eeeeee"># audit path resolver</text>
+<rect x="243" y="18" width="450" height="19" fill="#0a0a0a"/>
+<rect x="693" y="18" width="27" height="19" fill="#0a0a0a"/>
+<text x="693" y="32" fill="#808080">18%</text>
+<rect x="720" y="18" width="18" height="19" fill="#0a0a0a"/>
+<rect x="36" y="37" width="9" height="19" fill="#141414"/>
+<rect x="36" y="37" width="9" height="19" fill="#f5a742"/>
+<rect x="45" y="37" width="9" height="19" fill="#141414"/>
+<rect x="54" y="37" width="333" height="19" fill="#141414"/>
+<text x="54" y="51" fill="#eeeeee">audit path resolver, jangan ubah file</text>
+<text x="36" y="70" fill="#eeeeee">Saya</text>
+<text x="81" y="70" fill="#eeeeee">hanya</text>
+<text x="135" y="70" fill="#eeeeee">membaca.</text>
+<text x="216" y="70" fill="#eeeeee">Saya</text>
+<text x="261" y="70" fill="#eeeeee">mulai</text>
+<text x="315" y="70" fill="#eeeeee">dari</text>
+<text x="360" y="70" fill="#eeeeee">policy,</text>
+<text x="432" y="70" fill="#eeeeee">workspace,</text>
+<text x="531" y="70" fill="#eeeeee">lalu</text>
+<text x="576" y="70" fill="#eeeeee">pemakaian</text>
+<text x="666" y="70" fill="#eeeeee">resolv</text>
+<text x="36" y="89" fill="#eeeeee">ePath</text>
+<text x="90" y="89" fill="#eeeeee">di</text>
+<text x="117" y="89" fill="#eeeeee">tool.</text>
+<text x="36" y="108" fill="#9d7cd8">$</text>
+<text x="54" y="108" fill="#808080">grep</text>
+<text x="99" y="108" fill="#808080">-R</text>
+<text x="126" y="108" fill="#808080">resolvePath</text>
+<text x="234" y="108" fill="#808080">src/safety</text>
+<text x="333" y="108" fill="#808080">src/tools</text>
+<text x="423" y="108" fill="#7fd88f">ok</text>
+<rect x="36" y="113" width="9" height="19" fill="#141414"/>
+<rect x="45" y="113" width="432" height="19" fill="#141414"/>
+<text x="45" y="127" fill="#808080">src/safety/policy.ts:42  const resolvePath = ...</text>
+<rect x="477" y="113" width="243" height="19" fill="#141414"/>
+<rect x="36" y="132" width="9" height="19" fill="#141414"/>
+<rect x="45" y="132" width="387" height="19" fill="#141414"/>
+<text x="45" y="146" fill="#808080">src/tools/write_file.ts:9  resolvePath(...)</text>
+<rect x="432" y="132" width="288" height="19" fill="#141414"/>
+<rect x="36" y="417" width="9" height="19" fill="#141414"/>
+<rect x="36" y="417" width="9" height="19" fill="#f5a742"/>
+<rect x="45" y="417" width="9" height="19" fill="#141414"/>
+<rect x="54" y="417" width="18" height="19" fill="#141414"/>
+<text x="54" y="431" fill="#808080">› </text>
+<rect x="72" y="417" width="9" height="19" fill="#f5a742"/>
+<rect x="36" y="436" width="9" height="19" fill="#141414"/>
+<rect x="36" y="436" width="9" height="19" fill="#f5a742"/>
+<rect x="45" y="436" width="9" height="19" fill="#141414"/>
+<rect x="54" y="436" width="36" height="19" fill="#141414"/>
+<text x="54" y="450" fill="#f5a742">plan</text>
+<rect x="90" y="436" width="18" height="19" fill="#141414"/>
+<rect x="108" y="436" width="216" height="19" fill="#141414"/>
+<text x="108" y="450" fill="#808080">gemini-flash-lite-latest</text>
+<rect x="324" y="436" width="18" height="19" fill="#141414"/>
+<rect x="342" y="436" width="117" height="19" fill="#141414"/>
+<text x="342" y="450" fill="#6b6b6b">custom:gemini</text>
+<rect x="459" y="436" width="261" height="19" fill="#141414"/>
+<text x="36" y="469" fill="#808080">~/Project/NeX-Agent:main</text>
+<text x="567" y="469" fill="#6b6b6b">NeX-Agent</text>
+<text x="657" y="469" fill="#6b6b6b">v1.21.0</text>
+</g>
+</svg>

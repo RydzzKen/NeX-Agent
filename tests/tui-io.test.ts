@@ -121,11 +121,19 @@ describe("TuiIO: streaming teks & thinking", () => {
       rows: 20,
       on: () => {},
     };
-    const stdin = { isTTY: false, setRawMode: () => {}, on: () => {}, removeAllListeners: () => {} };
+    const stdin = {
+      isTTY: false,
+      setRawMode: () => {},
+      on: () => {},
+      removeAllListeners: () => {},
+    };
     const screen = new Screen({
       stdin: stdin as unknown as ScreenOptions["stdin"],
       stdout: out as unknown as ScreenOptions["stdout"],
     });
+    // Transkrip hanya tampil di layar sesi; mulai sesi agar frame memuat teks.
+    screen.start();
+    screen.startSession("uji");
     return { io: new TuiIO(screen, opts), screen, writes };
   }
 
@@ -277,7 +285,10 @@ describe("TuiIO: pemilih (pick) & penampil (view)", () => {
 
   it("view bisa digulir dengan tombol panah/PgDn tanpa menutup", async () => {
     const { io, screen } = setup();
-    const pending = io.view({ title: "Diff", lines: Array.from({ length: 50 }, (_, i) => `line-${i}`) });
+    const pending = io.view({
+      title: "Diff",
+      lines: Array.from({ length: 50 }, (_, i) => `line-${i}`),
+    });
     io.handleOverlayKey(key({ name: "down", sequence: "\u001b[B" }));
     io.handleOverlayKey(key({ name: "pagedown", sequence: "\u001b[6~" }));
     expect(screen.overlayActive).toBe(true);
@@ -298,7 +309,12 @@ describe("TuiIO: echo pesan pengguna", () => {
       rows: 20,
       on: () => {},
     };
-    const stdin = { isTTY: false, setRawMode: () => {}, on: () => {}, removeAllListeners: () => {} };
+    const stdin = {
+      isTTY: false,
+      setRawMode: () => {},
+      on: () => {},
+      removeAllListeners: () => {},
+    };
     const screen = new Screen({
       stdin: stdin as unknown as ScreenOptions["stdin"],
       stdout: out as unknown as ScreenOptions["stdout"],

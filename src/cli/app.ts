@@ -1,10 +1,11 @@
 import path from "node:path";
+import os from "node:os";
 import fs from "node:fs/promises";
 import { spawn } from "node:child_process";
-import type { Mode, ModelInfo, StopReason } from "../core/types.js";
+import type { Mode, ModelInfo, NeutralMessage, StopReason } from "../core/types.js";
 import { AgentSession } from "../core/loop.js";
 import { Approvals } from "../core/approvals.js";
-import { CheckpointManager } from "../core/checkpoint.js";
+import { CheckpointManager, type UndoEntry } from "../core/checkpoint.js";
 import { ContextManager } from "../core/context.js";
 import { TodoStore } from "../core/todos.js";
 import type { AgentIO } from "../core/io.js";
@@ -27,7 +28,7 @@ import {
 import { buildSystemPrompt } from "../memory/system_prompt.js";
 import { CredentialStore } from "../config/credentials.js";
 import { McpManager } from "../plugins/manager.js";
-import { removeMcpServer } from "../plugins/config.js";
+import { loadPluginsConfig, removeMcpServer, saveMcpServer } from "../plugins/config.js";
 import { listMcpPresets } from "../plugins/presets.js";
 import { applyMcpAdd, planMcpAdd, type McpAddPlan } from "../plugins/mcp_add.js";
 import {
@@ -43,7 +44,13 @@ import {
   type AgentConfig,
 } from "../config/config.js";
 import { JsonlLogger, type Logger } from "../logging/logger.js";
-import { SessionStore, deriveTitle, newSessionId, selectSession, type SessionRecord } from "../sessions/store.js";
+import {
+  SessionStore,
+  deriveTitle,
+  newSessionId,
+  selectSession,
+  type SessionRecord,
+} from "../sessions/store.js";
 import { searchSessions } from "../sessions/search.js";
 import { UsageTracker } from "../usage/tracker.js";
 import { UsageStore, type UsageRange } from "../usage/store.js";
@@ -55,19 +62,47 @@ import { firstNonEmpty } from "../util/strings.js";
 import { formatErrorMessage } from "../util/errors.js";
 import { todoHeader, todoLines } from "../util/todos.js";
 import { renderCrossSession, renderUsage } from "./usage.js";
-import { runConnect, describeProvider, defaultBaseURL, resolveProviderKey, providerRefFromArgs, type ConnectPick } from "./connect.js";
-import { CUSTOM_MODEL_LABEL, cleanModelName, resolveModelChoice, validateFallbackModel } from "./models.js";
+import {
+  runConnect,
+  describeProvider,
+  defaultBaseURL,
+  resolveProviderKey,
+  providerRefFromArgs,
+  type ConnectPick,
+} from "./connect.js";
+import {
+  CUSTOM_MODEL_LABEL,
+  cleanModelName,
+  resolveModelChoice,
+  validateFallbackModel,
+} from "./models.js";
 import { TerminalIO, type ChatIO, type PickItem, type PickRequest } from "./render.js";
 import { Prompter, PROMPT_EOF, type PrompterLike } from "./prompt.js";
 import { isBusySafeSlash } from "./slash.js";
 import { createTuiPair, attachTui, type TuiPair } from "./tui/index.js";
-import { describeDefault, parseDefaultTarget, readDefaultInterface, setDefaultInterface } from "./default.js";
-import type { Screen } from "./tui/screen.js";
+import {
+  describeDefault,
+  parseDefaultTarget,
+  readDefaultInterface,
+  setDefaultInterface,
+} from "./default.js";
+import type { Screen, ScreenLine } from "./tui/screen.js";
+import { isThemeName, THEME_NAMES } from "./tui/theme.js";
 import { resolveInterrupt } from "./interrupt.js";
 import { formatResumePreview } from "./resume_preview.js";
 import { restartArgs } from "./restart_args.js";
-import { describeUpdate, describeUpdateAvailable, describeUpdateSuccess, runUpdate } from "./update.js";
-import { createWebServer, isLoopbackHost, reachableUrl, type WebServerHandle } from "../server/server.js";
+import {
+  describeUpdate,
+  describeUpdateAvailable,
+  describeUpdateSuccess,
+  runUpdate,
+} from "./update.js";
+import {
+  createWebServer,
+  isLoopbackHost,
+  reachableUrl,
+  type WebServerHandle,
+} from "../server/server.js";
 import { ServerConfigError } from "../server/webapp.js";
 import {
   TelegramDaemonError,
@@ -78,7 +113,13 @@ import {
   tailTelegramLog,
   telegramLogPath,
 } from "../server/telegram_daemon.js";
-import { maskToken, resolveTelegramSettings, loadTelegramToken, saveTelegramToken, clearTelegramToken } from "../server/telegram.js";
+import {
+  maskToken,
+  resolveTelegramSettings,
+  loadTelegramToken,
+  saveTelegramToken,
+  clearTelegramToken,
+} from "../server/telegram.js";
 import { qrLines } from "../util/qr.js";
 
 export class ConfigError extends Error {
@@ -122,19 +163,30 @@ interface ResolvedModel {
 
 export const SLASH_HELP: Array<[string, string]> = [
   ["/connect", "hubungkan provider (yang tersimpan bisa dipakai ulang)"],
-  ["/provider [use|edit|hapus <id>]", "kelola provider tersimpan (id: anthropic, openai, custom:<nama>)"],
+  [
+    "/provider [use|edit|hapus <id>]",
+    "kelola provider tersimpan (id: anthropic, openai, custom:<nama>)",
+  ],
   ["/models [nomor|0|nama|clear]", "lihat/ganti model (0 = custom, clear = hapus riwayat custom)"],
   ["/plan", "pindah ke mode Plan (read-only)"],
   ["/build", "pindah ke mode Build (eksekusi)"],
+  ["/mode [plan|build]", "lihat atau ganti mode sesi"],
+  ["/compact", "ringkas riwayat percakapan (alias /summarize)"],
+  ["/editor [teks]", "buka $EDITOR untuk menulis pesan berikutnya"],
+  ["/export [file]", "ekspor transkrip sesi ke markdown"],
+  ["/init", "buat AGENTS.md awal untuk workspace ini"],
+  ["/themes [nama]", "lihat atau ganti tema TUI (opencode, mint)"],
   ["/sessions [clear]", "daftar sesi / hapus semua sesi workspace ini"],
-  ["/resume <n>", "lanjut sesi ke-n (atau /resume <id>)"],
+  ["/resume <n>", "lanjut sesi ke-n (atau /resume <id>, alias /continue)"],
   ["/search <kata>", "cari teks di seluruh sesi"],
   ["/new", "mulai sesi baru"],
   ["/clear", "bersihkan riwayat sesi ini"],
   ["/rename <judul>", "ganti judul sesi"],
   ["/delete [all]", "hapus sesi ini (all = semua sesi workspace)"],
   ["/diff", "lihat perubahan file sesi ini yang belum di-undo"],
-  ["/undo [n]", "batalkan perubahan file (ke sebelum langkah n)"],
+  ["/details [panel]", "tampilkan/sembunyikan output tool, atau buka panel detail sesi"],
+  ["/undo [n]", "batalkan n giliran terakhir (pesan + perubahan file)"],
+  ["/redo", "ulangi giliran yang baru dibatalkan"],
   ["/usage [today|week|all|<id>]", "pemakaian token & biaya"],
   ["/permissions [revoke <path>]", "lihat/cabut izin luar workspace"],
   ["/allow-all [on|off]", "izinkan semua izin untuk sesi ini"],
@@ -145,14 +197,23 @@ export const SLASH_HELP: Array<[string, string]> = [
   ["/default [tui|cli|reset]", "atur antarmuka default saat `agent` dijalankan tanpa tujuan"],
   ["/skills [install <sumber>]", "daftar skill · pasang skill via SkillUI"],
   ["/skill <nama>|off", "aktifkan/paksa skill atau lepas semua"],
-  ["/mcp [add|remove|reload|key|presets]", "status server MCP; tambah preset, muat ulang, atau atur API key"],
+  [
+    "/mcp [add|remove|enable|disable|reload|key|presets]",
+    "status server MCP; tambah, aktif/nonaktifkan, muat ulang, atau atur API key",
+  ],
   ["/todos", "tampilkan daftar tugas (checklist)"],
   ["/memory [add|forget|clear]", "memori jangka panjang tentang pengguna (lihat/tambah/hapus)"],
   ["/web [lan|stop]", "nyalakan server web (lan = buka ke jaringan) / hentikan"],
-  ["/telegram [start|stop|restart|status|logs|token|allow]", "kelola bot Telegram (daemon latar belakang)"],
-  ["/update [--stash]", "perbarui NeX-Agent dari repo git, lalu tawarkan restart (--stash: simpan perubahan lokal sementara)"],
+  [
+    "/telegram [start|stop|restart|status|logs|token|allow]",
+    "kelola bot Telegram (daemon latar belakang)",
+  ],
+  [
+    "/update [--stash]",
+    "perbarui NeX-Agent dari repo git, lalu tawarkan restart (--stash: simpan perubahan lokal sementara)",
+  ],
   ["/restart", "jalankan ulang NeX-Agent untuk menerapkan versi baru"],
-  ["/exit", "keluar dari sesi chat (atau Ctrl+D)"],
+  ["/exit", "keluar dari sesi chat (alias /quit, /q, atau Ctrl+D)"],
   ["/help", "bantuan"],
 ];
 
@@ -180,6 +241,22 @@ function exitCodeFor(reason: StopReason): number {
     default:
       return 1;
   }
+}
+
+interface TurnSnapshot {
+  beforeHistory: NeutralMessage[];
+  afterHistory: NeutralMessage[];
+  beforeLines: ScreenLine[];
+  afterLines: ScreenLine[];
+  /** Snapshot file yang dikembalikan saat undo (untuk redo). */
+  files: UndoEntry[];
+}
+
+function cloneHistory(history: NeutralMessage[]): NeutralMessage[] {
+  return history.map((message) => ({
+    ...message,
+    ...(message.toolCalls ? { toolCalls: message.toolCalls.map((call) => ({ ...call })) } : {}),
+  }));
 }
 
 export class ChatApp {
@@ -222,6 +299,11 @@ export class ChatApp {
   /** Penghenti layar TUI (bila berjalan lewat `nex-agent tui`). */
   private tuiDetach?: () => void;
   private tuiScreenRef?: Screen;
+  /** Riwayat transkrip per giliran untuk undo/redo. */
+  private turnSnapshots: TurnSnapshot[] = [];
+  private redoStack: TurnSnapshot[] = [];
+  /** Draf dari `/editor` yang dikirim sebagai pesan pada loop berikutnya. */
+  private pendingInput?: string;
 
   /** Layar TUI bila mode `ui: "tui"` (untuk pembersihan di CLI runner). */
   get tuiScreen(): Screen | undefined {
@@ -254,12 +336,103 @@ export class ChatApp {
     return this.session.getMode();
   }
 
+  /** Kosongkan riwayat undo/redo (sesi baru, resume, atau clear). */
+  private resetTurnHistory(): void {
+    this.turnSnapshots = [];
+    this.redoStack = [];
+  }
+
+  /** Segarkan status, judul, persentase konteks, dan data sidebar TUI. */
+  private async refreshTui(): Promise<void> {
+    const screen = this.tuiScreenRef;
+    if (!screen) return;
+
+    const info = this.session.getModelInfo();
+    const used = info?.contextWindow
+      ? new ContextManager(info.contextWindow).estimate(this.session.getHistory())
+      : 0;
+    const contextPercent = info?.contextWindow ? (used / info.contextWindow) * 100 : 0;
+    const sessionInfo: { title?: string; contextPercent: number } = { contextPercent };
+    if (this.record.title !== "(baru)") sessionInfo.title = this.record.title;
+    screen.setStatus(
+      {
+        mode: this.session.getMode(),
+        model: this.session.getModel(),
+        provider: this.providerKey,
+      },
+      false,
+    );
+    screen.setSessionInfo(sessionInfo, false);
+
+    const files = (await this.checkpoints.preview(this.workspace.root)).map((entry) => ({
+      path: entry.display,
+      ...diffStats(entry.before ?? "", entry.after ?? ""),
+    }));
+    screen.setSidebar(
+      {
+        plugins: this.mcp.status().map((status) => ({
+          name: status.name,
+          enabled: status.enabled,
+          connected: status.connected,
+        })),
+        files,
+      },
+      false,
+    );
+    screen.redraw();
+  }
+
+  /** Panel detail sesi: plugin, file berubah, model, dan konteks. */
+  async showDetailsPanel(): Promise<void> {
+    const info = this.session.getModelInfo();
+    const used = info?.contextWindow
+      ? new ContextManager(info.contextWindow).estimate(this.session.getHistory())
+      : 0;
+    const percent = info?.contextWindow ? Math.round((used / info.contextWindow) * 100) : 0;
+    const lines: string[] = [
+      `sesi    ${this.record.title}`,
+      `mode    ${this.session.getMode()}`,
+      `model   ${this.providerKey} / ${this.session.getModel()}`,
+      `konteks ${percent}%${info?.contextWindow ? ` (${used}/${info.contextWindow} token)` : ""}`,
+      `output  ${this.tuiScreenRef?.toolDetailsVisible ? "ditampilkan" : "disembunyikan"}`,
+      "",
+      "plugin",
+    ];
+    const plugins = this.mcp.status();
+    if (plugins.length === 0) lines.push("  belum ada");
+    for (const plugin of plugins) {
+      const state = !plugin.enabled ? "nonaktif" : plugin.connected ? "terhubung" : "terputus";
+      lines.push(`  ${plugin.name.padEnd(18)} ${state}`);
+    }
+    if (plugins.length > 0) {
+      lines.push("", "  klik plugin di sidebar untuk toggle", "  atau /mcp enable|disable <nama>");
+    }
+    lines.push("", "file diubah");
+    const files = await this.checkpoints.preview(this.workspace.root);
+    if (files.length === 0) lines.push("  belum ada");
+    for (const file of files) {
+      const stats = diffStats(file.before ?? "", file.after ?? "");
+      lines.push(`  ${file.display}  +${stats.added} -${stats.removed}`);
+    }
+
+    if (this.io.view) {
+      await this.io.view({ title: "Detail sesi", lines });
+      return;
+    }
+    for (const line of lines) process.stdout.write(`${line}\n`);
+  }
+
   static async create(opts: CliOptions): Promise<ChatApp> {
     const workspace = createWorkspace(opts.cwd);
     const config = await loadConfig();
     const credentials = new CredentialStore();
-    const logger = new JsonlLogger(path.join(logsDir(), "agent.jsonl"), { debug: Boolean(opts.debug) });
+    const logger = new JsonlLogger(path.join(logsDir(), "agent.jsonl"), {
+      debug: Boolean(opts.debug),
+    });
     const commands = SLASH_HELP.map(([usage]) => usage.split(/\s+/)[0]!);
+    const commandDescriptions = Object.fromEntries(
+      SLASH_HELP.map(([usage, description]) => [usage.split(/\s+/)[0]!, description]),
+    );
 
     let prompter: PrompterLike;
     let io: ChatIO;
@@ -267,6 +440,7 @@ export class ChatApp {
     if (opts.ui === "tui") {
       tuiPair = createTuiPair({
         commands,
+        descriptions: commandDescriptions,
         cwd: workspace.root,
         initMode: opts.mode ?? "build",
         initModel: opts.model,
@@ -274,6 +448,7 @@ export class ChatApp {
         thinking: opts.thinking !== false,
         markdown: opts.markdown ?? config.markdown ?? true,
         typewriter: opts.typewriter ?? config.typewriter ?? true,
+        ...(config.theme ? { theme: config.theme } : {}),
       });
       prompter = tuiPair.prompter;
       io = tuiPair.io;
@@ -314,7 +489,13 @@ export class ChatApp {
 
     if (tuiPair) {
       let appRef: ChatApp | undefined;
-      const wiring = attachTui(tuiPair, { toggleMode: () => appRef?.toggleMode() });
+      const wiring = attachTui(tuiPair, {
+        toggleMode: () => appRef?.toggleMode(),
+        details: () => void appRef?.showDetailsPanel(),
+        modeKey: config.tuiKeybinds?.mode,
+        detailsKey: config.tuiKeybinds?.details,
+        togglePlugin: (name) => void appRef?.togglePlugin(name),
+      });
       app.setTuiLifecycle(tuiPair.screen, wiring.detach);
       appRef = app;
       // Saat agent sibuk, perintah slash yang aman dijalankan langsung tanpa
@@ -371,11 +552,7 @@ export class ChatApp {
     await this.ensureProvider();
     const model = await this.resolveModel(
       this.provider,
-      firstNonEmpty(
-        this.opts.model,
-        record?.model,
-        this.config.models?.[this.workspace.root],
-      ),
+      firstNonEmpty(this.opts.model, record?.model, this.config.models?.[this.workspace.root]),
       this.config.defaultModel,
     );
     if (!model) {
@@ -395,6 +572,8 @@ export class ChatApp {
     // Model terakhir diingat per workspace agar run berikutnya tidak
     // perlu memilih ulang.
     await rememberModel(this.workspace.root, model.id);
+    if (record) this.tuiScreenRef?.startSession(this.record.title);
+    await this.refreshTui();
 
     // Ctrl+C: readline menangkapnya di prompt, SIGINT proses menangkapnya saat
     // tugas berjalan (raw mode dimatikan di Prompter.pause). Keduanya ke handler.
@@ -411,7 +590,12 @@ export class ChatApp {
     let provider = key ? await createProvider(key, this.credentials) : undefined;
 
     if (!provider && Boolean(process.stdin.isTTY) && !this.opts.json) {
-      const result = await runConnect(this.prompter, this.credentials, undefined, this.overlayPick());
+      const result = await runConnect(
+        this.prompter,
+        this.credentials,
+        undefined,
+        this.overlayPick(),
+      );
       if (result) {
         provider = result.provider;
         this.providerKey = result.providerKey;
@@ -499,7 +683,9 @@ export class ChatApp {
   }
 
   private skillSignature(): string {
-    return this.skills.map((s) => `${s.name}\u0000${s.description}\u0000${s.body.length}`).join("\u0001");
+    return this.skills
+      .map((s) => `${s.name}\u0000${s.description}\u0000${s.body.length}`)
+      .join("\u0001");
   }
 
   /** Segarkan skill ke sesi aktif (prompt + konteks tool) setelah perubahan. */
@@ -568,7 +754,10 @@ export class ChatApp {
         systemPrompt,
         resolvePath,
         tracker: this.tracker,
-        search: createWebSearch({ provider: this.config.searchProvider, url: this.config.searchUrl }),
+        search: createWebSearch({
+          provider: this.config.searchProvider,
+          url: this.config.searchUrl,
+        }),
         skills: this.skills,
         registerSkill: (skill) => this.registerSkill(skill),
         refreshMemory: () => this.refreshMemory(),
@@ -596,7 +785,10 @@ export class ChatApp {
       providerId: this.providerKey,
       model: this.session.getModel(),
       mode: this.session.getMode(),
-      title: this.record.title === "(baru)" && firstUser ? deriveTitle(firstUser.content) : this.record.title,
+      title:
+        this.record.title === "(baru)" && firstUser
+          ? deriveTitle(firstUser.content)
+          : this.record.title,
       updatedAt: new Date().toISOString(),
       cost: this.tracker.totals().cost,
       history,
@@ -607,7 +799,9 @@ export class ChatApp {
 
   private banner(): void {
     if (this.opts.json) return;
-    const markers = this.workspace.markers.length ? `  (${this.workspace.markers.slice(0, 2).join(", ")})` : "";
+    const markers = this.workspace.markers.length
+      ? `  (${this.workspace.markers.slice(0, 2).join(", ")})`
+      : "";
     const lines = [
       `${color.green("●")} workspace  ${this.workspace.root}${markers}`,
       `${color.green("●")} mode       ${this.session.getMode()}`,
@@ -626,7 +820,8 @@ export class ChatApp {
 
   /** Jalankan satu tugas (mode non-chat). */
   async runGoal(goal: string): Promise<number> {
-    this.banner();
+    if (this.opts.ui === "tui") this.tuiScreenRef?.startSession(goal);
+    else this.banner();
     const controller = new AbortController();
     this.activeController = controller;
     let code: number;
@@ -638,18 +833,23 @@ export class ChatApp {
       this.activeController = undefined;
       this.io.busy?.(false);
       await this.saveRecord();
+      await this.refreshTui();
       await this.close();
     }
-    if (!this.opts.json) process.stdout.write("\n");
+    if (!this.opts.json && this.opts.ui !== "tui") process.stdout.write("\n");
     return code;
   }
 
   /** REPL chat interaktif. */
   async runRepl(): Promise<number> {
-    this.banner();
-    this.io.info("Ketik /help untuk daftar perintah. Ctrl+C menghentikan tugas; dua kali keluar.");
+    if (this.opts.ui !== "tui") {
+      this.banner();
+      this.io.info(
+        "Ketik /help untuk daftar perintah. Ctrl+C menghentikan tugas; dua kali keluar.",
+      );
+    }
     for (;;) {
-      // Di TUI, mode sudah tampil di status bar — jangan tampilkan dua kali di prompt.
+      // Di TUI, mode sudah tampil di prompt — jangan tampilkan dua kali.
       const modeLabel =
         this.opts.ui === "tui"
           ? ""
@@ -657,16 +857,49 @@ export class ChatApp {
       const prompt = `${modeLabel}› `;
       this.exitArmed = false;
       // Pesan yang dikirim saat agent sibuk (mode TUI) dijalankan lebih dulu.
-      const queued = this.prompter.takeQueued?.();
-      const line = (queued !== undefined ? queued : await this.prompter.question(`\n${prompt}`)).trim();
+      const injected = this.pendingInput;
+      this.pendingInput = undefined;
+      const queued = injected ?? this.prompter.takeQueued?.();
+      const line = (
+        queued !== undefined ? queued : await this.prompter.question(`\n${prompt}`)
+      ).trim();
       if (line === PROMPT_EOF) break;
       if (line === "") continue;
       if (line.startsWith("/")) {
         const action = await this.handleSlash(line);
         if (action === "exit") break;
+        await this.refreshTui();
+        continue;
+      }
+      // `!perintah` menjalankan shell lewat tool run_shell, bukan model.
+      if (line.startsWith("!")) {
+        const command = line.slice(1).trim();
+        if (!command) {
+          this.io.warn("Perintah shell kosong.");
+          continue;
+        }
+        const shellController = new AbortController();
+        this.activeController = shellController;
+        this.io.userMessage?.(`! ${command}`, command);
+        this.io.lineBreak();
+        this.prompter.pause();
+        this.io.busy?.(true);
+        try {
+          await this.session.runShell(command, shellController.signal);
+        } catch (err) {
+          this.io.error(`Perintah shell gagal: ${formatErrorMessage(err)}`);
+        } finally {
+          this.activeController = undefined;
+          this.io.busy?.(false);
+          this.prompter.resume();
+          await this.refreshTui();
+        }
         continue;
       }
       const controller = new AbortController();
+      const beforeHistory = cloneHistory(this.session.getHistory());
+      const beforeLines = this.tuiScreenRef?.snapshotMainLines() ?? [];
+      this.redoStack = [];
       this.activeController = controller;
       this.io.userMessage?.(line);
       this.io.lineBreak();
@@ -679,7 +912,18 @@ export class ChatApp {
         this.activeController = undefined;
         this.io.busy?.(false);
         this.prompter.resume();
+        if (this.tuiScreenRef) {
+          this.turnSnapshots.push({
+            beforeHistory,
+            afterHistory: cloneHistory(this.session.getHistory()),
+            beforeLines,
+            afterLines: this.tuiScreenRef.snapshotMainLines(),
+            files: [],
+          });
+          if (this.turnSnapshots.length > 50) this.turnSnapshots.shift();
+        }
         await this.saveRecord();
+        await this.refreshTui();
       }
     }
     await this.close();
@@ -743,6 +987,7 @@ export class ChatApp {
         return "continue";
       case "/exit":
       case "/quit":
+      case "/q":
         return "exit";
       case "/plan":
         this.session.setMode("plan");
@@ -752,6 +997,20 @@ export class ChatApp {
         this.session.setMode("build");
         this.io.modeChanged?.("build");
         return "continue";
+      case "/mode": {
+        const next = args[0];
+        if (!next) {
+          this.io.info(`mode: ${this.session.getMode()}`);
+          return "continue";
+        }
+        if (next !== "plan" && next !== "build") {
+          this.io.warn("mode harus plan atau build.");
+          return "continue";
+        }
+        this.session.setMode(next);
+        this.io.modeChanged?.(next);
+        return "continue";
+      }
       case "/connect":
         await this.commandConnect();
         return "continue";
@@ -765,6 +1024,7 @@ export class ChatApp {
         await this.commandSessions(args[0]);
         return "continue";
       case "/resume":
+      case "/continue":
         await this.commandResume(args[0]);
         return "continue";
       case "/search":
@@ -775,6 +1035,8 @@ export class ChatApp {
         return "continue";
       case "/clear":
         this.session.clearHistory();
+        this.resetTurnHistory();
+        this.tuiScreenRef?.clearView();
         this.io.info("Riwayat sesi dibersihkan.");
         await this.saveRecord();
         return "continue";
@@ -788,8 +1050,37 @@ export class ChatApp {
       case "/diff":
         await this.commandDiff();
         return "continue";
+      case "/details":
+        if (args[0] === "panel") {
+          await this.showDetailsPanel();
+        } else if (this.tuiScreenRef) {
+          const visible = this.tuiScreenRef.toggleToolDetails();
+          this.io.info(`Output tool ${visible ? "ditampilkan" : "disembunyikan"}.`);
+        } else {
+          this.io.info("Panel detail hanya tersedia di antarmuka TUI.");
+        }
+        return "continue";
+      case "/compact":
+      case "/summarize":
+        await this.commandCompact();
+        return "continue";
+      case "/editor":
+        await this.commandEditor(args.join(" "));
+        return "continue";
+      case "/export":
+        await this.commandExport(args[0]);
+        return "continue";
+      case "/init":
+        await this.commandInit();
+        return "continue";
+      case "/themes":
+        await this.commandThemes(args[0]);
+        return "continue";
       case "/undo":
         await this.commandUndo(args[0]);
+        return "continue";
+      case "/redo":
+        await this.commandRedo();
         return "continue";
       case "/usage":
         await this.commandUsage(args[0]);
@@ -1080,9 +1371,7 @@ export class ChatApp {
       return;
     }
     const baseDefault = creds.baseURL ?? defaultBaseURL(name) ?? "";
-    const baseAnswer = (
-      await this.prompter.question(`Base URL [${baseDefault}]: `)
-    ).trim();
+    const baseAnswer = (await this.prompter.question(`Base URL [${baseDefault}]: `)).trim();
     const baseURL = baseAnswer || baseDefault;
 
     const keyAnswer = await this.prompter.secretQuestion("API key baru (kosongkan untuk tetap): ");
@@ -1104,7 +1393,9 @@ export class ChatApp {
         this.session.setProvider(provider, name);
       }
     }
-    const tail = name.startsWith(CUSTOM_PROVIDER_PREFIX) ? "" : " (base URL hanya berlaku bila adapter mendukung)";
+    const tail = name.startsWith(CUSTOM_PROVIDER_PREFIX)
+      ? ""
+      : " (base URL hanya berlaku bila adapter mendukung)";
     this.io.info(`Provider ${name} diperbarui${isActive ? " dan diterapkan" : ""}${tail}.`);
   }
 
@@ -1128,7 +1419,11 @@ export class ChatApp {
           ...models.map((m) => ({ label: m.id, value: m.id })),
         ];
         if (recent.length > 0) {
-          items.push({ label: "Bersihkan riwayat custom", detail: `${recent.length}`, value: "__clear__" });
+          items.push({
+            label: "Bersihkan riwayat custom",
+            detail: `${recent.length}`,
+            value: "__clear__",
+          });
         }
         const picked = await this.io.pick({
           title: `Model — ${this.providerKey} (${models.length})`,
@@ -1256,7 +1551,9 @@ export class ChatApp {
       );
     });
     process.stdout.write("\n  Gunakan /resume <nomor> untuk melanjutkan sesi.\n");
-    process.stdout.write("  /sessions clear (atau /delete all) untuk menghapus semua sesi workspace ini.\n\n");
+    process.stdout.write(
+      "  /sessions clear (atau /delete all) untuk menghapus semua sesi workspace ini.\n\n",
+    );
   }
 
   /** Cari teks di seluruh sesi (semua workspace), urut terbaru lebih dulu. */
@@ -1316,7 +1613,9 @@ export class ChatApp {
     }
     const removed = await this.store.deleteMany(sessions.map((s) => s.id));
     for (const s of sessions) {
-      await fs.rm(path.join(sessionsDir(), s.id), { recursive: true, force: true }).catch(() => undefined);
+      await fs
+        .rm(path.join(sessionsDir(), s.id), { recursive: true, force: true })
+        .catch(() => undefined);
     }
     this.io.info(`${removed} sesi dihapus.`);
     await this.commandNew();
@@ -1361,7 +1660,12 @@ export class ChatApp {
 
     await this.saveRecord();
     await this.activateRecord(target);
-    this.io.info(`Melanjutkan sesi: ${target.title} (${target.id})`);
+    this.tuiScreenRef?.startSession(target.title);
+    if (this.tuiScreenRef) {
+      await this.refreshTui();
+    } else {
+      this.io.info(`Melanjutkan sesi: ${target.title} (${target.id})`);
+    }
     if (!this.opts.json) {
       const preview = formatResumePreview(target.history, { mode: target.mode });
       if (preview) process.stdout.write(`${preview}\n\n`);
@@ -1371,6 +1675,7 @@ export class ChatApp {
   /** Pasang sebuah record sebagai sesi aktif (resume). */
   private async activateRecord(record: SessionRecord): Promise<void> {
     this.record = record;
+    this.resetTurnHistory();
     this.checkpoints = await CheckpointManager.load(
       path.join(sessionsDir(), record.id),
       this.logger,
@@ -1392,6 +1697,7 @@ export class ChatApp {
   private async commandNew(): Promise<void> {
     await this.saveRecord();
     this.activeSkills = [];
+    this.resetTurnHistory();
     this.record = {
       id: newSessionId(),
       title: "(baru)",
@@ -1414,7 +1720,12 @@ export class ChatApp {
       this.session.getMode(),
       [],
     );
-    this.io.info(`Sesi baru: ${this.record.id}`);
+    if (this.tuiScreenRef) {
+      this.tuiScreenRef.showHome();
+      await this.refreshTui();
+    } else {
+      this.io.info(`Sesi baru: ${this.record.id}`);
+    }
   }
 
   private async commandRename(title: string): Promise<void> {
@@ -1424,6 +1735,7 @@ export class ChatApp {
     }
     this.record.title = title.trim();
     await this.saveRecord();
+    this.tuiScreenRef?.setSessionInfo({ title: this.record.title });
     this.io.info(`Judul sesi: ${this.record.title}`);
   }
 
@@ -1464,20 +1776,264 @@ export class ChatApp {
     );
   }
 
-  private async commandUndo(arg?: string): Promise<void> {
-    const step = arg ? Number.parseInt(arg, 10) : undefined;
-    const result =
-      step !== undefined && Number.isFinite(step)
-        ? await this.checkpoints.undoTostep(step, this.workspace.root)
-        : await this.checkpoints.undoLast(this.workspace.root);
-    if (result.entries.length === 0) {
-      this.io.info("Tidak ada perubahan file yang bisa dibatalkan.");
+  /** Ringkas riwayat lewat model; bila gagal, pangkas pesan lama. */
+  private async commandCompact(): Promise<void> {
+    const history = this.session.getHistory();
+    if (history.length === 0) {
+      this.io.info("Riwayat sesi masih kosong.");
       return;
     }
-    for (const entry of result.entries) {
+    const transcript = history
+      .filter((message) => message.content.trim() !== "")
+      .map((message) => `${message.role}: ${message.content}`)
+      .join("\n\n")
+      .slice(-40_000);
+    let summary = "";
+    try {
+      for await (const event of this.provider.stream({
+        model: this.session.getModel(),
+        system:
+          "Ringkas percakapan berikut untuk melanjutkan sesi. Pertahankan keputusan, path file, perintah, dan tugas yang belum selesai. Jawab dalam bahasa Indonesia, ringkas, tanpa basa-basi.",
+        messages: [{ role: "user", content: transcript }],
+        tools: [],
+      })) {
+        if (event.type === "text") summary += event.text;
+      }
+    } catch (err) {
+      this.io.warn(`Ringkasan model gagal: ${formatErrorMessage(err)}`);
+    }
+
+    if (!summary.trim()) {
+      const keep = history.slice(-12);
+      this.session.setHistory([
+        { role: "user", content: "[riwayat lama dipangkas karena ringkasan tidak tersedia]" },
+        ...keep,
+      ]);
+      this.io.info(`Ringkasan gagal; ${history.length - keep.length} pesan lama dipangkas.`);
+    } else {
+      const clean = summary.trim();
+      this.session.setHistory([
+        { role: "user", content: `[ringkasan percakapan sebelumnya]\n${clean}` },
+        { role: "assistant", content: "Ringkasan diterima. Saya lanjutkan dari konteks ini." },
+      ]);
+      if (this.tuiScreenRef) {
+        this.tuiScreenRef.clearView();
+        this.tuiScreenRef.append("user", "[ringkasan percakapan sebelumnya]");
+        this.tuiScreenRef.append("text", clean);
+      }
+      this.io.info("Riwayat percakapan diringkas.");
+    }
+    this.resetTurnHistory();
+    await this.saveRecord();
+    await this.refreshTui();
+  }
+
+  /** Buka $EDITOR/$VISUAL untuk menulis pesan berikutnya. */
+  private async commandEditor(initial: string): Promise<void> {
+    const editor = process.env.VISUAL || process.env.EDITOR;
+    if (!editor) {
+      this.io.info("Atur $EDITOR atau $VISUAL untuk memakai /editor.");
+      return;
+    }
+    let dir: string | undefined;
+    try {
+      dir = await fs.mkdtemp(path.join(os.tmpdir(), "nex-agent-"));
+      const file = path.join(dir, "pesan.md");
+      await fs.writeFile(file, initial ? `${initial}\n` : "", "utf8");
+      const [command, ...baseArgs] = editor.split(/\s+/).filter(Boolean);
+      if (!command) {
+        this.io.info("Nilai $EDITOR kosong.");
+        return;
+      }
+      this.tuiScreenRef?.stop();
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn(command, [...baseArgs, file], { stdio: "inherit" });
+          child.on("error", reject);
+          child.on("exit", (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`editor keluar dengan kode ${code ?? "?"}`));
+          });
+        });
+      } finally {
+        this.tuiScreenRef?.start();
+      }
+      const text = (await fs.readFile(file, "utf8")).trim();
+      if (!text) {
+        this.io.info("Draf editor kosong.");
+        return;
+      }
+      this.pendingInput = text;
+      this.io.info("Draf dari editor siap dikirim.");
+    } catch (err) {
+      this.io.warn(`Gagal membuka editor: ${formatErrorMessage(err)}`);
+    } finally {
+      if (dir) await fs.rm(dir, { recursive: true, force: true });
+    }
+  }
+
+  /** Ekspor transkrip sesi ke markdown. */
+  private async commandExport(target?: string): Promise<void> {
+    const file = path.resolve(
+      this.workspace.root,
+      target && target.trim() ? target : `nex-agent-${this.record.id}.md`,
+    );
+    const lines = [
+      `# ${this.record.title}`,
+      "",
+      `sesi: ${this.record.id}`,
+      `model: ${this.providerKey} / ${this.session.getModel()}`,
+      `mode: ${this.session.getMode()}`,
+      "",
+    ];
+    for (const message of this.session.getHistory()) {
+      if (!message.content.trim()) continue;
+      if (message.role === "user") lines.push("## kamu", "", message.content, "");
+      else if (message.role === "assistant") lines.push("## agen", "", message.content, "");
+      else if (message.role === "tool") {
+        lines.push(`### tool ${message.name ?? ""}`, "", "```", message.content, "```", "");
+      }
+    }
+    await fs.writeFile(file, `${lines.join("\n").trimEnd()}\n`, "utf8");
+    this.io.info(`Transkrip diekspor ke ${path.relative(this.workspace.root, file) || file}.`);
+  }
+
+  /** Buat AGENTS.md awal bila belum ada. */
+  private async commandInit(): Promise<void> {
+    const file = path.join(this.workspace.root, "AGENTS.md");
+    try {
+      await fs.access(file);
+      this.io.info("AGENTS.md sudah ada; tidak ditimpa.");
+      return;
+    } catch {
+      // belum ada
+    }
+    const template = `# AGENTS.md
+
+Konteks untuk agent yang bekerja di repo ini.
+
+## Perintah
+
+- \`pnpm install\` — pasang dependensi
+- \`pnpm test\` — jalankan tes
+- \`pnpm lint\` — lint
+- \`pnpm typecheck\` — cek tipe
+- \`pnpm build\` — bundel
+
+## Konvensi
+
+- TypeScript strict, tanpa \`any\`.
+- Fungsi kecil dan teruji.
+- Jangan mengubah file di luar tugas.
+
+## Definisi selesai
+
+- Tes baru ditulis untuk perilaku baru.
+- \`pnpm test\`, \`pnpm lint\`, dan \`pnpm typecheck\` lulus.
+`;
+    await fs.writeFile(file, template, "utf8");
+    this.io.info("AGENTS.md dibuat. Sunting sesuai kebutuhan workspace.");
+  }
+
+  /** Lihat/ganti tema TUI. */
+  private async commandThemes(name?: string): Promise<void> {
+    const current = this.config.theme ?? "opencode";
+    if (!name) {
+      this.io.info(`Tema: ${current} · pilihan: ${THEME_NAMES.join(", ")}`);
+      return;
+    }
+    if (!isThemeName(name)) {
+      this.io.warn(`Tema tidak dikenal: ${name}. Pilihan: ${THEME_NAMES.join(", ")}.`);
+      return;
+    }
+    this.tuiScreenRef?.setTheme(name);
+    this.config = await saveConfig({ theme: name });
+    this.io.info(`Tema diganti ke ${name}.`);
+    await this.refreshTui();
+  }
+
+  private async commandUndo(arg?: string): Promise<void> {
+    const count = Math.max(1, Number.parseInt(arg ?? "1", 10) || 1);
+    // Sesi hasil resume tidak punya snapshot transkrip; tetap dukung undo file.
+    if (this.turnSnapshots.length === 0) {
+      const result = await this.checkpoints.undoLast(this.workspace.root);
+      if (result.entries.length === 0) {
+        this.io.info("Tidak ada perubahan file yang bisa dibatalkan.");
+        return;
+      }
+      for (const entry of result.entries) {
+        this.io.diff(renderDiff(entry.after ?? "", entry.before ?? "", entry.display));
+      }
+      this.io.info(`${result.entries.length} file dikembalikan.`);
+      await this.refreshTui();
+      return;
+    }
+
+    const popped: TurnSnapshot[] = [];
+    const entries: UndoEntry[] = [];
+    for (let i = 0; i < count && this.turnSnapshots.length > 0; i += 1) {
+      const snapshot = this.turnSnapshots.pop()!;
+      const result = await this.checkpoints.undoLast(this.workspace.root);
+      snapshot.files = result.entries;
+      entries.push(...result.entries);
+      popped.push(snapshot);
+    }
+    if (popped.length === 0) {
+      this.io.info("Tidak ada giliran yang bisa dibatalkan.");
+      return;
+    }
+
+    const earliest = popped[popped.length - 1]!;
+    this.session.setHistory(cloneHistory(earliest.beforeHistory));
+    for (const snapshot of popped) this.redoStack.push(snapshot);
+    if (this.tuiScreenRef) {
+      if (earliest.beforeHistory.length === 0 && earliest.beforeLines.length === 0) {
+        this.tuiScreenRef.showHome();
+      } else {
+        this.tuiScreenRef.restoreMainLines(earliest.beforeLines);
+      }
+    }
+    for (const entry of entries) {
       this.io.diff(renderDiff(entry.after ?? "", entry.before ?? "", entry.display));
     }
-    this.io.info(`${result.entries.length} file dikembalikan.`);
+    this.io.info(
+      `${popped.length} giliran dibatalkan${entries.length > 0 ? ` · ${entries.length} file dikembalikan` : ""}.`,
+    );
+    await this.saveRecord();
+    await this.refreshTui();
+  }
+
+  private async commandRedo(): Promise<void> {
+    if (this.redoStack.length === 0) {
+      this.io.info("Tidak ada giliran yang bisa diulang.");
+      return;
+    }
+    const snapshot = this.redoStack.pop()!;
+    const paths = snapshot.files.map((entry) => entry.path);
+    if (paths.length > 0) {
+      this.checkpoints.beginTask();
+      await this.checkpoints.snapshotBefore(1, paths);
+    }
+    for (const entry of snapshot.files) {
+      if (entry.after === null) {
+        await fs.rm(entry.path, { force: true });
+      } else {
+        await fs.mkdir(path.dirname(entry.path), { recursive: true });
+        await fs.writeFile(entry.path, entry.after, "utf8");
+      }
+    }
+    this.session.setHistory(cloneHistory(snapshot.afterHistory));
+    this.turnSnapshots.push(snapshot);
+    if (this.turnSnapshots.length > 50) this.turnSnapshots.shift();
+    this.tuiScreenRef?.restoreMainLines(snapshot.afterLines);
+    for (const entry of snapshot.files) {
+      this.io.diff(renderDiff(entry.before ?? "", entry.after ?? "", entry.display));
+    }
+    this.io.info(
+      `1 giliran diulang${snapshot.files.length > 0 ? ` · ${snapshot.files.length} file dipulihkan` : ""}.`,
+    );
+    await this.saveRecord();
+    await this.refreshTui();
   }
 
   private async commandUsage(arg?: string): Promise<void> {
@@ -1504,15 +2060,16 @@ export class ChatApp {
     const usedTokens = new ContextManager(this.session.getModelInfo()?.contextWindow).estimate(
       this.session.getHistory(),
     );
-    const out = renderUsage(this.tracker, {
-      ...(this.session.getModelInfo()?.contextWindow
-        ? { contextWindow: this.session.getModelInfo()!.contextWindow }
-        : {}),
-      usedTokens,
-      ...(this.opts.maxCost ?? this.config.maxCost
-        ? { maxCost: this.opts.maxCost ?? this.config.maxCost! }
-        : {}),
-    }) + "\n";
+    const out =
+      renderUsage(this.tracker, {
+        ...(this.session.getModelInfo()?.contextWindow
+          ? { contextWindow: this.session.getModelInfo()!.contextWindow }
+          : {}),
+        usedTokens,
+        ...((this.opts.maxCost ?? this.config.maxCost)
+          ? { maxCost: this.opts.maxCost ?? this.config.maxCost! }
+          : {}),
+      }) + "\n";
     const lines = out.split("\n");
     if (this.io.view) {
       await this.io.view({ title: "Penggunaan — sesi ini", lines });
@@ -1561,7 +2118,9 @@ export class ChatApp {
       lines.push(`  ${active} ${skill.name.padEnd(24)} ${truncate(skill.description, 60)}`);
     }
     lines.push("");
-    lines.push("  Paksa aktif: /skill <nama>  ·  lepas semua: /skill off  ·  pasang: /skills install <sumber>");
+    lines.push(
+      "  Paksa aktif: /skill <nama>  ·  lepas semua: /skill off  ·  pasang: /skills install <sumber>",
+    );
     if (this.io.view) {
       await this.io.view({ title: "Skills", lines });
       return;
@@ -1585,7 +2144,20 @@ export class ChatApp {
   private async commandSkillInstall(tokens: string[]): Promise<void> {
     const { source, name, ultra, overwrite } = parseSkillInstallTokens(tokens);
     if (!source) {
-      this.io.warn("Pakai: /skills install <url|repo|folder> [--name <nama>] [--ultra] [--overwrite]");
+      this.io.warn(
+        "Pakai: /skills install <url|repo|folder> [--name <nama>] [--ultra] [--overwrite]",
+      );
+      return;
+    }
+
+    const decision = await this.approvals.confirm({
+      kind: "write",
+      title: "Pasang skill eksternal?",
+      detail: `Sumber: ${source}\nSkill akan diunduh/dipasang ke ./skills dan aktif untuk sesi ini.`,
+      irreversible: false,
+    });
+    if (decision === "no") {
+      this.io.info("Pemasangan skill dibatalkan.");
       return;
     }
 
@@ -1688,12 +2260,20 @@ export class ChatApp {
     for (const url of this.webServer.urls) process.stdout.write(`  ${url}\n`);
     process.stdout.write(`  terminal: ${this.webServer.backend}\n`);
     if (!isLoopbackHost(this.webServer.host)) {
-      this.io.warn("Server terikat ke jaringan — siapa pun yang punya token bisa menjalankan shell.");
+      this.io.warn(
+        "Server terikat ke jaringan — siapa pun yang punya token bisa menjalankan shell.",
+      );
       const target = reachableUrl(this.webServer.urls) ?? this.webServer.url;
       process.stdout.write("\n  Pindai kode QR untuk membuka di perangkat lain:\n\n");
-      process.stdout.write(qrLines(target).map((line) => `  ${line}`).join("\n") + "\n");
+      process.stdout.write(
+        qrLines(target)
+          .map((line) => `  ${line}`)
+          .join("\n") + "\n",
+      );
     } else {
-      process.stdout.write("  (hanya loopback — ketik /web lan untuk akses dari HP/LAN + kode QR)\n");
+      process.stdout.write(
+        "  (hanya loopback — ketik /web lan untuk akses dari HP/LAN + kode QR)\n",
+      );
     }
     process.stdout.write("  Buka di browser. Hentikan dengan /web stop.\n");
   }
@@ -1815,7 +2395,9 @@ export class ChatApp {
         return;
       }
       if (settings.open) {
-        this.io.warn("Peringatan: allowlist kosong — bot TERBUKA untuk siapa pun yang menemukannya.");
+        this.io.warn(
+          "Peringatan: allowlist kosong — bot TERBUKA untuk siapa pun yang menemukannya.",
+        );
       }
       const workerArgs = this.telegramWorkerArgs();
       try {
@@ -1876,14 +2458,18 @@ export class ChatApp {
         return;
       }
       await saveTelegramToken(value);
-      this.io.info(`Token bot disimpan aman (${maskToken(value)}). Jalankan /telegram untuk menyalakan.`);
+      this.io.info(
+        `Token bot disimpan aman (${maskToken(value)}). Jalankan /telegram untuk menyalakan.`,
+      );
       return;
     }
 
     if (sub === "allow") {
       if (rest.length === 0) {
         this.io.info(
-          allowed.length ? `Allowlist: ${allowed.join(", ")}` : "Allowlist kosong — bot terbuka untuk siapa pun.",
+          allowed.length
+            ? `Allowlist: ${allowed.join(", ")}`
+            : "Allowlist kosong — bot terbuka untuk siapa pun.",
         );
         return;
       }
@@ -1903,7 +2489,9 @@ export class ChatApp {
       const ids = new Set(rest.map((id) => id.trim()));
       const merged = allowed.filter((id) => !ids.has(String(id)));
       this.config = await saveConfig({ telegram: { ...telegram, allowedChatIds: merged } });
-      this.io.info(merged.length ? `Allowlist: ${merged.join(", ")}` : "Allowlist kosong — bot terbuka.");
+      this.io.info(
+        merged.length ? `Allowlist: ${merged.join(", ")}` : "Allowlist kosong — bot terbuka.",
+      );
       return;
     }
 
@@ -1954,9 +2542,7 @@ export class ChatApp {
       `  allowlist : ${allowed.length ? allowed.join(", ") : "(kosong — TERBUKA untuk siapa pun)"}\n`,
     );
     process.stdout.write(`  enabled   : ${telegram?.enabled === false ? "nonaktif" : "aktif"}\n`);
-    process.stdout.write(
-      `  berjalan  : ${daemon.running ? `ya (pid ${daemon.pid})` : "tidak"}\n`,
-    );
+    process.stdout.write(`  berjalan  : ${daemon.running ? `ya (pid ${daemon.pid})` : "tidak"}\n`);
     process.stdout.write(
       `  siap      : ${settings ? "ya — /telegram untuk menyalakan" : "belum (token belum ada)"}\n`,
     );
@@ -2035,7 +2621,7 @@ export class ChatApp {
 
     const facts = await readFacts(dir);
     if (facts.length === 0) {
-      this.io.info('Belum ada memori jangka panjang. Contoh: /memory add hobi coding');
+      this.io.info("Belum ada memori jangka panjang. Contoh: /memory add hobi coding");
       return;
     }
     const lines: string[] = [];
@@ -2052,10 +2638,62 @@ export class ChatApp {
     process.stdout.write("\nHapus dengan: /memory forget <key>  ·  /memory clear\n\n");
   }
 
+  /** Aktif/nonaktifkan plugin MCP lalu muat ulang registry. */
+  async setPluginEnabled(name: string | undefined, enabled: boolean): Promise<void> {
+    if (!name) {
+      this.io.warn("Pakai: /mcp enable <nama> atau /mcp disable <nama>.");
+      return;
+    }
+    if (this.activeController) {
+      this.io.warn("Tunggu tugas selesai sebelum mengubah plugin.");
+      return;
+    }
+    let config: Awaited<ReturnType<typeof loadPluginsConfig>>;
+    try {
+      config = await loadPluginsConfig();
+    } catch (err) {
+      this.io.warn(`Gagal membaca plugins.json: ${formatErrorMessage(err)}`);
+      return;
+    }
+    const server = config.servers[name];
+    if (!server) {
+      this.io.warn(`Plugin tidak ditemukan: ${name}. Lihat /mcp.`);
+      return;
+    }
+    if (server.enabled === enabled) {
+      this.io.info(`Plugin ${name} sudah ${enabled ? "aktif" : "nonaktif"}.`);
+      return;
+    }
+    try {
+      await saveMcpServer(name, { ...server, enabled });
+    } catch (err) {
+      this.io.warn(`Gagal menyimpan plugins.json: ${formatErrorMessage(err)}`);
+      return;
+    }
+    this.io.info(`Memuat ulang plugin ${name}…`);
+    await this.mcp.reload(this.registry);
+    await this.refreshTui();
+    this.io.info(`Plugin ${name} ${enabled ? "diaktifkan" : "dinonaktifkan"}.`);
+  }
+
+  /** Toggle dari klik sidebar: baca status terkini lalu balikkan. */
+  async togglePlugin(name: string): Promise<void> {
+    const status = this.mcp.status().find((item) => item.name === name);
+    if (!status) {
+      this.io.warn(`Plugin tidak ditemukan: ${name}.`);
+      return;
+    }
+    await this.setPluginEnabled(name, !status.enabled);
+  }
+
   private async commandMcp(args: string[]): Promise<void> {
     const [sub, second, third] = args;
     if (sub === undefined) {
       this.printMcp();
+      return;
+    }
+    if (sub === "enable" || sub === "disable") {
+      await this.setPluginEnabled(second, sub === "enable");
       return;
     }
     if (sub === "reload") {
@@ -2081,7 +2719,7 @@ export class ChatApp {
       return;
     }
     this.io.warn(
-      `Argumen tidak dikenal: ${sub}. Pakai /mcp, /mcp add <preset|command>, /mcp remove <nama>, /mcp reload, atau /mcp key <nama> [hapus].`,
+      `Argumen tidak dikenal: ${sub}. Pakai /mcp, /mcp add <preset|command>, /mcp remove <nama>, /mcp enable|disable <nama>, /mcp reload, atau /mcp key <nama> [hapus].`,
     );
   }
 
@@ -2100,7 +2738,11 @@ export class ChatApp {
 
     process.stdout.write("\nServer MCP:\n");
     for (const server of status) {
-      const marker = server.error ? color.red("✗") : server.connected ? color.green("●") : color.gray("○");
+      const marker = server.error
+        ? color.red("✗")
+        : server.connected
+          ? color.green("●")
+          : color.gray("○");
       let detail: string;
       if (!server.enabled) detail = "nonaktif (enabled: false)";
       else if (server.error) detail = server.error;
@@ -2118,7 +2760,7 @@ export class ChatApp {
       }
     }
     process.stdout.write(
-      "\n  /mcp add <preset|command...> = tambah server · /mcp remove <nama> · /mcp reload · /mcp key <nama>\n\n",
+      "\n  /mcp add <preset|command...> = tambah server · /mcp remove <nama> · /mcp enable|disable <nama> · /mcp reload · /mcp key <nama>\n\n",
     );
   }
 
@@ -2185,11 +2827,15 @@ export class ChatApp {
     }
     if (action === "hapus" || action === "delete" || action === "rm") {
       const deleted = await this.credentials.delete(name);
-      this.io.info(deleted ? `Kredensial ${name} dihapus.` : `Tidak ada kredensial bernama ${name}.`);
+      this.io.info(
+        deleted ? `Kredensial ${name} dihapus.` : `Tidak ada kredensial bernama ${name}.`,
+      );
       return;
     }
     if (action !== undefined) {
-      this.io.warn(`Argumen tidak dikenal: ${action}. Pakai /mcp key <nama> atau /mcp key <nama> hapus.`);
+      this.io.warn(
+        `Argumen tidak dikenal: ${action}. Pakai /mcp key <nama> atau /mcp key <nama> hapus.`,
+      );
       return;
     }
 

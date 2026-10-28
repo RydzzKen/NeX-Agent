@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Screen, type ScreenOptions } from "../src/cli/tui/screen.js";
 import { TuiPrompter } from "../src/cli/tui/prompt.js";
 import { TuiIO } from "../src/cli/tui/io.js";
-import { attachTui, type TuiPair } from "../src/cli/tui/index.js";
+import { attachTui, matchesKeybinding, type TuiPair } from "../src/cli/tui/index.js";
 import { normalizeKey } from "../src/util/ansi.js";
 
 interface Harness {
@@ -18,15 +18,17 @@ afterEach(() => {
 });
 
 /** Bangun pair TUI palsu (tanpa stdin/stdout sungguhan) + dispatcher terpasang. */
-function attach(): Harness {
+function attach(
+  opts: { cols?: number; rows?: number; togglePlugin?: (name: string) => void } = {},
+): Harness {
   const writes: string[] = [];
   const out = {
     write: (s: string | Uint8Array) => {
       writes.push(String(s));
       return true;
     },
-    columns: 60,
-    rows: 20,
+    columns: opts.cols ?? 60,
+    rows: opts.rows ?? 20,
     on: () => {},
   };
   const stdin = { isTTY: false, setRawMode: () => {}, on: () => {}, removeAllListeners: () => {} };
@@ -43,6 +45,7 @@ function attach(): Harness {
     toggleMode: () => {
       toggles.mode += 1;
     },
+    ...(opts.togglePlugin ? { togglePlugin: opts.togglePlugin } : {}),
   });
   cleanups.push(detach);
   return { pair, screen, writes, toggles };
@@ -90,10 +93,10 @@ describe("TUI: Ctrl+T & Ctrl+Tab", () => {
     expect(toggles.mode).toBe(1);
   });
 
-  it("Tab biasa tidak mengganti mode", () => {
+  it("Tab biasa mengganti mode saat autocomplete tertutup", () => {
     const { screen, toggles } = attach();
     screen.emitKey({ name: "tab", sequence: "\t" });
-    expect(toggles.mode).toBe(0);
+    expect(toggles.mode).toBe(1);
   });
 
   it("merakit urutan modifyOtherKeys yang dipecah readline (tanpa bocor '9~')", () => {
@@ -177,11 +180,56 @@ describe("TUI: gulir riwayat chat (roda mouse)", () => {
   });
 });
 
+describe("TUI: keybind dapat diubah", () => {
+  it("mencocokkan tab, ctrl+o, dan shift+tab", () => {
+    expect(matchesKeybinding(normalizeKey({ name: "tab", sequence: "\t" }), "tab")).toBe(true);
+    expect(
+      matchesKeybinding(normalizeKey({ name: "o", ctrl: true, sequence: "\u000f" }), "ctrl+o"),
+    ).toBe(true);
+    expect(
+      matchesKeybinding(
+        normalizeKey({ name: "tab", shift: true, sequence: "\u001b[Z" }),
+        "shift+tab",
+      ),
+    ).toBe(true);
+    expect(
+      matchesKeybinding(normalizeKey({ name: "g", ctrl: true, sequence: "\u0007" }), "ctrl+g"),
+    ).toBe(true);
+  });
+
+  it("menolak modifier atau nama tombol yang tidak cocok", () => {
+    expect(matchesKeybinding(normalizeKey({ name: "tab", sequence: "\t" }), "ctrl+tab")).toBe(
+      false,
+    );
+    expect(matchesKeybinding(normalizeKey({ name: "g", sequence: "g" }), "ctrl+g")).toBe(false);
+    expect(matchesKeybinding(normalizeKey({ name: "esc", sequence: "\u001b" }), "tab")).toBe(false);
+  });
+});
+
+describe("TUI: klik plugin sidebar", () => {
+  it("meneruskan klik plugin ke hook toggle, bukan seleksi teks", () => {
+    const toggled: string[] = [];
+    const { screen } = attach({ cols: 120, rows: 35, togglePlugin: (name) => toggled.push(name) });
+    screen.startSession("uji");
+    screen.setSidebar({
+      plugins: [
+        { name: "filesystem", enabled: true, connected: true },
+        { name: "github", enabled: false },
+      ],
+      files: [],
+    });
+    // 120 kolom: padding 2 + konten 89 + 2 = kolom 93; baris 5 = plugin pertama.
+    screen.emitKey({ sequence: "\u001b[<0;93;5M" });
+    expect(toggled).toEqual(["filesystem"]);
+  });
+});
+
 describe("TUI: seleksi teks mouse (seret kiri) + salin OSC 52", () => {
   /** Siapkan layar dengan 30 baris dan gulir ke dasar; kosongkan buffer tulis. */
   function setup(): Harness {
     const h = attach();
     h.screen.start();
+    h.screen.startSession("uji");
     h.screen.clearView();
     for (let i = 0; i < 30; i += 1) h.screen.append("text", `baris-${i}`);
     h.screen.scrollToBottom();
@@ -191,32 +239,32 @@ describe("TUI: seleksi teks mouse (seret kiri) + salin OSC 52", () => {
 
   it("seret dalam satu baris menyalin potongan kolom terpilih", () => {
     const { screen, writes } = setup();
-    screen.emitKey({ sequence: "\u001b[<0;1;1M" }); // tekan kiri di kolom 1, baris 1
-    screen.emitKey({ sequence: "\u001b[<32;5;1M" }); // seret ke kolom 5
-    screen.emitKey({ sequence: "\u001b[<0;5;1m" }); // lepas
-    // Baris 1 (dasar layar) = baris ke-13; kolom 1..5 = "baris".
+    screen.emitKey({ sequence: "\u001b[<0;3;2M" }); // tekan kiri di kolom isi pertama
+    screen.emitKey({ sequence: "\u001b[<32;7;2M" }); // seret ke kolom 7
+    screen.emitKey({ sequence: "\u001b[<0;7;2m" }); // lepas
+    // Baris 2 (dasar transkrip) = baris ke-14; kolom 3..7 = "baris".
     expect(copiedText(writes)).toBe("baris");
   });
 
   it("seret lintas baris menyalin beberapa baris dengan newline", () => {
     const { screen, writes } = setup();
-    screen.emitKey({ sequence: "\u001b[<0;1;1M" });
-    screen.emitKey({ sequence: "\u001b[<32;3;2M" });
-    screen.emitKey({ sequence: "\u001b[<0;3;2m" });
-    expect(copiedText(writes)).toBe("baris-13\nbar");
+    screen.emitKey({ sequence: "\u001b[<0;3;2M" });
+    screen.emitKey({ sequence: "\u001b[<32;5;3M" });
+    screen.emitKey({ sequence: "\u001b[<0;5;3m" });
+    expect(copiedText(writes)).toBe("baris-14\nbar");
   });
 
   it("klik tanpa geser tidak menyalin apa pun", () => {
     const { screen, writes } = setup();
-    screen.emitKey({ sequence: "\u001b[<0;2;2M" });
-    screen.emitKey({ sequence: "\u001b[<0;2;2m" });
+    screen.emitKey({ sequence: "\u001b[<0;4;2M" });
+    screen.emitKey({ sequence: "\u001b[<0;4;2m" });
     expect(copiedText(writes)).toBeUndefined();
   });
 
   it("menekan tombol membatalkan seleksi yang tersorot", () => {
     const { screen } = setup();
-    screen.emitKey({ sequence: "\u001b[<0;1;1M" });
-    screen.emitKey({ sequence: "\u001b[<32;5;1M" });
+    screen.emitKey({ sequence: "\u001b[<0;3;2M" });
+    screen.emitKey({ sequence: "\u001b[<32;7;2M" });
     expect(screen.hasSelection).toBe(true);
     screen.emitKey({ name: "a", sequence: "a" });
     expect(screen.hasSelection).toBe(false);
@@ -224,9 +272,9 @@ describe("TUI: seleksi teks mouse (seret kiri) + salin OSC 52", () => {
 
   it("seret ke atas (mundur) menormalkan urutan baris", () => {
     const { screen, writes } = setup();
-    screen.emitKey({ sequence: "\u001b[<0;3;2M" }); // tekan di baris bawah
-    screen.emitKey({ sequence: "\u001b[<32;1;1M" }); // seret ke atas
-    screen.emitKey({ sequence: "\u001b[<0;1;1m" });
-    expect(copiedText(writes)).toBe("baris-13\nbar");
+    screen.emitKey({ sequence: "\u001b[<0;5;3M" }); // tekan di baris bawah
+    screen.emitKey({ sequence: "\u001b[<32;3;2M" }); // seret ke atas
+    screen.emitKey({ sequence: "\u001b[<0;3;2m" });
+    expect(copiedText(writes)).toBe("baris-14\nbar");
   });
 });

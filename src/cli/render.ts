@@ -64,7 +64,7 @@ export interface ChatIO extends AgentIO {
    * Tampilkan pesan yang baru dikirim pengguna di riwayat percakapan. Dipakai
    * TUI (yang membersihkan baris input saat submit) agar pesan tetap terlihat.
    */
-  userMessage?(text: string): void;
+  userMessage?(text: string, title?: string): void;
   setThinking(value: boolean): void;
   thinkingEnabled(): boolean;
   setMarkdown(value: boolean): void;

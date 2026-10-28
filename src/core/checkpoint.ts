@@ -139,8 +139,8 @@ export class CheckpointManager {
 
   /** Kembalikan seluruh perubahan tugas terakhir ke kondisi awal tugas. */
   async undoLast(workspaceRoot: string): Promise<UndoResult> {
-    const task = this.current ?? this.tasks[this.tasks.length - 1];
-    if (!task || task.steps.length === 0) return { entries: [] };
+    const task = [...this.tasks].reverse().find((entry) => entry.steps.length > 0);
+    if (!task) return { entries: [] };
     const firstStep = Math.min(...task.steps.map((s) => s.index));
     const snapshots = this.snapshotsAtOrAfter(task, firstStep);
     const entries = await this.apply(snapshots, workspaceRoot);
@@ -201,8 +201,7 @@ export class CheckpointManager {
   }
 
   hasUndo(): boolean {
-    const task = this.current ?? this.tasks[this.tasks.length - 1];
-    return Boolean(task && task.steps.length > 0);
+    return this.tasks.some((task) => task.steps.length > 0);
   }
 
   private async persist(): Promise<void> {

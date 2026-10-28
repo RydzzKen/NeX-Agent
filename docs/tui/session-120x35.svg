@@ -1,0 +1,166 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1116" height="701" viewBox="0 0 1116 701" role="img">
+<rect width="1116" height="701" fill="#050505"/>
+<rect x="17" y="17" width="1082" height="667" fill="#0a0a0a" stroke="#2a2a2a"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="15" xml:space="preserve">
+<rect x="18" y="18" width="18" height="19" fill="#0a0a0a"/>
+<rect x="36" y="18" width="9" height="19" fill="#0a0a0a"/>
+<text x="36" y="32" fill="#2a2a2a">│</text>
+<rect x="45" y="18" width="9" height="19" fill="#0a0a0a"/>
+<rect x="54" y="18" width="126" height="19" fill="#0a0a0a"/>
+<text x="54" y="32" fill="#eeeeee"># refactor tui</text>
+<rect x="180" y="18" width="630" height="19" fill="#0a0a0a"/>
+<rect x="810" y="18" width="27" height="19" fill="#0a0a0a"/>
+<text x="810" y="32" fill="#808080">42%</text>
+<rect x="837" y="18" width="9" height="19" fill="#0a0a0a"/>
+<text x="846" y="32" fill="#2a2a2a">│</text>
+<text x="864" y="32" fill="#808080">sesi</text>
+<rect x="1080" y="18" width="18" height="19" fill="#0a0a0a"/>
+<rect x="36" y="37" width="9" height="19" fill="#141414"/>
+<rect x="36" y="37" width="9" height="19" fill="#5c9cf5"/>
+<rect x="45" y="37" width="9" height="19" fill="#141414"/>
+<rect x="54" y="37" width="486" height="19" fill="#141414"/>
+<text x="54" y="51" fill="#eeeeee">rapikan transkrip tui, tambahkan panel output dan diff</text>
+<text x="846" y="51" fill="#2a2a2a">│</text>
+<text x="864" y="51" fill="#eeeeee">refactor</text>
+<text x="945" y="51" fill="#eeeeee">tui</text>
+<text x="36" y="70" fill="#eeeeee">Saya</text>
+<text x="81" y="70" fill="#eeeeee">mulai</text>
+<text x="135" y="70" fill="#eeeeee">dari</text>
+<text x="180" y="70" fill="#eeeeee">struktur</text>
+<text x="261" y="70" fill="#eeeeee">baris</text>
+<text x="315" y="70" fill="#eeeeee">dan</text>
+<text x="351" y="70" fill="#eeeeee">panel.</text>
+<text x="414" y="70" fill="#eeeeee">Setelah</text>
+<text x="486" y="70" fill="#eeeeee">itu</text>
+<text x="522" y="70" fill="#eeeeee">saya</text>
+<text x="567" y="70" fill="#eeeeee">cek</text>
+<text x="603" y="70" fill="#eeeeee">layout</text>
+<text x="666" y="70" fill="#eeeeee">di</text>
+<text x="693" y="70" fill="#eeeeee">tiga</text>
+<text x="738" y="70" fill="#eeeeee">breakpoint.</text>
+<text x="846" y="70" fill="#2a2a2a">│</text>
+<text x="36" y="89" fill="#9d7cd8">$</text>
+<text x="54" y="89" fill="#808080">pnpm</text>
+<text x="99" y="89" fill="#808080">test</text>
+<text x="144" y="89" fill="#7fd88f">ok</text>
+<text x="846" y="89" fill="#2a2a2a">│</text>
+<text x="864" y="89" fill="#808080">plugin</text>
+<rect x="36" y="94" width="9" height="19" fill="#141414"/>
+<rect x="45" y="94" width="234" height="19" fill="#141414"/>
+<text x="45" y="108" fill="#808080">Test Files  62 passed (62)</text>
+<rect x="279" y="94" width="558" height="19" fill="#141414"/>
+<text x="846" y="108" fill="#2a2a2a">│</text>
+<text x="864" y="108" fill="#eeeeee">filesystem</text>
+<text x="1071" y="108" fill="#7fd88f">●</text>
+<rect x="36" y="113" width="9" height="19" fill="#141414"/>
+<rect x="45" y="113" width="261" height="19" fill="#141414"/>
+<text x="45" y="127" fill="#808080">      Tests  783 passed (783)</text>
+<rect x="306" y="113" width="531" height="19" fill="#141414"/>
+<text x="846" y="127" fill="#2a2a2a">│</text>
+<text x="864" y="127" fill="#eeeeee">github</text>
+<text x="1071" y="127" fill="#e06c75">◐</text>
+<text x="36" y="146" fill="#6b6b6b">←</text>
+<text x="54" y="146" fill="#eeeeee">Edit</text>
+<text x="99" y="146" fill="#9d7cd8">src/cli/tui/screen.ts</text>
+<text x="846" y="146" fill="#2a2a2a">│</text>
+<text x="864" y="146" fill="#eeeeee">cloudflare-docs</text>
+<text x="1071" y="146" fill="#7fd88f">●</text>
+<text x="36" y="165" fill="#e5a14d">@@</text>
+<text x="63" y="165" fill="#e5a14d">-118,7</text>
+<text x="126" y="165" fill="#e5a14d">+118,9</text>
+<text x="189" y="165" fill="#e5a14d">@@</text>
+<text x="846" y="165" fill="#2a2a2a">│</text>
+<text x="864" y="165" fill="#eeeeee">playwright</text>
+<text x="1071" y="165" fill="#6b6b6b">○</text>
+<text x="45" y="184" fill="#eeeeee">118</text>
+<text x="99" y="184" fill="#808080">function</text>
+<text x="180" y="184" fill="#808080">renderTranscript()</text>
+<text x="351" y="184" fill="#808080">{</text>
+<text x="846" y="184" fill="#2a2a2a">│</text>
+<rect x="36" y="189" width="63" height="19" fill="#2a1512"/>
+<text x="36" y="203" fill="#eeeeee"> 119 - </text>
+<rect x="99" y="189" width="243" height="19" fill="#2a1512"/>
+<text x="99" y="203" fill="#e06c75">  return lines.map(render);</text>
+<rect x="342" y="189" width="495" height="19" fill="#2a1512"/>
+<text x="846" y="203" fill="#2a2a2a">│</text>
+<text x="864" y="203" fill="#808080">file</text>
+<text x="909" y="203" fill="#808080">diubah</text>
+<rect x="36" y="208" width="63" height="19" fill="#10231a"/>
+<text x="36" y="222" fill="#eeeeee"> 119 + </text>
+<rect x="99" y="208" width="423" height="19" fill="#10231a"/>
+<text x="99" y="222" fill="#7fd88f">  return lines.map((line) =&gt; renderLine(line, {</text>
+<rect x="522" y="208" width="315" height="19" fill="#10231a"/>
+<text x="846" y="222" fill="#2a2a2a">│</text>
+<text x="864" y="222" fill="#eeeeee">src/cli…reen.ts</text>
+<text x="1008" y="222" fill="#7fd88f">+128</text>
+<text x="1053" y="222" fill="#e06c75">-64</text>
+<rect x="36" y="227" width="63" height="19" fill="#10231a"/>
+<text x="36" y="241" fill="#eeeeee"> 120 + </text>
+<rect x="99" y="227" width="252" height="19" fill="#10231a"/>
+<text x="99" y="241" fill="#7fd88f">    details: showToolOutput,</text>
+<rect x="351" y="227" width="486" height="19" fill="#10231a"/>
+<text x="846" y="241" fill="#2a2a2a">│</text>
+<text x="864" y="241" fill="#eeeeee">src/cli/…yout.ts</text>
+<text x="1017" y="241" fill="#7fd88f">+42</text>
+<text x="1053" y="241" fill="#e06c75">-12</text>
+<rect x="36" y="246" width="63" height="19" fill="#10231a"/>
+<text x="36" y="260" fill="#eeeeee"> 121 + </text>
+<rect x="99" y="246" width="54" height="19" fill="#10231a"/>
+<text x="99" y="260" fill="#7fd88f">  }));</text>
+<rect x="153" y="246" width="684" height="19" fill="#10231a"/>
+<text x="846" y="260" fill="#2a2a2a">│</text>
+<text x="864" y="260" fill="#eeeeee">README.md</text>
+<text x="1026" y="260" fill="#7fd88f">+24</text>
+<text x="1062" y="260" fill="#e06c75">-6</text>
+<text x="45" y="279" fill="#eeeeee">122</text>
+<text x="99" y="279" fill="#808080">}</text>
+<rect x="36" y="284" width="9" height="19" fill="#141414"/>
+<rect x="36" y="284" width="9" height="19" fill="#5c9cf5"/>
+<rect x="45" y="284" width="9" height="19" fill="#141414"/>
+<rect x="54" y="284" width="441" height="19" fill="#141414"/>
+<text x="54" y="298" fill="#eeeeee">pastikan sidebar tetap terbaca di terminal sempit</text>
+<text x="36" y="317" fill="#eeeeee">Sidebar</text>
+<text x="108" y="317" fill="#eeeeee">26</text>
+<text x="135" y="317" fill="#eeeeee">kolom</text>
+<text x="189" y="317" fill="#eeeeee">dipakai</text>
+<text x="261" y="317" fill="#eeeeee">saat</text>
+<text x="306" y="317" fill="#eeeeee">lebar</text>
+<text x="360" y="317" fill="#eeeeee">&gt;=</text>
+<text x="387" y="317" fill="#eeeeee">100.</text>
+<text x="432" y="317" fill="#eeeeee">Di</text>
+<text x="459" y="317" fill="#eeeeee">bawahnya</text>
+<text x="540" y="317" fill="#eeeeee">sidebar</text>
+<text x="612" y="317" fill="#eeeeee">disembunyikan;</text>
+<text x="747" y="317" fill="#eeeeee">detail</text>
+<text x="810" y="317" fill="#eeeeee">ses</text>
+<text x="36" y="336" fill="#eeeeee">i</text>
+<text x="54" y="336" fill="#eeeeee">bisa</text>
+<text x="99" y="336" fill="#eeeeee">dibuka</text>
+<text x="162" y="336" fill="#eeeeee">lewat</text>
+<text x="216" y="336" fill="#eeeeee">Ctrl+O</text>
+<text x="279" y="336" fill="#eeeeee">atau</text>
+<text x="324" y="336" fill="#eeeeee">/details</text>
+<text x="405" y="336" fill="#eeeeee">panel.</text>
+<rect x="36" y="626" width="9" height="19" fill="#141414"/>
+<rect x="36" y="626" width="9" height="19" fill="#5c9cf5"/>
+<rect x="45" y="626" width="9" height="19" fill="#141414"/>
+<rect x="54" y="626" width="18" height="19" fill="#141414"/>
+<text x="54" y="640" fill="#808080">› </text>
+<rect x="72" y="626" width="9" height="19" fill="#5c9cf5"/>
+<rect x="36" y="645" width="9" height="19" fill="#141414"/>
+<rect x="36" y="645" width="9" height="19" fill="#5c9cf5"/>
+<rect x="45" y="645" width="9" height="19" fill="#141414"/>
+<rect x="54" y="645" width="45" height="19" fill="#141414"/>
+<text x="54" y="659" fill="#5c9cf5">build</text>
+<rect x="99" y="645" width="18" height="19" fill="#141414"/>
+<rect x="117" y="645" width="135" height="19" fill="#141414"/>
+<text x="117" y="659" fill="#808080">claude-sonnet-4</text>
+<rect x="252" y="645" width="18" height="19" fill="#141414"/>
+<rect x="270" y="645" width="81" height="19" fill="#141414"/>
+<text x="270" y="659" fill="#6b6b6b">anthropic</text>
+<rect x="351" y="645" width="486" height="19" fill="#141414"/>
+<text x="36" y="678" fill="#808080">~/Project/NeX-Agent:main</text>
+<text x="927" y="678" fill="#6b6b6b">NeX-Agent</text>
+<text x="1017" y="678" fill="#6b6b6b">v1.21.0</text>
+</g>
+</svg>

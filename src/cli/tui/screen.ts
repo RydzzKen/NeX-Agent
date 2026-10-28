@@ -1,12 +1,5 @@
 import type { Writable } from "node:stream";
 import readline from "node:readline";
-import { color } from "../../util/color.js";
-import {
-  gradientDivider,
-  logoBanner,
-  moonAccent,
-  spinnerTick,
-} from "./theme.js";
 import {
   highlightColumns,
   normalizeKey,
@@ -18,12 +11,46 @@ import {
   type Key,
 } from "../../util/ansi.js";
 import { OSC52_MAX_BYTES, osc52Sequence, wrapForMultiplexer } from "../../util/clipboard.js";
+import { APP_VERSION } from "../../version.js";
+import {
+  alignSides,
+  centerLine,
+  centerPad,
+  clipLine,
+  contentWidth,
+  fitLine,
+  formatFooter,
+  formatHeader,
+  formatPromptMeta,
+  layoutMetrics,
+  truncateMiddle,
+  wrapLine,
+  type LayoutMetrics,
+} from "./layout.js";
+import {
+  bg,
+  detectColorLevel,
+  fg,
+  logoNeX,
+  modeAccent,
+  spinnerFrame,
+  themePalette,
+  type ColorLevel,
+  type ThemeName,
+  type ThemePalette,
+} from "./theme.js";
 
 /** Jenis baris; dipakai untuk pewarnaan dan filter (thinking). */
 export type LineKind =
   | "text"
   | "think"
-  | "step"
+  | "tool"
+  | "tool-out"
+  | "edit"
+  | "diff-add"
+  | "diff-del"
+  | "diff-hunk"
+  | "diff-context"
   | "info"
   | "warn"
   | "error"
@@ -61,57 +88,91 @@ export interface OverlayContent {
   scrollTop?: number;
 }
 
-/** Baris daftar yang terlihat sekaligus di overlay. */
-const MAX_OVERLAY_LIST = 10;
+/** Informasi footer: folder:branch di kiri, versi di kanan. */
+export interface ScreenFooter {
+  folder: string;
+  branch: string;
+  version: string;
+}
+
+export interface SidebarPlugin {
+  name: string;
+  enabled: boolean;
+  connected?: boolean;
+}
+
+export interface SidebarFile {
+  path: string;
+  added: number;
+  removed: number;
+}
+
+export interface SidebarData {
+  plugins: SidebarPlugin[];
+  files: SidebarFile[];
+}
 
 interface View {
   id: string;
   name: string;
   main: boolean;
-  lines: Array<{ kind: LineKind; text: string }>;
+  lines: Line[];
   /** Baris tergulung ke atas dari dasar konten (0 = dasar). */
   scroll: number;
   /** Jenis baris terakhir yang masih "terbuka" untuk sambungan streaming. */
   open?: LineKind;
 }
 
+export interface ScreenLine {
+  kind: LineKind;
+  text: string;
+  /** ID unik untuk baris tool yang bisa diperbarui saat selesai. */
+  id?: number;
+  /** Nomor baris sumber (diff). */
+  num?: number;
+  running?: boolean;
+  status?: "ok" | "error" | "denied";
+}
+
+type Line = ScreenLine;
+
 export interface ScreenOptions {
   stdin: NodeJS.ReadStream;
-  stdout: Writable & { columns?: number; rows?: number; on?: (e: string, cb: () => void) => void };
+  stdout: Writable & {
+    columns?: number;
+    rows?: number;
+    on?: (e: string, cb: () => void) => void;
+    off?: (e: string, cb: () => void) => void;
+    removeListener?: (e: string, cb: () => void) => void;
+  };
   status?: Partial<ScreenStatus>;
   showThinking?: boolean;
+  footer?: Partial<ScreenFooter>;
+  theme?: ThemeName;
 }
+
+/** Baris daftar yang terlihat sekaligus di overlay. */
+const MAX_OVERLAY_LIST = 10;
 
 const DEFAULT_COLS = 80;
 const DEFAULT_ROWS = 24;
 const SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-const MAX_MENU = 6;
 const MAX_LINES = 5000; // Batasi scrollback biar nggak OOM
 
 type WriteFn = (chunk: string | Uint8Array, ...rest: unknown[]) => boolean;
 
-/** Lut warna per jenis baris. */
-function paint(kind: LineKind, text: string): string {
-  switch (kind) {
-    case "think":
-      return color.dim(text);
-    case "info":
-      return color.cyan(text);
-    case "warn":
-      return color.yellow(text);
-    case "error":
-      return color.red(text);
-    case "user":
-      return color.bold(color.cyan(text));
-    default:
-      return text;
-  }
+interface PromptRender {
+  lines: string[];
+  /** Indeks baris input di dalam `lines`. */
+  inputIndex: number;
+  /** Kolom kursor 0-based relatif terhadap kotak prompt. */
+  cursorCol: number;
 }
 
 /**
  * Layar TUI: alternate screen, raw-mode input, intercept `process.stdout.write`
  * agar semua tulis langsung dari app masuk ke frame, multi-view (utama +
- * subagent), input line, overlay modal, dan status bar.
+ * subagent), input line, overlay modal, layar awal, dan layar sesi.
  */
 export class Screen {
   private readonly stdin: NodeJS.ReadStream;
@@ -125,14 +186,36 @@ export class Screen {
   private started = false;
   private intercepted = false;
   private origWrite?: WriteFn;
+  private theme: ThemeName;
+  private palette: ThemePalette;
+  private colorLevel: ColorLevel;
+
+  private home = true;
+  private sessionTitle = "";
+  private contextPercent = 0;
+  private footer: ScreenFooter;
+  private sidebar: SidebarData = { plugins: [], files: [] };
+  private sidebarPluginHits: Array<{ line: number; name: string }> = [];
+  private sidebarHandler?: (name: string) => void;
+  private lastSidebarLeft = 0;
+  private lastSidebarWidth = 0;
+  private showToolOutput = true;
+  private toolSeq = 0;
 
   private input = { text: "", caret: 0, mask: false, active: false, prompt: "" };
-  private menu?: { token: string; matches: string[]; selected: number; offset: number };
+  private menu?: {
+    token: string;
+    matches: string[];
+    descriptions?: string[];
+    selected: number;
+    offset: number;
+  };
   private overlay?: OverlayContent;
   private overlayInput = "";
 
   private keyHandler?: (key: Key) => void;
   private drawTimer?: ReturnType<typeof setTimeout>;
+  private resizeTimer?: ReturnType<typeof setTimeout>;
   private spinnerTick = 0;
   private spinnerTimer?: ReturnType<typeof setInterval>;
 
@@ -142,8 +225,20 @@ export class Screen {
   private lastAll: string[] = [];
   private lastStart = 0;
   private lastContentRows = 0;
+  private lastContentTop = 1;
+  private lastContentLeft = 1;
+  private lastContentWidth = 1;
   private notice?: string;
   private noticeTimer?: ReturnType<typeof setTimeout>;
+
+  private readonly onResize = (): void => {
+    if (this.resizeTimer) return;
+    this.resizeTimer = setTimeout(() => {
+      this.resizeTimer = undefined;
+      this.redraw();
+    }, 16);
+    (this.resizeTimer as { unref?: () => void }).unref?.();
+  };
 
   constructor(opts: ScreenOptions) {
     this.stdin = opts.stdin;
@@ -159,6 +254,15 @@ export class Screen {
     };
     this.emitKeypress = Boolean(opts.stdin.isTTY);
     this.showThinking = opts.showThinking ?? true;
+    this.theme = opts.theme ?? "opencode";
+    this.palette = themePalette(this.theme);
+    this.colorLevel = detectColorLevel();
+    this.footer = {
+      folder: "",
+      branch: "",
+      version: APP_VERSION,
+      ...opts.footer,
+    };
     if (opts.status) this.status = { ...this.status, ...opts.status };
     this.views.push({ id: "main", name: "utama", main: true, lines: [], scroll: 0 });
   }
@@ -179,29 +283,27 @@ export class Screen {
       this.write("\u001b[?1002h");
       this.write("\u001b[?1006h");
       this.installIntercept();
-      process.stdout.on?.("resize", () => this.redraw());
     }
+    this.stdout.on?.("resize", this.onResize);
     if (this.emitKeypress) {
       readline.emitKeypressEvents(this.stdin);
       this.stdin.setRawMode(true);
-      this.stdin.on("keypress", (str: string, key?: { name?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; sequence?: string }) => {
-        this.keyHandler?.(normalizeKey(key ?? { sequence: str }));
-      });
+      this.stdin.on(
+        "keypress",
+        (
+          str: string,
+          key?: {
+            name?: string;
+            ctrl?: boolean;
+            meta?: boolean;
+            shift?: boolean;
+            sequence?: string;
+          },
+        ) => {
+          this.keyHandler?.(normalizeKey(key ?? { sequence: str }));
+        },
+      );
     }
-    const main = this.views.find((v) => v.main) ?? this.views[0]!;
-    main.lines.push({ kind: "raw", text: "" });
-    const bannerRows = Math.max(5, Math.min(8, Math.floor(this.rows() / 2)));
-    const banner = logoBanner(this.stdout.columns ?? DEFAULT_COLS, bannerRows);
-    for (const b of banner) main.lines.push({ kind: "raw", text: b });
-    main.lines.push({ kind: "raw", text: "" });
-    main.lines.push({
-      kind: "info",
-      text: color.brightGreen("TUI siap") + " " + color.cyan("— Ketik pesan atau /help. Gunakan Ctrl+X ↑/↓ untuk ganti view, Shift+Tab ganti mode."),
-    });
-    if (main.lines.length > MAX_LINES) {
-      main.lines.splice(0, main.lines.length - MAX_LINES);
-    }
-    this.scrollToBottom();
     this.redraw();
   }
 
@@ -210,9 +312,11 @@ export class Screen {
     this.started = false;
     if (this.spinnerTimer) clearInterval(this.spinnerTimer);
     if (this.drawTimer) clearTimeout(this.drawTimer);
+    if (this.resizeTimer) clearTimeout(this.resizeTimer);
     if (this.noticeTimer) clearTimeout(this.noticeTimer);
     this.spinnerTimer = undefined;
     this.drawTimer = undefined;
+    this.resizeTimer = undefined;
     this.noticeTimer = undefined;
     this.sel = undefined;
     this.selecting = false;
@@ -220,6 +324,8 @@ export class Screen {
       this.stdin.removeAllListeners("keypress");
       this.stdin.setRawMode(false);
     }
+    this.stdout.off?.("resize", this.onResize);
+    this.stdout.removeListener?.("resize", this.onResize);
     if (this.stdout === process.stdout) {
       this.restoreIntercept();
       this.write("\u001b[?1006l"); // matikan mode SGR mouse
@@ -254,7 +360,13 @@ export class Screen {
   }
 
   /** Jalur test: kirim key tanpa stdin sungguhan. */
-  emitKey(key: { name?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; sequence?: string }): void {
+  emitKey(key: {
+    name?: string;
+    ctrl?: boolean;
+    meta?: boolean;
+    shift?: boolean;
+    sequence?: string;
+  }): void {
     this.keyHandler?.(normalizeKey(key));
   }
 
@@ -324,8 +436,11 @@ export class Screen {
     this.setInput(this.input.text, this.input.text.length, this.input.mask, this.input.prompt);
   }
 
-  setMenu(token: string, matches: string[]): void {
-    this.menu = matches.length > 0 ? { token, matches, selected: 0, offset: 0 } : undefined;
+  setMenu(token: string, matches: string[], descriptions?: string[]): void {
+    this.menu =
+      matches.length > 0
+        ? { token, matches, ...(descriptions ? { descriptions } : {}), selected: 0, offset: 0 }
+        : undefined;
     this.redraw();
   }
 
@@ -337,7 +452,7 @@ export class Screen {
   menuSelect(delta: number): void {
     if (!this.menu || this.menu.matches.length === 0) return;
     const n = this.menu.matches.length;
-    const visible = Math.min(n, MAX_MENU);
+    const visible = Math.min(n, this.menuVisibleRows());
     this.menu.selected = (this.menu.selected + delta + n) % n;
     // Geser jendela agar item terpilih selalu terlihat (menu ikut bergulir).
     if (this.menu.selected < this.menu.offset) {
@@ -351,6 +466,125 @@ export class Screen {
 
   getMenuSelected(): string | undefined {
     return this.menu?.matches[this.menu.selected];
+  }
+
+  getMenuToken(): string | undefined {
+    return this.menu?.token;
+  }
+
+  // ---- layar awal / sesi ----
+
+  /** Pindah dari layar awal ke layar sesi (dipanggil saat pesan pertama). */
+  startSession(title?: string): void {
+    const clean = title?.split("\n")[0]?.trim();
+    if (clean) this.sessionTitle = clean;
+    this.revealSession();
+    this.menu = undefined;
+    this.scrollToBottom();
+  }
+
+  /** Salinan baris view utama untuk undo/redo transkrip. */
+  snapshotMainLines(): ScreenLine[] {
+    const main = this.views.find((v) => v.main) ?? this.views[0]!;
+    return main.lines.map((line) => ({ ...line }));
+  }
+
+  /** Pulihkan baris view utama (dipakai undo/redo). */
+  restoreMainLines(lines: ScreenLine[]): void {
+    const main = this.views.find((v) => v.main) ?? this.views[0]!;
+    main.lines = lines.map((line) => ({ ...line }));
+    main.open = undefined;
+    main.scroll = 0;
+    this.active = this.views.indexOf(main);
+    this.sel = undefined;
+    this.selecting = false;
+    this.redraw();
+  }
+
+  /** Kembali ke layar awal dan kosongkan transkrip sesi. */
+  showHome(): void {
+    this.home = true;
+    this.sessionTitle = "";
+    this.contextPercent = 0;
+    this.sidebar = { plugins: [], files: [] };
+    this.sidebarPluginHits = [];
+    this.lastSidebarWidth = 0;
+    this.sel = undefined;
+    this.selecting = false;
+    this.menu = undefined;
+    this.lastAll = [];
+    this.lastStart = 0;
+    this.lastContentRows = 0;
+    this.lastContentTop = 1;
+    this.lastContentLeft = 1;
+    this.lastContentWidth = 1;
+    const main = this.views.find((v) => v.main) ?? this.views[0]!;
+    this.views = [main];
+    main.lines = [];
+    main.scroll = 0;
+    main.open = undefined;
+    this.active = 0;
+    this.redraw();
+  }
+
+  /** Output langsung (mis. daftar model saat init) membuka layar sesi. */
+  private revealSession(): void {
+    if (!this.home) return;
+    this.home = false;
+    this.menu = undefined;
+  }
+
+  get isHome(): boolean {
+    return this.home;
+  }
+
+  get currentSessionTitle(): string {
+    return this.sessionTitle;
+  }
+
+  setSessionInfo(info: { title?: string; contextPercent?: number }, redraw = true): void {
+    if (info.title !== undefined) this.sessionTitle = info.title.trim();
+    if (info.contextPercent !== undefined) {
+      this.contextPercent = Math.max(0, Math.min(100, Math.round(info.contextPercent)));
+    }
+    if (redraw) this.redraw();
+  }
+
+  setFooter(info: Partial<ScreenFooter>, redraw = true): void {
+    this.footer = { ...this.footer, ...info };
+    if (redraw) this.redraw();
+  }
+
+  setSidebar(data: Partial<SidebarData>, redraw = true): void {
+    this.sidebar = {
+      plugins: data.plugins ?? this.sidebar.plugins,
+      files: data.files ?? this.sidebar.files,
+    };
+    if (redraw) this.redraw();
+  }
+
+  /** Klik plugin di sidebar (baris 1-based, kolom 1-based). */
+  setSidebarHandler(handler: (name: string) => void): void {
+    this.sidebarHandler = handler;
+  }
+
+  /**
+   * Tangani klik pada daftar plugin sidebar. Mengembalikan `true` bila klik
+   * mengenai plugin sehingga pemanggil tidak memulai seleksi teks.
+   */
+  clickSidebar(x: number, y: number): boolean {
+    if (this.home || this.lastSidebarWidth <= 0) return false;
+    if (x < this.lastSidebarLeft || x >= this.lastSidebarLeft + this.lastSidebarWidth) return false;
+    const hit = this.sidebarPluginHits.find((item) => item.line === y - 1);
+    if (!hit || !this.sidebarHandler) return false;
+    this.sidebarHandler(hit.name);
+    return true;
+  }
+
+  setTheme(name: ThemeName): void {
+    this.theme = name;
+    this.palette = themePalette(name);
+    this.redraw();
   }
 
   // ---- overlay ----
@@ -429,10 +663,11 @@ export class Screen {
   // ---- konten & view ----
 
   append(kind: LineKind, text: string): void {
+    if ((kind === "warn" || kind === "error") && String(text).trim()) this.revealSession();
     const view = this.views[this.active]!;
     const parts = String(text).split("\n");
     for (const raw of parts) {
-      view.lines.push({ kind, text: kind === "raw" ? raw : paint(kind, raw) });
+      view.lines.push({ kind, text: raw });
     }
     view.open = undefined;
     if (view.lines.length > MAX_LINES) {
@@ -455,17 +690,125 @@ export class Screen {
     const last = view.lines[view.lines.length - 1];
     const continued = view.open === kind && last !== undefined && last.kind === kind;
     if (continued && last) {
-      last.text += kind === "raw" ? first : paint(kind, first);
+      last.text += first;
     } else {
-      view.lines.push({ kind, text: kind === "raw" ? first : paint(kind, first) });
+      view.lines.push({ kind, text: first });
     }
-    for (const p of parts) view.lines.push({ kind, text: kind === "raw" ? p : paint(kind, p) });
+    for (const p of parts) view.lines.push({ kind, text: p });
     view.open = kind;
     if (view.lines.length > MAX_LINES) {
       view.lines.splice(0, view.lines.length - MAX_LINES);
     }
     this.follow(view, (continued ? 0 : 1) + (partCount - 1));
     this.redraw();
+  }
+
+  /** Baris tool yang sedang berjalan; kembalikan ID untuk diperbarui nanti. */
+  appendTool(text: string): number {
+    if (this.home) this.revealSession();
+    const view = this.views[this.active]!;
+    const id = ++this.toolSeq;
+    view.lines.push({ kind: "tool", text, id, running: true });
+    view.open = undefined;
+    if (view.lines.length > MAX_LINES) {
+      view.lines.splice(0, view.lines.length - MAX_LINES);
+    }
+    this.follow(view, 1);
+    this.redraw();
+    return id;
+  }
+
+  /** Ubah baris tool menjadi hasil akhir (edit/diff/status). */
+  finishTool(
+    id: number,
+    opts: { text?: string; kind?: LineKind; status?: "ok" | "error" | "denied" } = {},
+  ): void {
+    for (const view of this.views) {
+      const line = view.lines.find((entry) => entry.id === id);
+      if (!line) continue;
+      line.running = false;
+      if (opts.status) line.status = opts.status;
+      if (opts.text !== undefined) line.text = opts.text;
+      if (opts.kind) line.kind = opts.kind;
+      this.redraw();
+      return;
+    }
+  }
+
+  /**
+   * Tambahkan diff unified. Header file dilewati (path ditampilkan terpisah),
+   * nomor baris dihitung dari header hunk, dan baris +/- diberi latar warna.
+   */
+  appendDiff(text: string): void {
+    const plain = stripAnsi(String(text)).split("\n");
+    const lines: Line[] = [];
+    let oldLine = 0;
+    let newLine = 0;
+    for (const raw of plain) {
+      const line = raw.replace(/\r$/, "");
+      if (
+        line.startsWith("--- ") ||
+        line.startsWith("+++ ") ||
+        line.startsWith("Index: ") ||
+        line.startsWith("===") ||
+        line.startsWith("\\ No newline")
+      ) {
+        continue;
+      }
+      if (line.startsWith("@@")) {
+        const match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+        if (match) {
+          oldLine = Number(match[1]);
+          newLine = Number(match[2]);
+        }
+        lines.push({ kind: "diff-hunk", text: line });
+        continue;
+      }
+      if (line.startsWith("+")) {
+        lines.push({ kind: "diff-add", text: line.slice(1), num: newLine });
+        newLine += 1;
+        continue;
+      }
+      if (line.startsWith("-")) {
+        lines.push({ kind: "diff-del", text: line.slice(1), num: oldLine });
+        oldLine += 1;
+        continue;
+      }
+      if (line.startsWith(" ")) {
+        lines.push({ kind: "diff-context", text: line.slice(1), num: newLine });
+        oldLine += 1;
+        newLine += 1;
+      }
+    }
+    if (lines.length === 0) {
+      this.append("raw", text);
+      return;
+    }
+    if (this.home) this.revealSession();
+    const view = this.views[this.active]!;
+    view.lines.push(...lines);
+    view.open = undefined;
+    if (view.lines.length > MAX_LINES) {
+      view.lines.splice(0, view.lines.length - MAX_LINES);
+    }
+    this.follow(view, lines.length);
+    this.redraw();
+  }
+
+  /** Tampilkan/sembunyikan panel output tool (perintah `/details`). */
+  setToolDetailsVisible(visible: boolean): void {
+    this.showToolOutput = visible;
+    this.redraw();
+  }
+
+  toggleToolDetails(): boolean {
+    this.showToolOutput = !this.showToolOutput;
+    this.redraw();
+    return this.showToolOutput;
+  }
+
+  get toolDetailsVisible(): boolean {
+    return this.showToolOutput;
   }
 
   /** Tutup baris streaming aktif: blok berikutnya mulai di baris baru. */
@@ -476,6 +819,7 @@ export class Screen {
 
   /** Saluran untuk tulis langsung ke stdout (intercept) — selalu ke view utama. */
   appendRaw(text: string): void {
+    if (String(text).trim()) this.revealSession();
     const main = this.views.find((v) => v.main) ?? this.views[0]!;
     const parts = text.split("\n");
     for (const raw of parts) main.lines.push({ kind: "raw", text: raw });
@@ -541,15 +885,16 @@ export class Screen {
 
   /**
    * Mulai seleksi pada sel layar (`x`,`y`; 1-based). Koordinat di luar area
-   * konten diabaikan (baris status/hint/input tidak bisa dipilih).
+   * konten diabaikan (header/prompt/footer/sidebar tidak bisa dipilih).
    */
   beginSelection(x: number, y: number): void {
-    if (y < 1 || y > this.lastContentRows) {
+    const row = y - this.lastContentTop;
+    const col = x - this.lastContentLeft;
+    if (row < 0 || row >= this.lastContentRows || col < 0 || col >= this.lastContentWidth) {
       this.clearSelection();
       return;
     }
-    const col = Math.max(0, x - 1);
-    const line = this.lastStart + (y - 1);
+    const line = this.lastStart + row;
     this.sel = { aLine: line, aCol: col, fLine: line, fCol: col };
     this.selecting = true;
     this.setNotice(undefined);
@@ -559,9 +904,16 @@ export class Screen {
   /** Perbarui ujung seleksi selama tombol digeser (mode 1002). */
   updateSelection(x: number, y: number): void {
     if (!this.sel || !this.selecting) return;
-    const yy = Math.max(1, Math.min(y, Math.max(1, this.lastContentRows)));
-    this.sel.fLine = this.lastStart + (yy - 1);
-    this.sel.fCol = Math.max(0, x - 1);
+    const row = Math.max(
+      0,
+      Math.min(y - this.lastContentTop, Math.max(0, this.lastContentRows - 1)),
+    );
+    const col = Math.max(
+      0,
+      Math.min(x - this.lastContentLeft, Math.max(0, this.lastContentWidth - 1)),
+    );
+    this.sel.fLine = this.lastStart + row;
+    this.sel.fCol = col;
     this.redraw();
   }
 
@@ -705,9 +1057,9 @@ export class Screen {
 
   // ---- status ----
 
-  setStatus(partial: Partial<ScreenStatus>): void {
+  setStatus(partial: Partial<ScreenStatus>, redraw = true): void {
     this.status = { ...this.status, ...partial };
-    this.redraw();
+    if (redraw) this.redraw();
   }
 
   setBusy(busy: boolean): void {
@@ -736,6 +1088,10 @@ export class Screen {
     return r && r > 0 ? r : DEFAULT_ROWS;
   }
 
+  private menuVisibleRows(): number {
+    return layoutMetrics(this.cols(), this.rows()).menuRows;
+  }
+
   redraw(): void {
     if (!this.started) return;
     // Draw synchronously to avoid timing issues in non-interactive captures
@@ -747,76 +1103,481 @@ export class Screen {
   }
 
   private draw(): void {
+    if (!this.started) return;
     const cols = this.cols();
     const rows = this.rows();
-    const view = this.views[this.active]!;
-
     if (this.overlay) {
-      this.write("\u001b[40m\u001b[2J\u001b[H" + this.renderOverlay(cols, rows) + "\u001b[0m");
+      const body = `\u001b[2J\u001b[H${this.renderOverlay(cols, rows)}`;
+      this.write(this.frame(body));
       return;
     }
+    const body = this.home ? this.renderHome(cols, rows) : this.renderSession(cols, rows);
+    this.write(this.frame(`\u001b[2J\u001b[H${body}`));
+  }
 
-    const all = this.wrappedAll(view, cols);
-    const menuHeight = this.menu ? Math.min(this.menu.matches.length, MAX_MENU) : 0;
-    const inputRow = rows - 1;
-    const hintRow = inputRow - 1;
-    const menuTop = hintRow - menuHeight;
-    const statusRow = menuTop - 1;
-    const contentRows = Math.max(1, statusRow); // baris konten di atas status
+  /** Bungkus satu frame: sinkronisasi output agar resize tidak berkedip. */
+  private frame(body: string): string {
+    return `\u001b[?2026h${bg(this.palette.bg, body, this.colorLevel)}\u001b[0m\u001b[?2026l`;
+  }
+
+  private renderHome(cols: number, rows: number): string {
+    const metrics = layoutMetrics(cols, rows);
+    const palette = this.palette;
+    const pad = metrics.paddingX;
+    const boxWidth = Math.max(8, Math.min(72, cols - pad * 2));
+    const left = Math.max(0, Math.floor((cols - boxWidth) / 2));
+    const prompt = this.renderPrompt(boxWidth, metrics);
+    const menu = this.renderMenu(boxWidth, metrics);
+
+    const place = (line: string): string => fitLine(" ".repeat(left) + line, cols);
+    const build = (logoLines: string[]): { lines: string[]; promptStart: number } => {
+      const lines: string[] = [];
+      for (const line of logoLines) lines.push(centerLine(line, cols));
+      if (logoLines.length > 0) lines.push(" ".repeat(cols));
+      for (const line of menu) lines.push(place(line));
+      const promptStart = lines.length;
+      for (const line of prompt.lines) lines.push(place(line));
+      if (!metrics.hideTip) {
+        lines.push(" ".repeat(cols));
+        const hintText =
+          cols < 60
+            ? "tab mode · / perintah · @ file"
+            : "tab mode/lengkapi · / perintah · @ file · ! shell";
+        const hint = fg(palette.dim, hintText, this.colorLevel);
+        lines.push(place(rightAlign(hint, boxWidth)));
+        const tipText =
+          cols < 60 ? " tip: /skills" : " tip: ketik /skills untuk melihat skill terpasang";
+        const tip =
+          fg(palette.tip, "●", this.colorLevel) + fg(palette.muted, tipText, this.colorLevel);
+        lines.push(centerLine(tip, cols));
+      }
+      return { lines, promptStart };
+    };
+
+    let built = build(logoNeX({ cols, level: this.colorLevel, palette }));
+    const maxRows = Math.max(1, rows - 1);
+    if (built.lines.length > maxRows) {
+      built = build(logoNeX({ cols: 59, level: this.colorLevel, palette }));
+    }
+    if (built.lines.length > maxRows) {
+      built = build([]);
+    }
+    if (built.lines.length > maxRows) {
+      built = {
+        lines: prompt.lines.map((line) => place(line)),
+        promptStart: 0,
+      };
+    }
+
+    const top = centerPad(maxRows, built.lines.length);
+    const out: string[] = [];
+    for (let i = 0; i < built.lines.length; i += 1) {
+      out.push(`\u001b[${top + i + 1};1H${fitLine(built.lines[i]!, cols)}`);
+    }
+    if (rows > 1) out.push(`\u001b[${rows};1H${this.renderFooterLine(cols, metrics)}`);
+
+    if (this.input.active || this.input.text.length > 0) {
+      const row = top + built.promptStart + prompt.inputIndex + 1;
+      const col = left + prompt.cursorCol + 1;
+      out.push(`\u001b[${clamp(row, 1, rows)};${clamp(col, 1, cols)}H`);
+    }
+    return out.join("");
+  }
+
+  private renderSession(cols: number, rows: number): string {
+    const metrics = layoutMetrics(cols, rows);
+    const palette = this.palette;
+    const pad = metrics.paddingX;
+    const mainWidth = Math.max(1, contentWidth(cols, metrics));
+    const prompt = this.renderPrompt(mainWidth, metrics);
+    const menu = this.renderMenu(mainWidth, metrics);
+    const headerHeight = metrics.hideHeader ? 0 : 1;
+    const footerHeight = rows > 1 ? 1 : 0;
+    const promptHeight = menu.length + prompt.lines.length;
+    const promptTop = Math.max(headerHeight, rows - footerHeight - promptHeight);
+    const contentTop = headerHeight;
+    const contentRows = Math.max(0, promptTop - contentTop);
+
+    const view = this.views[this.active] ?? this.views[0]!;
+    const all = this.wrappedAll(view, mainWidth);
     const maxScroll = Math.max(0, all.length - contentRows);
-    const sc = Math.min(view.scroll, maxScroll);
-    view.scroll = sc; // jaga posisi tetap dalam rentang (mis. setelah Home/End)
-    const end = all.length - sc;
+    const scroll = Math.min(view.scroll, maxScroll);
+    view.scroll = scroll;
+    const end = all.length - scroll;
     const start = Math.max(0, end - contentRows);
     const slice = all.slice(start, end);
 
-    // Simpan tata letak supaya seleksi mouse (peristiwa sesudah draw) bisa
-    // memetakan baris layar → baris konten.
     this.lastAll = all;
     this.lastStart = start;
     this.lastContentRows = contentRows;
+    this.lastContentTop = contentTop + 1;
+    this.lastContentLeft = pad + 1;
+    this.lastContentWidth = mainWidth;
 
-    const buffer: string[] = ["\u001b[40m\u001b[2J\u001b[H"];
-    for (let i = 0; i < slice.length; i += 1) {
-      const line = this.applySelection(start + i, slice[i]!);
-      buffer.push(padLine(truncateTo(line, cols), cols));
+    const out: string[] = [];
+    if (!metrics.hideHeader && mainWidth >= 3) {
+      const title = view.main
+        ? this.sessionTitle
+          ? `# ${this.sessionTitle}`
+          : "# sesi baru"
+        : `# ${view.name}`;
+      const headerWidth = mainWidth - 2;
+      const header =
+        fg(palette.border, "│", this.colorLevel) +
+        " " +
+        formatHeader(title, this.contextPercent, headerWidth, {
+          palette,
+          level: this.colorLevel,
+        });
+      out.push(`\u001b[1;1H${fitLine(" ".repeat(pad) + header, cols)}`);
     }
 
-    // Menu autocomplete tepat di atas input (jendela bergulir mengikuti pilihan).
-    if (this.menu) {
-      const total = this.menu.matches.length;
-      const visible = Math.min(total, MAX_MENU);
-      const offset = Math.max(0, Math.min(this.menu.offset, Math.max(0, total - visible)));
-      const items = this.menu.matches.slice(offset, offset + visible);
-      for (let i = 0; i < visible; i++) {
-        const it = items[i]!;
-        const styled = offset + i === this.menu.selected ? color.inverse(it) : color.dim(it);
-        buffer.push(`\u001b[${menuTop + 1 + i};1H` + padLine(truncateTo(styled, cols), cols));
+    for (let i = 0; i < slice.length; i += 1) {
+      const row = contentTop + i + 1;
+      const line = this.applySelection(start + i, slice[i]!);
+      out.push(`\u001b[${row};${pad + 1}H${fitLine(line, mainWidth)}`);
+    }
+
+    let promptRow = promptTop;
+    for (const line of menu) {
+      out.push(`\u001b[${promptRow + 1};${pad + 1}H${fitLine(line, mainWidth)}`);
+      promptRow += 1;
+    }
+    for (const line of prompt.lines) {
+      out.push(`\u001b[${promptRow + 1};${pad + 1}H${fitLine(line, mainWidth)}`);
+      promptRow += 1;
+    }
+
+    if (metrics.sidebar) {
+      const sideLeft = pad + mainWidth + 2;
+      const sideHeight = Math.max(0, rows - footerHeight);
+      this.lastSidebarLeft = sideLeft;
+      this.lastSidebarWidth = metrics.sidebarWidth;
+      const sideLines = this.renderSidebar(metrics.sidebarWidth, sideHeight, metrics);
+      this.sidebarPluginHits = this.sidebarPluginHits.filter((hit) => hit.line < sideLines.length);
+      for (let i = 0; i < sideLines.length; i += 1) {
+        out.push(`\u001b[${i + 1};${sideLeft}H${fitLine(sideLines[i]!, metrics.sidebarWidth)}`);
       }
     }
 
-    // Status (mode/model/view/thinking) dan hint pada baris terpisah.
-    buffer.push(`\u001b[${statusRow + 1};1H` + padLine(truncateTo(this.renderStatusLine(statusRow, cols), cols), cols));
-    buffer.push(`\u001b[${hintRow + 1};1H` + padLine(truncateTo(this.hint(cols), cols), cols));
+    if (footerHeight) out.push(`\u001b[${rows};1H${this.renderFooterLine(cols, metrics)}`);
 
-    const inputText = this.input.mask ? "*".repeat(this.input.text.length) : this.input.text;
-    const caret = Math.min(this.input.caret, inputText.length);
-    const promptW = visibleWidth(this.input.prompt);
-    const avail = Math.max(1, cols - 2 - promptW);
-    const layout = layoutInput(inputText, caret, avail);
-    const markerLeft = layout.clippedLeft ? color.dim("‹") : "";
-    const markerRight = layout.clippedRight ? color.dim("›") : "";
-    const renderedInput = `${color.cyan(this.input.prompt)}${markerLeft}${layout.before}${color.inverse(layout.at)}${layout.after}${markerRight}`;
-    const spinner = this.status.busy ? spinnerTick(this.spinnerTick, SPINNER) : " ";
-    buffer.push(`\u001b[${inputRow + 1};1H` + spinner + " " + padLine(truncateTo(renderedInput, cols - 2), cols - 2));
+    if (this.input.active || this.input.text.length > 0) {
+      const row = promptTop + menu.length + prompt.inputIndex + 1;
+      const col = pad + prompt.cursorCol + 1;
+      out.push(`\u001b[${clamp(row, 1, rows)};${clamp(col, 1, cols)}H`);
+    }
+    return out.join("");
+  }
 
-    // Kursor mengikuti jendela input (tetap terlihat walau input panjang).
-    const caretCol = Math.min(
-      2 + promptW + (layout.clippedLeft ? 1 : 0) + visibleWidth(layout.before) + 1,
-      cols,
+  /** Kotak prompt: latar panel + garis aksen 1 kolom di kiri + meta. */
+  private renderPrompt(width: number, metrics: LayoutMetrics): PromptRender {
+    const palette = this.palette;
+    const level = this.colorLevel;
+    const boxWidth = Math.max(6, Math.floor(width));
+    const inner = Math.max(1, boxWidth - 3);
+    const accent = modeAccent(this.status.mode, palette);
+    const prompt = this.input.prompt || "› ";
+    const promptWidth = visibleWidth(prompt);
+    const text = this.input.mask ? "*".repeat(this.input.text.length) : this.input.text;
+    const caret = Math.min(this.input.caret, text.length);
+    const available = Math.max(1, inner - promptWidth - 2);
+    const layout = layoutInput(text, caret, available);
+
+    let content: string;
+    let cursorCol: number;
+    if (this.home && text.length === 0) {
+      content = fg(palette.muted, prompt, level) + fg(palette.dim, "tanya apa saja…", level);
+      cursorCol = 2 + promptWidth;
+    } else {
+      const leftMark = layout.clippedLeft ? fg(palette.dim, "‹", level) : "";
+      const rightMark = layout.clippedRight ? fg(palette.dim, "›", level) : "";
+      const cursor = bg(accent, fg(palette.bg, layout.at, level), level);
+      content =
+        fg(palette.muted, prompt, level) +
+        leftMark +
+        layout.before +
+        cursor +
+        layout.after +
+        rightMark;
+      cursorCol = 2 + promptWidth + (layout.clippedLeft ? 1 : 0) + visibleWidth(layout.before);
+    }
+
+    let meta = formatPromptMeta(
+      { mode: this.status.mode, model: this.status.model, provider: this.status.provider },
+      inner,
+      {
+        showProvider: metrics.showProvider,
+        palette,
+        level,
+      },
     );
-    buffer.push(`\u001b[${inputRow + 1};${caretCol}H`);
-    this.write(buffer.join("") + "\u001b[0m");
+    if (this.status.busy) {
+      const spinner = spinnerFrame(this.spinnerTick, SPINNER, accent, level);
+      meta = alignSides(meta, spinner, inner);
+    }
+
+    return {
+      lines: [
+        this.promptBoxLine(content, boxWidth, inner, accent),
+        this.promptBoxLine(meta, boxWidth, inner, accent),
+      ],
+      inputIndex: 0,
+      cursorCol,
+    };
+  }
+
+  private promptBoxLine(content: string, width: number, inner: number, accent: string): string {
+    const palette = this.palette;
+    const line = fg(accent, "█", this.colorLevel) + " " + fitLine(content, inner) + " ";
+    return bg(palette.panel, fitLine(line, width), this.colorLevel);
+  }
+
+  private renderMenu(width: number, metrics: LayoutMetrics): string[] {
+    const menu = this.menu;
+    if (!menu || menu.matches.length === 0) return [];
+    const palette = this.palette;
+    const level = this.colorLevel;
+    const accent = modeAccent(this.status.mode, palette);
+    const total = menu.matches.length;
+    const visible = Math.min(total, metrics.menuRows);
+    const offset = Math.max(0, Math.min(menu.offset, Math.max(0, total - visible)));
+    const lines: string[] = [];
+    for (let i = 0; i < visible; i += 1) {
+      const index = offset + i;
+      const text = menu.matches[index] ?? "";
+      const desc = metrics.menuDescriptions ? (menu.descriptions?.[index] ?? "") : "";
+      const label = clipLine(text, Math.max(1, width - 4));
+      const labelWidth = visibleWidth(label);
+      const descSpace = Math.max(0, width - 3 - labelWidth);
+      const description = desc && descSpace >= 6 ? truncateTo(desc, descSpace - 1) : "";
+      const gap = Math.max(1, width - 2 - labelWidth - visibleWidth(description));
+      const padded = fitLine(` ${label}${" ".repeat(gap)}${description} `, width);
+      lines.push(
+        index === menu.selected
+          ? bg(accent, fg(palette.bg, padded, level), level)
+          : bg(palette.panel, fg(palette.muted, padded, level), level),
+      );
+    }
+    return lines;
+  }
+
+  private renderSidebar(width: number, height: number, metrics: LayoutMetrics): string[] {
+    void metrics;
+    if (width <= 1 || height <= 0) return [];
+    const palette = this.palette;
+    const level = this.colorLevel;
+    const inner = Math.max(1, width - 2);
+    const lines: string[] = [];
+    const blank = (): void => {
+      lines.push(fg(palette.border, "│", level) + " ".repeat(Math.max(0, width - 1)));
+    };
+    const push = (content: string): void => {
+      lines.push(fg(palette.border, "│", level) + " " + fitLine(content, inner));
+    };
+
+    push(fg(palette.muted, "sesi", level));
+    const view = this.views[this.active] ?? this.views[0]!;
+    const title = view.main ? this.sessionTitle || "sesi baru" : view.name;
+    for (const line of wrapLine(title, inner).slice(0, 3)) {
+      push(fg(palette.text, line, level));
+    }
+    blank();
+
+    push(fg(palette.muted, "plugin", level));
+    const pluginHits: Array<{ line: number; name: string }> = [];
+    if (this.sidebar.plugins.length === 0) {
+      push(fg(palette.dim, "belum ada", level));
+    } else {
+      for (const plugin of this.sidebar.plugins) {
+        const marker = plugin.enabled ? (plugin.connected ? "●" : "◐") : "○";
+        const markerColor = plugin.enabled
+          ? plugin.connected
+            ? palette.success
+            : palette.error
+          : palette.dim;
+        const name = clipLine(plugin.name, Math.max(1, inner - 2));
+        push(alignSides(fg(palette.text, name, level), fg(markerColor, marker, level), inner));
+        pluginHits.push({ line: lines.length - 1, name: plugin.name });
+      }
+    }
+    this.sidebarPluginHits = pluginHits;
+    blank();
+
+    push(fg(palette.muted, "file diubah", level));
+    if (this.sidebar.files.length === 0) {
+      push(fg(palette.dim, "belum ada", level));
+    } else {
+      for (const file of this.sidebar.files) {
+        const stats = `${fg(palette.success, `+${file.added}`, level)} ${fg(
+          palette.error,
+          `-${file.removed}`,
+          level,
+        )}`;
+        const statsWidth = visibleWidth(`+${file.added} -${file.removed}`);
+        const name = truncateMiddle(file.path, Math.max(1, inner - statsWidth - 1));
+        push(alignSides(fg(palette.text, name, level), stats, inner));
+      }
+    }
+
+    return lines.slice(0, height);
+  }
+
+  private renderFooterLine(cols: number, metrics: LayoutMetrics): string {
+    const info = this.notice ? { ...this.footer, folder: this.notice, branch: "" } : this.footer;
+    const footer = formatFooter(info, cols, {
+      compact: metrics.tier === "narrow",
+      paddingX: metrics.paddingX,
+      palette: this.palette,
+      level: this.colorLevel,
+    });
+    return fitLine(" ".repeat(metrics.paddingX) + footer + " ".repeat(metrics.paddingX), cols);
+  }
+
+  /** Semua baris view (sudah difilter + dibungkus + diwarnai), dari atas ke bawah. */
+  private wrappedAll(view: View, cols: number): string[] {
+    const wrapped: string[] = [];
+    for (const line of view.lines) {
+      if (line.kind === "think" && !this.showThinking) continue;
+      if (line.kind === "tool-out" && !this.showToolOutput) continue;
+      if (line.kind === "divider") {
+        wrapped.push("");
+        continue;
+      }
+      if (line.kind === "user") {
+        wrapped.push(...this.userBlock(line.text, cols));
+        continue;
+      }
+      if (line.kind === "tool-out") {
+        wrapped.push(...this.toolOutputBlock(line.text, cols));
+        continue;
+      }
+      if (line.kind === "diff-add" || line.kind === "diff-del" || line.kind === "diff-context") {
+        wrapped.push(...this.diffBlock(line, cols));
+        continue;
+      }
+      if (line.kind === "diff-hunk") {
+        for (const w of wrapAnsi(line.text, cols)) {
+          wrapped.push(fg(this.palette.tip, w.line, this.colorLevel));
+        }
+        continue;
+      }
+      for (const w of wrapAnsi(line.text, cols)) {
+        wrapped.push(this.paint(line.kind, w.line, line));
+      }
+    }
+    return wrapped;
+  }
+
+  /** Panel pesan pengguna: latar panel + aksen mode 1 kolom di kiri. */
+  private userBlock(text: string, cols: number): string[] {
+    const palette = this.palette;
+    const level = this.colorLevel;
+    const accent = modeAccent(this.status.mode, palette);
+    const inner = Math.max(1, cols - 2);
+    const parts = wrapAnsi(text, inner).map((part) => part.line);
+    if (parts.length === 0) parts.push("");
+    const widest = Math.max(...parts.map((part) => visibleWidth(part)));
+    const width = Math.max(8, Math.min(cols, widest + 2));
+    return parts.map((part) =>
+      bg(
+        palette.panel,
+        fg(accent, "█", level) + " " + fitLine(fg(palette.text, part, level), width - 2),
+        level,
+      ),
+    );
+  }
+
+  /** Panel output tool: latar panel, teks redup, selebar area konten. */
+  private toolOutputBlock(text: string, cols: number): string[] {
+    const palette = this.palette;
+    const level = this.colorLevel;
+    const inner = Math.max(1, cols - 2);
+    const parts = wrapAnsi(text, inner).map((part) => part.line);
+    if (parts.length === 0) parts.push("");
+    return parts.map((part) =>
+      bg(palette.panel, fitLine(" " + fg(palette.muted, part, level), cols), level),
+    );
+  }
+
+  /** Satu baris diff dengan nomor baris (kecuali terminal sempit) + latar. */
+  private diffBlock(line: Line, cols: number): string[] {
+    const palette = this.palette;
+    const level = this.colorLevel;
+    const narrow = cols < 60;
+    const marker = line.kind === "diff-add" ? "+" : line.kind === "diff-del" ? "-" : " ";
+    const number = narrow || line.num === undefined ? "" : `${String(line.num).padStart(4)} `;
+    const prefix = `${number}${marker} `;
+    const bgColor =
+      line.kind === "diff-add"
+        ? palette.diffAddBg
+        : line.kind === "diff-del"
+          ? palette.diffDelBg
+          : undefined;
+    const fgColor =
+      line.kind === "diff-add"
+        ? palette.success
+        : line.kind === "diff-del"
+          ? palette.error
+          : palette.muted;
+    const bodyWidth = Math.max(1, cols - visibleWidth(prefix));
+    const parts = wrapAnsi(line.text, bodyWidth).map((part) => part.line);
+    if (parts.length === 0) parts.push("");
+    return parts.map((part, index) => {
+      const head = index === 0 ? prefix : " ".repeat(visibleWidth(prefix));
+      const content = fitLine(head + fg(fgColor, part, level), cols);
+      return bgColor ? bg(bgColor, content, level) : content;
+    });
+  }
+
+  private paint(kind: LineKind, text: string, line?: Line): string {
+    const palette = this.palette;
+    const level = this.colorLevel;
+    switch (kind) {
+      case "think":
+        return fg(palette.dim, text, level);
+      case "tool": {
+        const command = text.startsWith("$ ") ? text.slice(2) : text;
+        const prefix = text.startsWith("$ ") ? "$ " : "";
+        let out = fg(palette.tool, prefix, level) + fg(palette.muted, command, level);
+        out += this.statusSuffix(line);
+        return out;
+      }
+      case "edit": {
+        let out =
+          fg(palette.dim, "← ", level) +
+          fg(palette.text, "Edit ", level) +
+          fg(palette.tool, text, level);
+        out += this.statusSuffix(line);
+        return out;
+      }
+      case "info":
+        return fg(palette.muted, text, level);
+      case "warn":
+        return fg(palette.tip, text, level);
+      case "error":
+        return fg(palette.error, text, level);
+      case "user":
+        return fg(palette.text, text, level);
+      case "text":
+        return fg(palette.text, text, level);
+      default:
+        return text;
+    }
+  }
+
+  private statusSuffix(line?: Line): string {
+    if (!line) return "";
+    const palette = this.palette;
+    const level = this.colorLevel;
+    if (line.running) {
+      const blink = this.spinnerTick % 2 === 0 ? "▌" : " ";
+      return " " + fg(modeAccent(this.status.mode, palette), blink, level);
+    }
+    if (!line.status) return "";
+    if (line.status === "ok") return " " + fg(palette.success, "ok", level);
+    if (line.status === "denied") return " " + fg(palette.tip, "ditolak", level);
+    return " " + fg(palette.error, "gagal", level);
   }
 
   /** Sorot bagian baris yang termasuk seleksi (bila ada). */
@@ -837,56 +1598,21 @@ export class Screen {
     return highlightColumns(line, c0, c1);
   }
 
-  /** Semua baris view (sudah difilter + dibungkus), dari atas ke bawah. */
-  private wrappedAll(view: View, cols: number): string[] {
-    const wrapped: string[] = [];
-    for (const line of view.lines) {
-      if (line.kind === "think" && !this.showThinking) continue;
-      if (line.kind === "divider") {
-        wrapped.push(gradientDivider(cols));
-        continue;
-      }
-      for (const w of wrapAnsi(line.text, cols)) wrapped.push(w.line);
-    }
-    return wrapped;
-  }
-
-  private renderStatusLine(_row: number, cols: number): string {
-    const s = this.status;
-    const mode = s.mode === "build" ? "BUILD" : "PLAN";
-    const view = this.views[this.active]!.main ? "utama" : this.views[this.active]!.name;
-    const thinking = this.showThinking
-      ? color.brightGreen("thinking:on")
-      : color.dim("thinking:off");
-    const left = `${moonAccent("◐")} ${color.bold(color.yellow(mode))} ${s.model ? color.green(s.model) : ""}${s.provider ? color.cyan(`@${s.provider}`) : ""} · ${color.brightGreen(`view:${view}`)} · ${thinking}`;
-    const right = s.busy ? color.cyan("bekerja…") : "";
-    const full = left + (right ? "  " + right : "");
-    return truncateTo(full, cols);
-  }
-
-  private hint(cols: number): string {
-    if (this.notice) return color.brightGreen(truncateTo(this.notice, cols));
-    const hints = [
-      "roda/PgUp/PgDn gulir",
-      "seret = pilih & salin",
-      "↑/↓ riwayat input",
-      "Ctrl+T thinking",
-      "Shift+Tab mode",
-      "Ctrl+C hentikan (2× keluar)",
-    ].join("    ");
-    return color.dim(truncateTo(hints, cols));
-  }
-
   private renderOverlay(cols: number, rows: number): string {
     const o = this.overlay;
     if (!o) return "";
+    const palette = this.palette;
+    const level = this.colorLevel;
+    const accent = modeAccent(this.status.mode, palette);
     const inner = Math.max(1, cols - 4);
     const list = o.list;
 
     // Isi: daftar item (satu baris per item) atau body viewer yang dibungkus.
     const body: string[] = [];
     if (!list) {
-      for (const line of o.body) for (const w of wrapAnsi(color.dim(line), inner)) body.push(w.line);
+      for (const line of o.body) {
+        for (const w of wrapAnsi(fg(palette.muted, line, level), inner)) body.push(w.line);
+      }
     }
     const listVisible = list ? Math.min(list.items.length, MAX_OVERLAY_LIST) : 0;
     const contentLen = list ? listVisible : body.length;
@@ -897,8 +1623,10 @@ export class Screen {
     const top = Math.max(1, Math.floor((rows - height) / 2));
 
     const out: string[] = [];
-    for (let i = 0; i < height; i++) out.push(`\u001b[${top + i + 1};1H` + " ".repeat(cols));
-    out.push(`\u001b[${top + 1};1H` + color.bold(moonAccent(o.title, 0.75)));
+    for (let i = 0; i < height; i += 1) {
+      out.push(`\u001b[${top + i + 1};1H${" ".repeat(cols)}`);
+    }
+    out.push(`\u001b[${top + 1};1H${fg(accent, truncateTo(o.title, cols - 4), level)}`);
 
     const bodyRows = Math.max(0, height - 3 - (o.secret ? 1 : 0));
     if (list) {
@@ -911,20 +1639,22 @@ export class Screen {
       else if (list.selected >= offset + visible) offset = list.selected - visible + 1;
       offset = Math.max(0, Math.min(offset, Math.max(0, n - visible)));
       list.offset = offset;
-      for (let i = 0; i < Math.min(visible, bodyRows); i++) {
+      for (let i = 0; i < Math.min(visible, bodyRows); i += 1) {
         const idx = offset + i;
         const selected = idx === list.selected;
-        const text = truncateTo((selected ? "› " : "  ") + list.items[idx]!, cols - 4);
-        const styled = selected ? color.inverse(text) : text;
-        out.push(`\u001b[${top + i + 2};3H` + padLine(styled, inner));
+        const text = truncateTo((selected ? "› " : "  ") + list.items[idx]!, inner);
+        const styled = selected
+          ? bg(accent, fg(palette.bg, fitLine(text, inner), level), level)
+          : fg(palette.text, text, level);
+        out.push(`\u001b[${top + i + 2};3H${fitLine(styled, inner)}`);
       }
     } else {
       // Viewer: klem offset gulir ke rentang valid lalu tampilkan jendelanya.
       const maxTop = Math.max(0, body.length - bodyRows);
       const scrollTop = Math.max(0, Math.min(o.scrollTop ?? 0, maxTop));
       o.scrollTop = scrollTop;
-      for (let i = 0; i < Math.min(bodyRows, body.length - scrollTop); i++) {
-        out.push(`\u001b[${top + i + 2};3H` + padLine(body[scrollTop + i]!, inner));
+      for (let i = 0; i < Math.min(bodyRows, body.length - scrollTop); i += 1) {
+        out.push(`\u001b[${top + i + 2};3H${fitLine(body[scrollTop + i]!, inner)}`);
       }
     }
 
@@ -932,22 +1662,27 @@ export class Screen {
     if (o.secret) {
       const masked = o.secret.masked !== false;
       const shown = masked ? "*".repeat(this.overlayInput.length) : this.overlayInput;
-      out.push(`\u001b[${footRow};3H` + color.dim(o.secret.label + ": ") + shown);
+      out.push(`\u001b[${footRow};3H${fg(palette.dim, o.secret.label + ": ", level)}${shown}`);
     } else if (list) {
       const hint = list.hint ?? "↑/↓ pilih · Enter pilih · Esc batal";
-      out.push(`\u001b[${footRow};3H` + color.dim(truncateTo(hint, cols - 6)));
+      out.push(`\u001b[${footRow};3H${fg(palette.dim, truncateTo(hint, cols - 6), level)}`);
     } else {
-      const keys = o.keys.map(([k, label]) => color.bold(k) + " " + label).join("   ");
-      out.push(`\u001b[${footRow};3H` + truncateTo(keys, cols - 6));
+      const keys = o.keys.map(([k, label]) => `${fg(palette.text, k, level)} ${label}`).join("   ");
+      out.push(`\u001b[${footRow};3H${truncateTo(keys, cols - 6)}`);
     }
     return out.join("");
   }
 }
 
-function padLine(text: string, width: number): string {
-  const w = visibleWidth(stripAnsi(text));
-  if (w >= width) return text;
-  return text + " ".repeat(width - w);
+function rightAlign(text: string, width: number): string {
+  const w = Math.max(0, Math.floor(width));
+  const visible = visibleWidth(text);
+  if (visible >= w) return fitLine(text, w);
+  return " ".repeat(w - visible) + text;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
 }
 
 export interface InputLayout {

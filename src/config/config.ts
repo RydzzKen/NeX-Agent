@@ -45,11 +45,18 @@ export interface AgentConfig {
   skills?: boolean;
   /** Provider default. */
   defaultProvider?: string;
+  /** Tema TUI: "opencode" (default) atau "mint". */
+  theme?: "opencode" | "mint";
   /**
    * Antarmuka default saat `agent` dijalankan tanpa tujuan: "cli" (readline)
    * atau "tui" (layar penuh). Kosong = "cli".
    */
   defaultInterface?: DefaultInterface;
+  /**
+   * Keybind TUI yang dapat diubah, mis. `{ "mode": "tab", "details": "ctrl+o" }`.
+   * Nilai memakai nama tombol readline (`tab`, `ctrl+g`, `shift+tab`, `f2`).
+   */
+  tuiKeybinds?: { mode?: string; details?: string };
   /** Model terakhir per workspace (key = path absolut root). */
   models?: Record<string, string>;
   /**

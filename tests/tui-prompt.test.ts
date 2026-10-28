@@ -59,7 +59,11 @@ function type(prompter: TuiPrompter, keys: RawKey[]): boolean {
   return consumed;
 }
 
-const letter = (ch: string): RawKey => ({ name: ch.toLowerCase(), sequence: ch, shift: ch !== ch.toLowerCase() });
+const letter = (ch: string): RawKey => ({
+  name: ch.toLowerCase(),
+  sequence: ch,
+  shift: ch !== ch.toLowerCase(),
+});
 const symbol = (ch: string): RawKey => ({ sequence: ch });
 const space: RawKey = { name: "space", sequence: " " };
 const backspace: RawKey = { name: "backspace", sequence: "\u007f" };
@@ -188,7 +192,7 @@ describe("TuiPrompter: menu autocomplete", () => {
   it("Tab pada input kosong tidak memunculkan/memilih apa pun", () => {
     const { screen, prompter } = setup(tempDir());
     void prompter.question("› ");
-    expect(prompter.consume(normalizeKey({ name: "tab", sequence: "\t" }))).toBe(true);
+    expect(prompter.consume(normalizeKey({ name: "tab", sequence: "\t" }))).toBe(false);
     expect(screen.getMenuSelected()).toBeUndefined();
     expect(screen.getInputText()).toBe("");
   });
@@ -240,6 +244,30 @@ describe("TuiPrompter: menu autocomplete", () => {
     expect(screen.getMenuSelected()).toBe("Project/Sub/");
     type(prompter, [tab]);
     expect(screen.getInputText()).toBe("Project/Sub/");
+  });
+
+  it("Enter pada saran perintah slash menerima lalu menjalankan", async () => {
+    const { prompter } = setup(tempDir());
+    const answer = prompter.question("› ");
+    for (const ch of "/he") type(prompter, [symbol(ch)]);
+    type(prompter, [enter]);
+    await expect(answer).resolves.toBe("/help");
+  });
+
+  it("Enter pada saran @ hanya melengkapi path (tidak mengirim)", async () => {
+    const { screen, prompter } = setup(tempDir());
+    let settled = false;
+    const answer = prompter.question("› ").then((value) => {
+      settled = true;
+      return value;
+    });
+    for (const ch of "@rea") type(prompter, [symbol(ch)]);
+    type(prompter, [enter]);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(screen.getInputText()).toBe("@readme.md");
+    prompter.close();
+    await answer;
   });
 
   it("Tab memilih perintah slash yang disorot", () => {

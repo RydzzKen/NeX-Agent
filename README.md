@@ -307,8 +307,9 @@ berkas dan totalnya. Bersifat read-only, jadi aman dipakai kapan saja.
 
 ### 🖥️ Mode TUI (`nex-agent tui`)
 
-Alternatif mode chat dengan layar penuh: alt-screen, status bar, view terpisah
-untuk subagent, dan overlay di tengah layar untuk konfirmasi/input rahasia.
+Alternatif mode chat dengan layar penuh. Renderer tetap custom (tanpa Ink),
+memakai alt-screen, truecolor/256/16-warna, dan layout yang mengikuti lebar
+terminal.
 
 ```bash
 nex-agent tui                 # mulai layar penuh
@@ -320,71 +321,146 @@ Ingin TUI jadi bawaan? Jalankan `nex-agent default tui` sekali — mulai sekaran
 `nex-agent default cli` (atau `nex-agent default reset`), lihat statusnya dengan
 `nex-agent default`. Untuk satu sesi saja, pakai `nex-agent --ui tui`.
 
-| Tombol | Fungsi |
-|---|---|
-| `Shift+Tab` · `Ctrl+Tab` | Ganti mode Plan ⇄ Build (`Shift+Tab` andal di semua terminal; `Ctrl+Tab` tergantung dukungan terminal) |
-| `Ctrl+X` lalu `↑`/`↓` | Pindah view (utama ⇄ subagent) |
-| `Ctrl+T` | Tampilkan/sembunyikan thinking — keadaan tampil di status bar (`thinking:on`/`thinking:off`) |
-| `↑`/`↓` | Panggil ulang riwayat input (pesan sebelumnya/berikutnya); saat menu autocomplete terbuka, memilih item menu |
-| roda mouse · `PgUp`/`PgDn` | Gulir riwayat chat — **selalu** bisa, termasuk saat input berisi draf dan agent sedang bekerja |
-| seret klik kiri | Pilih teks di riwayat chat; saat dilepas otomatis disalin ke clipboard (OSC 52). Tahan `Shift` saat menyeret untuk seleksi bawaan terminal |
-| `Home`/`End` | Gulir ke awal/akhir riwayat chat (saat baris input kosong; bila tidak, memindah kursor) |
-| `Ctrl+P` / `Ctrl+N` | Alias riwayat input (untuk terminal tanpa tombol panah) |
-| `Tab` | Pilih item yang disorot di menu autocomplete (perintah/folder/berkas) |
-| `Ctrl+C` | Hentikan tugas berjalan (2× keluar) |
-| `Ctrl+D` | Keluar (saat input kosong) |
+#### Layar awal
 
-**Status bar & hint.** Di atas input ada baris status (`BUILD`/`PLAN`, model,
-view aktif, dan `thinking:on`/`thinking:off`, plus indikator `bekerja…` saat
-sibuk) dan baris hint pintasan. Keduanya berada di baris terpisah sehingga
-status selalu terlihat.
+Logo `NeX` besar dengan `AGENT` di bawahnya, kotak prompt di tengah, hint
+pintasan, tip, dan footer `folder:branch` + versi. `Ne` dibuat redup dan `X`
+terang supaya aksen mode tetap jadi satu-satunya warna kuat.
 
-**Menggulir & riwayat input.** **Roda mouse** dan `PgUp`/`PgDn` selalu menggulir
-transkrip — termasuk saat baris input masih berisi draf yang belum dikirim dan
-saat agent sedang berpikir/streaming. Output baru tidak akan menyentak Anda ke
-bawah saat sedang menggulir; kembali ke dasar dengan `End`/`PgDn`. Sementara itu
-`↑`/`↓` tetap memanggil **riwayat input** seperti shell (termasuk saat ada draf);
-saat menu autocomplete terbuka, `↑`/`↓` memilih item menu. Supaya roda bisa
-dibedakan dari tombol panah, TUI mengaktifkan pelaporan mouse; seret klik kiri
-dipakai untuk memilih & menyalin teks (lihat di bawah).
+<p align="center">
+  <img src="docs/tui/home-120x35.svg" alt="Layar awal NeX-Agent TUI" width="900">
+</p>
 
-**Seleksi & salin.** Tahan **klik kiri lalu seret** di area riwayat chat untuk
-menyeleksi teks; begitu tombol dilepas, teks terpilih otomatis disalin ke
-clipboard lewat OSC 52. Didukung iTerm2, kitty, WezTerm, Alacritty, Windows
-Terminal, dan Termux. Bila terminal tidak mendukung OSC 52 (mis. GNOME
-Terminal/VTE), tahan `Shift` saat menyeret untuk memakai **seleksi bawaan
-terminal**, lalu salin dengan pintasan terminal. Di Termux, long-press juga tetap
-memunculkan menu seleksi bawaan. Menekan tombol apa pun membatalkan sorotan
-seleksi.
+#### Layar sesi
 
-**Thinking.** Baris `think` hanya muncul bila **model/gateway benar-benar
-mengirim** konten reasoning — mis. field `reasoning_content` (DeepSeek),
-`reasoning` (OpenRouter), atau `thinking`. Model non-reasoning (mis. `gpt-4o`,
-Gemini flash-lite) tidak mengirim apa pun, jadi status tetap `thinking:on` tetapi
-tidak ada baris yang tampil. Sakelar `Ctrl+T` / `/thinking` hanya
-menyembunyikan/menampilkan; ia tidak memaksa model berpikir.
+Header menampilkan judul sesi dan persentase konteks. Transkrip bisa digulir;
+prompt selalu di bawah dengan aksen solid sesuai mode. Di terminal lebar,
+sidebar di kanan menampilkan judul sesi, status plugin, dan file yang berubah.
+Klik nama plugin di sidebar untuk mengaktifkan/menonaktifkannya; pilihannya
+disimpan ke `plugins.json` dan registry tool dimuat ulang. Di terminal 60–99
+kolom, pakai `/mcp enable|disable <nama>` atau panel detail.
 
-**Mengetik saat agent bekerja.** Baris input tetap hidup selama agent berpikir:
-Anda bisa terus mengetik dan menekan `Enter` untuk **mengantre** pesan. Pesan
-antre dijalankan otomatis setelah giliran berjalan selesai (ditandai `⏳ antre`),
-jadi layar tidak beku. Input yang lebih panjang dari lebar terminal otomatis
-digulir horizontal (`‹`/`›`) dan kursor tetap terlihat. Menu autocomplete path
-muncul begitu Anda mulai menulis nama berkas/folder (tidak perlu menunggu `/`);
-gunakan `↑`/`↓` untuk berpindah item, lalu `Tab` (atau `Enter`) untuk memilihnya.
-Memilih folder otomatis membuka isinya, jadi `Tab` berulang menelusuri folder.
-Daftar ikut bergulir bila kandidatnya lebih dari 6.
+<p align="center">
+  <img src="docs/tui/session-120x35.svg" alt="Layar sesi NeX-Agent TUI" width="900">
+</p>
 
-Terminal dipulihkan otomatis saat keluar — termasuk pada `Ctrl+C` kedua — lewat
-handler `exit`. Semua flag CLI biasa (`--model`, `--provider`, `--resume`,
-`--cwd`, dsb.) juga berlaku pada perintah `tui`. Perintah ini memerlukan
-terminal sungguhan (TTY); di pipe/CI otomatis jatuh ke mode chat biasa.
+Pesan pengguna tampil sebagai panel dengan aksen kiri. Tool tampil sebagai
+`$ perintah`, output-nya di panel terpisah, dan edit file tampil sebagai
+`← Edit path` dengan diff berwarna serta nomor baris. Tool yang sedang berjalan
+memakai kursor berkedip.
+
+| Autocomplete `/`                                                                         | Plan (80×24)                                                                         | Sempit (45×30)                                                               |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| <img src="docs/tui/autocomplete-120x35.svg" alt="Autocomplete perintah TUI" width="420"> | <img src="docs/tui/session-plan-80x24.svg" alt="Mode Plan TUI 80 kolom" width="320"> | <img src="docs/tui/session-45x30.svg" alt="TUI sempit 45 kolom" width="220"> |
+
+#### Responsif
+
+| Lebar / tinggi | Perilaku                                                                                                                                 |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `≥ 100` kolom  | Sidebar kanan 18–28 kolom, meta prompt menampilkan provider, autocomplete 6 baris dengan deskripsi, diff bernomor                        |
+| `60–99` kolom  | Sidebar disembunyikan; detail sesi lewat `Ctrl+O` atau `/details panel`; autocomplete 6 baris dengan deskripsi; diff bernomor            |
+| `< 60` kolom   | Padding 1, logo home satu baris, provider disembunyikan dari meta, autocomplete 5 baris tanpa deskripsi, diff ditumpuk tanpa nomor baris |
+| `< 20` baris   | Header sesi dan tip home disembunyikan supaya transkrip tetap lega                                                                       |
+
+Semua lebar dihitung dari kolom terminal. Karakter lebar (CJK/emoji dari output
+tool) diukur dengan `visibleWidth`/`wrapAnsi`, baris tidak melewati layar, dan
+resize memicu gambar ulang tanpa flicker.
+
+#### Tombol
+
+| Tombol                     | Fungsi                                                                            |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| `Tab`                      | Pilih item autocomplete. Bila menu tertutup, ganti mode Plan ⇄ Build              |
+| `Shift+Tab` · `Ctrl+Tab`   | Alternatif ganti mode saat binding mode masih `tab`                               |
+| `Ctrl+O`                   | Buka panel detail sesi (plugin + file berubah), terutama saat sidebar tersembunyi |
+| `Ctrl+X` lalu `↑`/`↓`      | Pindah view utama ⇄ subagent                                                      |
+| `Ctrl+T`                   | Tampilkan/sembunyikan thinking                                                    |
+| `↑`/`↓`                    | Riwayat input; saat menu terbuka, memilih item                                    |
+| roda mouse · `PgUp`/`PgDn` | Gulir transkrip, termasuk saat agent bekerja                                      |
+| seret klik kiri            | Pilih teks; saat dilepas disalin lewat OSC 52                                     |
+| `Home`/`End`               | Gulir ke awal/akhir transkrip saat input kosong; selain itu pindah kursor         |
+| `Ctrl+P` / `Ctrl+N`        | Alias riwayat input                                                               |
+| `Ctrl+C`                   | Hentikan tugas berjalan (dua kali keluar)                                         |
+| `Ctrl+D`                   | Keluar saat input kosong                                                          |
+
+`Tab` hanya mengganti mode bila autocomplete tidak sedang terbuka. Binding bisa
+diubah lewat `~/.config/agent/config.json`:
+
+```json
+{
+  "theme": "mint",
+  "tuiKeybinds": {
+    "mode": "ctrl+g",
+    "details": "ctrl+o"
+  }
+}
+```
+
+Nilai tombol memakai nama readline: `tab`, `shift+tab`, `ctrl+g`, `f2`, dan
+seterusnya. Tema bawaan `opencode`; alternatif `mint` (aksen Build hijau mint,
+Plan tetap oranye). Ganti langsung dengan `/themes mint` atau `/themes opencode`.
+
+#### Autocomplete, `!`, dan perintah
+
+- Ketik `/` untuk filter perintah: awalan dulu, lalu potongan di tengah.
+  `↑`/`↓` memilih, `Tab` melengkapi, `Enter` menerima **dan menjalankan**
+  perintah. `Esc` menutup menu.
+- Ketik `@` untuk pencarian file fuzzy. `Enter`/`Tab` melengkapi path;
+  folder otomatis dibuka agar `Tab` berulang bisa menelusuri isinya.
+- Awali baris dengan `!` untuk menjalankan shell lewat tool `run_shell`, tanpa
+  memanggil model. Output masuk ke transkrip dan tetap melewati izin/konfirmasi
+  serta pembatasan mode Plan.
+
+Perintah TUI yang sering dipakai:
+
+| Perintah                      | Fungsi                                                              |
+| ----------------------------- | ------------------------------------------------------------------- |
+| `/details` · `/details panel` | Sembunyikan/tampilkan output tool · buka panel detail sesi          |
+| `/mode [plan\|build]`         | Lihat atau ganti mode sesi                                          |
+| `/compact` (`/summarize`)     | Ringkas riwayat lewat model; fallback pangkas pesan lama            |
+| `/undo [n]` · `/redo`         | Batalkan/ulangi n giliran: pesan, transkrip, dan perubahan file     |
+| `/editor [teks]`              | Buka `$EDITOR`/`$VISUAL`; hasilnya dikirim sebagai pesan berikutnya |
+| `/export [file]`              | Ekspor transkrip sesi ke markdown                                   |
+| `/init`                       | Buat `AGENTS.md` awal bila belum ada                                |
+| `/themes [nama]`              | Lihat/ganti tema TUI                                                |
+| `/exit` (`/quit`, `/q`)       | Keluar                                                              |
+
+Perintah lain tetap sama dengan mode CLI: `/connect`, `/provider`, `/models`,
+`/sessions`, `/resume` (`/continue`), `/new` (`/clear`), `/diff`, `/usage`,
+`/skills`, `/mcp`, `/thinking`, `/markdown`, `/typewriter`, dan `/update`.
+Instalasi skill eksternal lewat `/skills install` selalu meminta konfirmasi
+Yes/No.
+
+#### Menggulir, menyeleksi, dan mengetik saat sibuk
+
+**Roda mouse** dan `PgUp`/`PgDn` selalu menggulir transkrip — termasuk saat input
+masih berisi draf dan agent sedang bekerja. Output baru tidak menyentak ke bawah
+saat sedang menggulir; kembali ke dasar dengan `End`/`PgDn`. `↑`/`↓` tetap
+memanggil riwayat input seperti shell.
+
+Tahan **klik kiri lalu seret** di area transkrip untuk menyeleksi; saat dilepas,
+teks disalin lewat OSC 52. Bila terminal tidak mendukung OSC 52 (mis. VTE),
+tahan `Shift` saat menyeret untuk seleksi bawaan terminal. Menekan tombol apa
+pun membatalkan sorotan.
+
+Saat agent bekerja, input tetap hidup: ketik lalu `Enter` untuk mengantre pesan.
+Pesan dijalankan otomatis setelah giliran selesai. Input yang lebih panjang dari
+lebar terminal digulir horizontal dan kursor tetap terlihat.
+
+**Thinking.** Baris `think` hanya muncul bila model/gateway mengirim konten
+reasoning (mis. `reasoning_content` DeepSeek, `reasoning` OpenRouter, atau
+`thinking`). `Ctrl+T`/`/thinking` hanya menyembunyikan/menampilkan; tidak
+memaksa model berpikir.
+
+Terminal dipulihkan otomatis saat keluar, termasuk pada `Ctrl+C` kedua. Semua
+flag CLI biasa (`--model`, `--provider`, `--resume`, `--cwd`, dsb.) berlaku pada
+perintah `tui`. Mode ini memerlukan TTY; di pipe/CI otomatis jatuh ke mode chat
+biasa.
 
 Di **Termux (Android)**, roda/swipe umumnya dikirim sebagai event mouse dan ikut
-menggulir transkrip; bila tidak, gulir memakai `PgUp`/`PgDn`/`Home`/`End` (bisa
-ditambahkan ke baris tombol tambahan Termux). Seleksi teks tetap lewat
-long-press. Riwayat input memakai `↑`/`↓` (atau `Ctrl+P`/`Ctrl+N`). Bila keyboard
-menutupi layar, putar/atur ulang lebar terminal agar TUI menggambar ulang
-(`SIGWINCH`).
+menggulir; bila tidak, pakai `PgUp`/`PgDn`/`Home`/`End`. Seleksi memakai
+long-press. Bila keyboard menutupi layar, putar/atur ulang lebar terminal agar
+TUI menggambar ulang (`SIGWINCH`).
 
 ---
 

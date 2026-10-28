@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { visibleWidth } from "../src/util/ansi.js";
 import {
+  alignSides,
   centerLine,
   centerPad,
   clipLine,
@@ -103,6 +104,12 @@ describe("layout TUI responsif", () => {
     expect(visibleWidth(centerLine("abcdef", 4))).toBe(4);
   });
 
+  it("alignSides menaruh dua teks di kiri dan kanan", () => {
+    expect(alignSides("plugin", "●", 12)).toBe("plugin     ●");
+    expect(visibleWidth(alignSides("nama-panjang-sekali", "+12 -3", 12))).toBe(12);
+    expect(visibleWidth(alignSides("a", "kanan-panjang", 8))).toBe(8);
+  });
+
   it("truncateMiddle memotong folder tanpa melewati lebar", () => {
     expect(truncateMiddle("abcdef", 10)).toBe("abcdef");
     expect(truncateMiddle("abcdef", 5)).toBe("ab…ef");
@@ -141,11 +148,7 @@ describe("layout TUI responsif", () => {
   });
 
   it("warna badge prompt mengikuti mode", () => {
-    const build = formatPromptMeta(
-      { mode: "build", model: "m", provider: "p" },
-      40,
-      { level: 3 },
-    );
+    const build = formatPromptMeta({ mode: "build", model: "m", provider: "p" }, 40, { level: 3 });
     expect(build).toContain("38;2;92;156;245");
 
     const plan = formatPromptMeta({ mode: "plan", model: "m", provider: "p" }, 40, { level: 3 });
@@ -164,11 +167,9 @@ describe("layout TUI responsif", () => {
   });
 
   it("footer lebar: folder:branch kiri, versi kanan", () => {
-    const footer = formatFooter(
-      { folder: "NeX-Agent", branch: "main", version: "1.21.0" },
-      80,
-      { level: 0 },
-    );
+    const footer = formatFooter({ folder: "NeX-Agent", branch: "main", version: "1.21.0" }, 80, {
+      level: 0,
+    });
     expect(visibleWidth(footer)).toBe(76);
     expect(footer.startsWith("NeX-Agent:main")).toBe(true);
     expect(footer.trimEnd().endsWith("NeX-Agent v1.21.0")).toBe(true);
@@ -185,11 +186,10 @@ describe("layout TUI responsif", () => {
     expect(footer).toContain(":main");
     expect(footer.trimEnd().endsWith("v1.21.0")).toBe(true);
 
-    const short = formatFooter(
-      { folder: "repo", branch: "main", version: "1.0.0" },
-      40,
-      { compact: true, level: 0 },
-    );
+    const short = formatFooter({ folder: "repo", branch: "main", version: "1.0.0" }, 40, {
+      compact: true,
+      level: 0,
+    });
     expect(short.startsWith("repo:main")).toBe(true);
     expect(short.trimEnd().endsWith("v1.0.0")).toBe(true);
   });

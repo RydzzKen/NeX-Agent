@@ -48,6 +48,7 @@ export class TuiPrompter implements PrompterLike {
     private readonly screen: Screen,
     private readonly commands: string[],
     private readonly cwd: string,
+    private readonly descriptions: Record<string, string> = {},
   ) {}
 
   get hasPending(): boolean {
@@ -140,20 +141,20 @@ export class TuiPrompter implements PrompterLike {
       if (!engaged) return false;
       const selected = this.screen.getMenuSelected();
       if (selected && this.screenMenuOpen()) {
+        const commandContext = this.screen.getInputText().trimStart().startsWith("/");
         this.applyCompletion(selected);
+        // Enter pada `/` langsung menjalankan perintah; pada `@`/path hanya
+        // melengkapi teks agar pengguna bisa menambah argumen.
+        if (commandContext) this.deliver();
         return true;
       }
-      if (this.pending) this.submit();
-      else if (this.tryBusySlash()) {
-        // Dijalankan langsung; layar sudah dikosongkan di dalam.
-      } else this.enqueue();
+      this.deliver();
       return true;
     }
 
     if (name === TAB && !ctrl && !meta && !key.shift) {
       if (!engaged) return false;
-      this.tabComplete();
-      return true;
+      return this.tabComplete();
     }
 
     if ((name === UP || name === DOWN) && !ctrl && !meta) {
@@ -278,7 +279,9 @@ export class TuiPrompter implements PrompterLike {
     this.historyIndex = undefined;
     this.queue.push(text);
     this.screen.clearInput();
-    this.screen.appendRaw(`${color.cyan("⏳ antre")} ${color.dim(`(ke-${this.queue.length})`)} ${text}`);
+    this.screen.appendRaw(
+      `${color.cyan("⏳ antre")} ${color.dim(`(ke-${this.queue.length})`)} ${text}`,
+    );
   }
 
   /** Catat satu baris ke riwayat input (untuk dipanggil ulang dengan ↑/↓). */
@@ -343,11 +346,25 @@ export class TuiPrompter implements PrompterLike {
     if (p) p.resolve(value ?? text);
   }
 
-  private currentMenu(): { matches: string[]; token: string } {
+  /** Kirim input yang sudah selesai: jawab prompt, jalankan slash, atau antre. */
+  private deliver(): void {
+    if (this.pending) {
+      this.submit();
+      return;
+    }
+    if (this.tryBusySlash()) return;
+    this.enqueue();
+  }
+
+  private currentMenu(): { matches: string[]; token: string; descriptions: string[] } {
     const text = this.screen.getInputText();
     const [hits, token] = completeLine(text, this.commands, this.cwd);
     const matches = hits.filter((h) => h !== token);
-    return { matches, token };
+    return {
+      matches,
+      token,
+      descriptions: matches.map((item) => this.descriptions[item] ?? ""),
+    };
   }
 
   private refreshMenu(): void {
@@ -365,8 +382,8 @@ export class TuiPrompter implements PrompterLike {
       this.screen.clearMenu();
       return;
     }
-    const { matches, token } = this.currentMenu();
-    this.screen.setMenu(token, matches);
+    const { matches, token, descriptions } = this.currentMenu();
+    this.screen.setMenu(token, matches, descriptions);
   }
 
   /** Kata terakhir (setelah spasi terakhir) yang sedang diketik. */
@@ -380,25 +397,31 @@ export class TuiPrompter implements PrompterLike {
     return parts.length === 2 && parts[0]!.startsWith("/") && SUBCOMMANDS[parts[0]!] !== undefined;
   }
 
-  private tabComplete(): void {
+  /** Lengkapi lewat Tab. `false` = tidak ada saran; Tab boleh ganti mode. */
+  private tabComplete(): boolean {
     const text = this.screen.getInputText();
     if (text.trim() === "" || (this.lastToken(text) === "" && !this.isSubcommandContext(text))) {
       this.screen.clearMenu();
-      return;
+      return false;
     }
     // Menu sudah terbuka: Tab memilih item yang sedang disorot (folder/perintah),
     // seperti memilih dari daftar. Pindah item dengan ↑/↓.
     const selected = this.screen.getMenuSelected();
     if (selected) {
       this.applyCompletion(selected);
-      return;
+      return true;
     }
     const { matches } = this.currentMenu();
     if (matches.length === 1) {
       this.applyCompletion(matches[0]!);
-      return;
+      return true;
     }
-    this.refreshMenu();
+    if (matches.length > 1) {
+      this.refreshMenu();
+      return true;
+    }
+    this.screen.clearMenu();
+    return false;
   }
 
   private applyCompletion(completion: string): void {

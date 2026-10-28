@@ -57,6 +57,21 @@ describe("CheckpointManager", () => {
     await expect(fs.readFile(file, "utf8")).rejects.toThrow();
   });
 
+  it("undo melewati tugas tanpa snapshot (mis. balasan teks)", async () => {
+    const file = path.join(root, "a.ts");
+    await fs.writeFile(file, "awal\n", "utf8");
+    const manager = new CheckpointManager(path.join(root, ".state"));
+    manager.beginTask();
+    await manager.snapshotBefore(1, [file]);
+    await fs.writeFile(file, "diubah\n", "utf8");
+    manager.beginTask(); // giliran tanpa perubahan file
+
+    const result = await manager.undoLast(root);
+    expect(result.entries).toHaveLength(1);
+    expect(await fs.readFile(file, "utf8")).toBe("awal\n");
+    expect(manager.hasUndo()).toBe(false);
+  });
+
   it("preview menampilkan perubahan tanpa mengubah file", async () => {
     const changed = path.join(root, "a.ts");
     const created = path.join(root, "baru.ts");
@@ -71,7 +86,11 @@ describe("CheckpointManager", () => {
     const entries = await manager.preview(root);
     const byPath = new Map(entries.map((e) => [e.path, e]));
     expect(entries).toHaveLength(2);
-    expect(byPath.get(changed)).toMatchObject({ display: "a.ts", before: "awal\n", after: "diubah\n" });
+    expect(byPath.get(changed)).toMatchObject({
+      display: "a.ts",
+      before: "awal\n",
+      after: "diubah\n",
+    });
     expect(byPath.get(created)).toMatchObject({ display: "baru.ts", before: null, after: "isi\n" });
     // Tidak menulis apa pun.
     expect(await fs.readFile(changed, "utf8")).toBe("diubah\n");
